@@ -1157,11 +1157,14 @@ schema = Schema({
             Optional("bootstrap_labels"): dict,
         },
     }),
+    Optional("database"): {
+        "type": EnumValidator(('postgresql', 'mysql'), case_sensitive=True, raise_assert=True),
+    },
     Optional("citus"): {
         "database": str,
         "group": IntValidator(min=0, expected_type=int, raise_assert=True),
     },
-    "postgresql": {
+    Optional("postgresql"): {
         "listen": validate_host_port_listen_multiple_hosts,
         "connect_address": validate_connect_address,
         Optional("proxy_address"): validate_connect_address,
@@ -1188,6 +1191,21 @@ schema = Schema({
         Optional("pg_ident"): [str],
         Optional("pg_ctl_timeout"): IntValidator(min=0, raise_assert=True),
         Optional("use_pg_rewind"): bool
+    },
+    Optional("mysql"): {
+        "name": str,
+        "listen": validate_host_port_listen_multiple_hosts,
+        "connect_address": validate_connect_address,
+        Optional("data_dir"): str,
+        Optional("config_dir"): str,
+        Optional("bin_dir", ""): BinDirectory(),
+        Optional("parameters"): dict,
+        Optional("port"): IntValidator(min=0, max=65535, expected_type=int, raise_assert=True),
+        Optional("server_id"): IntValidator(min=0, expected_type=int, raise_assert=True),
+        Optional("authentication"): {
+            "replication": userattributes,
+            "superuser": userattributes,
+        },
     },
     Optional("watchdog"): {
         Optional("mode"): validate_watchdog_mode,

@@ -56,6 +56,7 @@ class Patroni(AbstractPatroniDaemon, Tags):
         from patroni import thread_pool
         from patroni.api import RestApiServer
         from patroni.dcs import get_dcs
+        from patroni.db import get_db_handler
         from patroni.ha import Ha
         from patroni.postgresql import Postgresql
         from patroni.request import PatroniRequest
@@ -85,7 +86,11 @@ class Patroni(AbstractPatroniDaemon, Tags):
         # Initialize global config
         global_config.update(None, self.config.dynamic_configuration)
 
-        self.postgresql = Postgresql(self.config['postgresql'], self.dcs.mpp)
+        db_type = self.config.get('database', {}).get('type', 'postgresql')
+        if db_type == 'postgresql':
+            self.postgresql = Postgresql(self.config['postgresql'], self.dcs.mpp)
+        else:
+            self.postgresql = get_db_handler(self.config, self.dcs.mpp)
         self.api = RestApiServer(self, self.config['restapi'])
         self.ha = Ha(self)
 
@@ -180,7 +185,9 @@ class Patroni(AbstractPatroniDaemon, Tags):
             if local or sighup and self.api.reload_local_certificate():
                 self.api.reload_config(self.config['restapi'])
             self.watchdog.reload_config(self.config)
-            self.postgresql.reload_config(self.config['postgresql'], sighup)
+            db_type = self.config.get('database', {}).get('type', 'postgresql')
+            db_config = self.config[db_type] if db_type in self.config else self.config.get('postgresql', {})
+            self.postgresql.reload_config(db_config, sighup)
             self.dcs.reload_config(self.config)
         except Exception:
             logger.exception('Failed to reload config_file=%s', self.config.config_file)

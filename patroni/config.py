@@ -143,7 +143,9 @@ class Config(object):
                 raise ConfigParseError("\n".join(errors))
 
         self.__effective_configuration = self._build_effective_configuration({}, self._local_configuration)
-        self._data_dir = self.__effective_configuration.get('postgresql', {}).get('data_dir', "")
+        db_type = self.__effective_configuration.get('database', {}).get('type', 'postgresql')
+        db_config = self.__effective_configuration.get(db_type, self.__effective_configuration.get('postgresql', {}))
+        self._data_dir = db_config.get('data_dir', "")
         self._cache_file = os.path.join(self._data_dir, self.__CACHE_FILENAME)
         if validator:  # patronictl uses validator=None
             self._load_cache()  # we don't want to load anything from local cache for ctl

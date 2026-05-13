@@ -51,12 +51,17 @@ class _MemberStatus(Tags, NamedTuple('_MemberStatus',
         :param json: RestApiHandler.get_postgresql_status() result
         :returns: _MemberStatus object
         """
-        # If one of those is not in a response we want to count the node as not healthy/reachable
-        wal: Dict[str, Any] = json.get('wal') or json['xlog']
+        # Support both PostgreSQL (wal/xlog) and MySQL (binlog) response formats
+        wal: Dict[str, Any] = json.get('wal') or json.get('xlog') or json.get('binlog', {})
         # abuse difference in primary/replica response format
+        pg_primary = json.get('role') in (PostgresqlRole.MASTER, PostgresqlRole.PRIMARY)
         in_recovery = not (bool(wal.get('location'))
-                           or json.get('role') in (PostgresqlRole.MASTER, PostgresqlRole.PRIMARY))
-        lsn = int(in_recovery and max(wal.get('received_location', 0), wal.get('replayed_location', 0)))
+                           or bool(wal.get('binlog_position'))
+                           or pg_primary)
+        lsn = int(in_recovery and max(wal.get('received_location', 0),
+                                      wal.get('replayed_location', 0),
+                                      wal.get('receive_binlog_position', 0),
+                                      wal.get('replay_binlog_position', 0)))
         return cls(member, True, in_recovery, lsn, json)
 
     @property
@@ -467,6 +472,8 @@ class Ha(object):
                     timeline, wal_position, pg_control_timeline, receive_lsn, replay_lsn =\
                         self.state_handler.timeline_wal_position()
                     data['xlog_location'] = self._last_wal_lsn = wal_position
+                    if getattr(self.state_handler, 'db_type', None) == 'mysql':
+                        data['binlog_position'] = wal_position
                     if not timeline:  # running as a standby
                         if replay_lsn:
                             data['replay_lsn'] = replay_lsn
@@ -607,34 +614,27 @@ class Ha(object):
             return self._async_executor.try_run_async(msg, self._do_reinitialize, args=(self.cluster,)) or msg
 
     def recover(self) -> str:
-        """Handle the case when postgres isn't running.
+        """Handle the case when the database isn't running.
 
-        Depending on the state of Patroni, DCS cluster view, and pg_controldata the following could happen:
+        Depending on the state of Patroni, DCS cluster view, and controldata the following could happen:
 
           - if ``primary_start_timeout`` is 0 and this node owns the leader lock, the lock
             will be voluntarily released if there are healthy replicas to take it over.
 
-          - if postgres was running as a ``primary`` and this node owns the leader lock, postgres is started as primary.
+          - if the db was running as a ``primary`` and this node owns the leader lock, it is started as primary.
 
-          - crash recover in a single-user mode is executed in the following cases:
+          - crash recovery is attempted if applicable
 
-            - postgres was running as ``primary`` wasn't ``shut down`` cleanly and there is no leader in DCS
-
-            - postgres was running as ``replica`` wasn't ``shut down in recovery`` (cleanly)
-              and we need to run ``pg_rewind`` to join back to the cluster.
-
-          - ``pg_rewind`` is executed if it is necessary, or optionally, the data directory could
+          - ``rewind`` is executed if it is necessary, or optionally, the data directory could
              be removed if it is allowed by configuration.
-
-          - after ``crash recovery`` and/or ``pg_rewind`` are executed, postgres is started in recovery.
 
         :returns: action message, describing what was performed.
         """
+        is_mysql = getattr(self.state_handler, 'db_type', None) == 'mysql'
+
         if self.has_lock() and self.update_lock():
             timeout = global_config.primary_start_timeout
             if timeout == 0:
-                # We are requested to prefer failing over to restarting primary. But see first if there
-                # is anyone to fail over to.
                 if self.is_failover_possible():
                     self.watchdog.disable()
                     logger.info("Primary crashed. Failing over.")
@@ -644,47 +644,51 @@ class Ha(object):
             timeout = None
 
         data = self.state_handler.controldata()
-        logger.info('pg_controldata:\n%s\n', '\n'.join('  {0}: {1}'.format(k, v) for k, v in data.items()))
+        logger.info('controldata:\n%s\n', '\n'.join('  {0}: {1}'.format(k, v) for k, v in data.items()))
 
-        # timeout > 0 indicates that we still have the leader lock, and it was just updated
-        if timeout\
-                and data.get('Database cluster state') in ('in production', 'in crash recovery',
-                                                           'shutting down', 'shut down')\
-                and self.state_handler.state == PostgresqlState.CRASHED\
-                and self.state_handler.role == PostgresqlRole.PRIMARY\
-                and not self.state_handler.config.recovery_conf_exists():
-            # We know 100% that we were running as a primary a few moments ago, therefore could just start postgres
-            msg = 'starting primary after failure'
-            if self._async_executor.try_run_async(msg, self.state_handler.start,
-                                                  args=(timeout, self._async_executor.critical_task)) is None:
-                self.recovering = True
-                return msg
+        # MySQL handles crash recovery automatically on startup, just try to start
+        if not is_mysql:
+            # timeout > 0 indicates that we still have the leader lock, and it was just updated
+            if timeout\
+                    and data.get('Database cluster state') in ('in production', 'in crash recovery',
+                                                               'shutting down', 'shut down')\
+                    and self.state_handler.state == PostgresqlState.CRASHED\
+                    and self.state_handler.role == PostgresqlRole.PRIMARY\
+                    and not self.state_handler.config.recovery_conf_exists():
+                msg = 'starting primary after failure'
+                if self._async_executor.try_run_async(msg, self.state_handler.start,
+                                                      args=(timeout, self._async_executor.critical_task)) is None:
+                    self.recovering = True
+                    return msg
 
-        # Postgres is not running, and we will restart in standby mode. Watchdog is not needed until we promote.
+        # Database is not running, we will restart in standby mode. Watchdog is not needed until we promote.
         self.watchdog.disable()
 
-        if data.get('Database cluster state') in ('in production', 'shutting down', 'in crash recovery'):
-            if self.state_handler.was_restored_from_backup():
-                logger.info('Skipping single-user crash recovery because backup_label exists;'
-                            ' PostgreSQL will handle it during normal startup')
-            else:
-                msg = self._handle_crash_recovery()
-                if msg:
-                    return msg
+        if not is_mysql:
+            if data.get('Database cluster state') in ('in production', 'shutting down', 'in crash recovery'):
+                if self.state_handler.was_restored_from_backup():
+                    logger.info('Skipping single-user crash recovery because backup_label exists;'
+                                ' PostgreSQL will handle it during normal startup')
+                else:
+                    msg = self._handle_crash_recovery()
+                    if msg:
+                        return msg
 
         self.load_cluster_from_dcs()
 
         role = PostgresqlRole.REPLICA
         if self.has_lock() and not self.is_standby_cluster():
-            self._rewind.reset_state()  # we want to later trigger CHECKPOINT after promote
+            if not is_mysql:
+                self._rewind.reset_state()
             msg = "starting as readonly because i had the session lock"
             node_to_follow = None
         else:
-            if not self._rewind.executed:
-                self._rewind.trigger_check_diverged_lsn()
-            msg = self._handle_rewind_or_reinitialize()
-            if msg:
-                return msg
+            if not is_mysql:
+                if not self._rewind.executed:
+                    self._rewind.trigger_check_diverged_lsn()
+                msg = self._handle_rewind_or_reinitialize()
+                if msg:
+                    return msg
 
             if self.has_lock():  # in standby cluster
                 msg = "starting as a standby leader because i had the session lock"
@@ -1086,6 +1090,8 @@ class Ha(object):
                 self._disable_sync -= 1
 
     def update_cluster_history(self) -> None:
+        if getattr(self.state_handler, 'db_type', None) == 'mysql':
+            return  # MySQL does not have timeline history
         primary_timeline = self.state_handler.get_primary_timeline()
         cluster_history = self.cluster.history.lines if self.cluster.history else []
         if primary_timeline == 1:
@@ -1155,7 +1161,8 @@ class Ha(object):
                 self._last_timeline = None
 
                 def before_promote():
-                    self._rewind.reset_state()  # make sure we will trigger checkpoint after promote
+                    if getattr(self.state_handler, 'db_type', None) != 'mysql':
+                        self._rewind.reset_state()  # make sure we will trigger checkpoint after promote
                     self.notify_mpp_coordinator('before_promote')
 
                 with self._async_response:
@@ -1303,6 +1310,7 @@ class Ha(object):
                   themselves as the healthiest because they received/replayed up to the same LSN,
                   but this is totally fine.
         """
+        has_timeline = getattr(self.state_handler, 'db_type', None) != 'mysql'
         cluster_timeline = self.cluster.timeline
         my_timeline = self.state_handler.replica_cached_timeline(cluster_timeline)
         if my_timeline:
@@ -1312,7 +1320,7 @@ class Ha(object):
             logger.info('My wal position exceeds maximum replication lag')
             return False  # Too far behind last reported wal position on primary
 
-        if not self.is_standby_cluster() and self.check_timeline():
+        if has_timeline and not self.is_standby_cluster() and self.check_timeline():
             if my_timeline is None:
                 logger.info('Can not figure out my timeline')
                 return False
@@ -2062,9 +2070,13 @@ class Ha(object):
 
     @staticmethod
     def sysid_valid(sysid: Optional[str]) -> bool:
-        # sysid does tv_sec << 32, where tv_sec is the number of seconds sine 1970,
-        # so even 1 << 32 would have 10 digits.
+        if not sysid:
+            return False
         sysid = str(sysid)
+        # PostgreSQL sysid: tv_sec << 32, at least 10 digits.
+        # MySQL server_uuid: UUID format like 550e8400-e29b-41d4-a716-446655440000.
+        if '-' in sysid:
+            return len(sysid) >= 32
         return len(sysid) >= 10 and sysid.isdigit()
 
     def post_recover(self) -> Optional[str]:

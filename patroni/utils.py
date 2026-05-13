@@ -948,8 +948,6 @@ def cluster_as_json(cluster: 'Cluster') -> Dict[str, Any]:
             * ``to``: name of the member to be promoted.
     """
     from . import global_config
-    from .postgresql.misc import format_lsn
-
     config = global_config.from_cluster(cluster)
     leader_name = cluster.leader.name if cluster.leader else None
     cluster_lsn = cluster.status.last_lsn
@@ -975,6 +973,8 @@ def cluster_as_json(cluster: 'Cluster') -> Dict[str, Any]:
         member.update({n: m.data[n] for n in optional_attributes if n in m.data})
 
         if m.name != leader_name:
+            from .postgresql.misc import format_lsn
+
             for location in ('receive_', 'replay_', ''):
                 lsn_type, lag_type = f'{location}lsn', f'{location}lag'
 
@@ -983,10 +983,10 @@ def cluster_as_json(cluster: 'Cluster') -> Dict[str, Any]:
                     member[lsn_type] = member[lag_type] = 'unknown'
                 elif cluster_lsn >= lsn:
                     member[lag_type] = cluster_lsn - lsn
-                    member[lsn_type] = format_lsn(lsn)
+                    member[lsn_type] = format_lsn(lsn) if lsn > 0 else '0'
                 else:
                     member[lag_type] = 0
-                    member[lsn_type] = format_lsn(lsn)
+                    member[lsn_type] = format_lsn(lsn) if lsn > 0 else '0'
 
         ret['members'].append(member)
 

@@ -465,17 +465,21 @@ class RestApiHandler(BaseHTTPRequestHandler):
 
         patroni = self.server.patroni
         if patroni.ha.is_leader():
-            # We only become leader after bootstrap or once up as a standby, so we are definitely ready.
             return
 
-        # When postgres is not running we are not ready.
-        if patroni.postgresql.state != PostgresqlState.RUNNING:
+        is_mysql = getattr(patroni.postgresql, 'db_type', None) == 'mysql'
+
+        if not is_mysql and patroni.postgresql.state != PostgresqlState.RUNNING:
             return 'PostgreSQL is not running'
 
         postgres = self.get_postgresql_status(True)
         latest_end_lsn = postgres.get('latest_end_lsn', 0)
 
-        if postgres.get('replication_state') != 'streaming':
+        if is_mysql:
+            rep_state = postgres.get('replication_state', '')
+            if rep_state and rep_state != 'streaming':
+                return f'MySQL replication state is {rep_state}'
+        elif postgres.get('replication_state') != 'streaming':
             return 'PostgreSQL replication state is not streaming'
 
         cluster = patroni.dcs.cluster
@@ -488,8 +492,11 @@ class RestApiHandler(BaseHTTPRequestHandler):
         leader_optime = max(cluster and cluster.status.last_lsn or 0, latest_end_lsn)
 
         mode = 'write' if self.path_query.get('mode', [None])[0] == 'write' else 'apply'
+        xlog_data = postgres.get('xlog', postgres.get('binlog', {}))
         location = 'received_location' if mode == 'write' else 'replayed_location'
-        lag = leader_optime - postgres.get('xlog', {}).get(location, 0)
+        if is_mysql:
+            location = 'receive_binlog_position' if mode == 'write' else 'replay_binlog_position'
+        lag = leader_optime - xlog_data.get(location, 0)
 
         max_replica_lag = parse_int(self.path_query.get('lag', [None])[0], 'B')
         if max_replica_lag is None:
@@ -619,6 +626,7 @@ class RestApiHandler(BaseHTTPRequestHandler):
         """
         postgres = self.get_postgresql_status(True)
         patroni = self.server.patroni
+        is_mysql = getattr(patroni.postgresql, 'db_type', None) == 'mysql'
         epoch = datetime.datetime(1970, 1, 1, tzinfo=tzutc)
 
         metrics: List[str] = []
@@ -626,7 +634,7 @@ class RestApiHandler(BaseHTTPRequestHandler):
         labels = f'{{scope="{patroni.postgresql.scope}",name="{patroni.postgresql.name}"}}'
         metrics.append("# HELP patroni_version Patroni semver without periods.")
         metrics.append("# TYPE patroni_version gauge")
-        padded_semver = ''.join([x.zfill(2) for x in patroni.version.split('.')])  # 2.0.2 => 020002
+        padded_semver = ''.join([x.zfill(2) for x in patroni.version.split('.')])
         metrics.append("patroni_version{0} {1}".format(labels, padded_semver))
 
         metrics.append("# HELP patroni_postgres_running Value is 1 if Postgres is running, 0 otherwise.")
@@ -644,67 +652,85 @@ class RestApiHandler(BaseHTTPRequestHandler):
         metrics.append("# TYPE patroni_primary gauge")
         metrics.append("patroni_primary{0} {1}".format(labels, int(postgres['role'] == PostgresqlRole.PRIMARY)))
 
-        metrics.append("# HELP patroni_xlog_location Current location of the Postgres"
+        def _xlog_or_binlog(*keys: str) -> int:
+            obj = postgres.get('xlog') or postgres.get('binlog') or {}
+            for k in keys:
+                v = obj.get(k)
+                if v:
+                    return int(v)
+            return 0
+
+        def _xlog_or_binlog_raw(*keys: str) -> Any:
+            obj = postgres.get('xlog') or postgres.get('binlog') or {}
+            for k in keys:
+                if k in obj:
+                    return obj[k]
+            return None
+
+        metrics.append("# HELP patroni_xlog_location Current location of the"
                        " transaction log, 0 if this node is not the leader.")
         metrics.append("# TYPE patroni_xlog_location counter")
-        metrics.append("patroni_xlog_location{0} {1}".format(labels, postgres.get('xlog', {}).get('location', 0)))
+        metrics.append("patroni_xlog_location{0} {1}".format(labels, _xlog_or_binlog('location')))
 
-        metrics.append("# HELP patroni_standby_leader Value is 1 if this node is the standby_leader, 0 otherwise.")
-        metrics.append("# TYPE patroni_standby_leader gauge")
-        metrics.append("patroni_standby_leader{0} {1}".format(labels,
-                                                              int(postgres['role'] == PostgresqlRole.STANDBY_LEADER)))
+        if not is_mysql:
+            metrics.append("# HELP patroni_standby_leader Value is 1 if this node is the standby_leader, 0 otherwise.")
+            metrics.append("# TYPE patroni_standby_leader gauge")
+            metrics.append("patroni_standby_leader{0} {1}".format(labels,
+                            int(postgres['role'] == PostgresqlRole.STANDBY_LEADER)))
 
         metrics.append("# HELP patroni_replica Value is 1 if this node is a replica, 0 otherwise.")
         metrics.append("# TYPE patroni_replica gauge")
         metrics.append("patroni_replica{0} {1}".format(labels, int(postgres['role'] == PostgresqlRole.REPLICA)))
 
-        metrics.append("# HELP patroni_sync_standby Value is 1 if this node is a sync standby, 0 otherwise.")
-        metrics.append("# TYPE patroni_sync_standby gauge")
-        metrics.append("patroni_sync_standby{0} {1}".format(labels, int(postgres.get('sync_standby', False))))
+        if not is_mysql:
+            metrics.append("# HELP patroni_sync_standby Value is 1 if this node is a sync standby, 0 otherwise.")
+            metrics.append("# TYPE patroni_sync_standby gauge")
+            metrics.append("patroni_sync_standby{0} {1}".format(labels, int(postgres.get('sync_standby', False))))
 
-        metrics.append("# HELP patroni_quorum_standby Value is 1 if this node is a quorum standby, 0 otherwise.")
-        metrics.append("# TYPE patroni_quorum_standby gauge")
-        metrics.append("patroni_quorum_standby{0} {1}".format(labels, int(postgres.get('quorum_standby', False))))
+            metrics.append("# HELP patroni_quorum_standby Value is 1 if this node is a quorum standby, 0 otherwise.")
+            metrics.append("# TYPE patroni_quorum_standby gauge")
+            metrics.append("patroni_quorum_standby{0} {1}".format(labels, int(postgres.get('quorum_standby', False))))
 
         metrics.append("# HELP patroni_xlog_received_location Current location of the received"
-                       " Postgres transaction log, 0 if this node is not a replica.")
+                       " transaction log, 0 if this node is not a replica.")
         metrics.append("# TYPE patroni_xlog_received_location counter")
-        metrics.append("patroni_xlog_received_location{0} {1}"
-                       .format(labels, postgres.get('xlog', {}).get('received_location', 0)))
+        metrics.append("patroni_xlog_received_location{0} {1}".format(
+            labels, _xlog_or_binlog('received_location', 'receive_binlog_position')))
 
         metrics.append("# HELP patroni_xlog_replayed_location Current location of the replayed"
-                       " Postgres transaction log, 0 if this node is not a replica.")
+                       " transaction log, 0 if this node is not a replica.")
         metrics.append("# TYPE patroni_xlog_replayed_location counter")
-        metrics.append("patroni_xlog_replayed_location{0} {1}"
-                       .format(labels, postgres.get('xlog', {}).get('replayed_location', 0)))
+        metrics.append("patroni_xlog_replayed_location{0} {1}".format(
+            labels, _xlog_or_binlog('replayed_location', 'replay_binlog_position')))
 
-        metrics.append("# HELP patroni_xlog_replayed_timestamp Current timestamp of the replayed"
-                       " Postgres transaction log, 0 if null.")
-        metrics.append("# TYPE patroni_xlog_replayed_timestamp gauge")
-        replayed_timestamp = postgres.get('xlog', {}).get('replayed_timestamp')
-        replayed_timestamp = (replayed_timestamp - epoch).total_seconds() if replayed_timestamp else 0
-        metrics.append("patroni_xlog_replayed_timestamp{0} {1}".format(labels, replayed_timestamp))
+        if not is_mysql:
+            metrics.append("# HELP patroni_xlog_replayed_timestamp Current timestamp of the replayed"
+                           " transaction log, 0 if null.")
+            metrics.append("# TYPE patroni_xlog_replayed_timestamp gauge")
+            replayed_timestamp = postgres.get('xlog', {}).get('replayed_timestamp')
+            replayed_timestamp = (replayed_timestamp - epoch).total_seconds() if replayed_timestamp else 0
+            metrics.append("patroni_xlog_replayed_timestamp{0} {1}".format(labels, replayed_timestamp))
 
-        metrics.append("# HELP patroni_xlog_paused Value is 1 if the Postgres xlog is paused, 0 otherwise.")
-        metrics.append("# TYPE patroni_xlog_paused gauge")
-        metrics.append("patroni_xlog_paused{0} {1}"
-                       .format(labels, int(postgres.get('xlog', {}).get('paused', False) is True)))
+            metrics.append("# HELP patroni_xlog_paused Value is 1 if the Postgres xlog is paused, 0 otherwise.")
+            metrics.append("# TYPE patroni_xlog_paused gauge")
+            metrics.append("patroni_xlog_paused{0} {1}"
+                           .format(labels, int(postgres.get('xlog', {}).get('paused', False) is True)))
 
-        if postgres.get('server_version', 0) >= 90600:
-            metrics.append("# HELP patroni_postgres_streaming Value is 1 if Postgres is streaming, 0 otherwise.")
-            metrics.append("# TYPE patroni_postgres_streaming gauge")
-            metrics.append("patroni_postgres_streaming{0} {1}"
-                           .format(labels, int(postgres.get('replication_state') == 'streaming')))
+            if postgres.get('server_version', 0) >= 90600:
+                metrics.append("# HELP patroni_postgres_streaming Value is 1 if Postgres is streaming, 0 otherwise.")
+                metrics.append("# TYPE patroni_postgres_streaming gauge")
+                metrics.append("patroni_postgres_streaming{0} {1}"
+                               .format(labels, int(postgres.get('replication_state') == 'streaming')))
 
-            metrics.append("# HELP patroni_postgres_in_archive_recovery Value is 1"
-                           " if Postgres is replicating from archive, 0 otherwise.")
-            metrics.append("# TYPE patroni_postgres_in_archive_recovery gauge")
-            metrics.append("patroni_postgres_in_archive_recovery{0} {1}"
-                           .format(labels, int(postgres.get('replication_state') == 'in archive recovery')))
+                metrics.append("# HELP patroni_postgres_in_archive_recovery Value is 1"
+                               " if Postgres is replicating from archive, 0 otherwise.")
+                metrics.append("# TYPE patroni_postgres_in_archive_recovery gauge")
+                metrics.append("patroni_postgres_in_archive_recovery{0} {1}"
+                               .format(labels, int(postgres.get('replication_state') == 'in archive recovery')))
 
-        metrics.append("# HELP patroni_postgres_server_version Version of Postgres (if running), 0 otherwise.")
+        metrics.append("# HELP patroni_postgres_server_version Version of the database (if running), 0 otherwise.")
         metrics.append("# TYPE patroni_postgres_server_version gauge")
-        metrics.append("patroni_postgres_server_version {0} {1}".format(labels, postgres.get('server_version', 0)))
+        metrics.append("patroni_postgres_server_version{0} {1}".format(labels, postgres.get('server_version', 0)))
 
         metrics.append("# HELP patroni_cluster_unlocked Value is 1 if the cluster is unlocked, 0 if locked.")
         metrics.append("# TYPE patroni_cluster_unlocked gauge")
@@ -715,7 +741,7 @@ class RestApiHandler(BaseHTTPRequestHandler):
         metrics.append("patroni_failsafe_mode_is_active{0} {1}"
                        .format(labels, int(postgres.get('failsafe_mode_is_active', 0))))
 
-        metrics.append("# HELP patroni_postgres_timeline Postgres timeline of this node (if running), 0 otherwise.")
+        metrics.append("# HELP patroni_postgres_timeline Database timeline of this node (if running), 0 otherwise.")
         metrics.append("# TYPE patroni_postgres_timeline counter")
         metrics.append("patroni_postgres_timeline{0} {1}".format(labels, postgres.get('timeline') or 0))
 
@@ -733,13 +759,19 @@ class RestApiHandler(BaseHTTPRequestHandler):
         metrics.append("# TYPE patroni_is_paused gauge")
         metrics.append("patroni_is_paused{0} {1}".format(labels, int(postgres.get('pause', 0))))
 
-        metrics.append("# HELP patroni_postgres_state Numeric representation of Postgres state.")
-        # Generate description of all state values for metrics documentation
-        state_descriptions = [f"{state.index}={state.name.lower()}" for state in PostgresqlState]
+        metrics.append("# HELP patroni_postgres_state Numeric representation of database state.")
+        state_enum_cls = PostgresqlState
+        if is_mysql:
+            try:
+                from patroni.mysql.misc import MySQLState
+                state_enum_cls = MySQLState
+            except ImportError:
+                pass
+        state_descriptions = [f"{s.index}={s.name.lower()}" for s in state_enum_cls]
         metrics.append(f"# Values: {', '.join(state_descriptions)}")
         metrics.append("# TYPE patroni_postgres_state gauge")
         current_state = postgres['state']
-        state_value = current_state.index if isinstance(current_state, PostgresqlState) else -1
+        state_value = current_state.index if isinstance(current_state, state_enum_cls) else -1
         metrics.append(f"patroni_postgres_state{labels} {state_value}")
 
         self.write_response(200, '\n'.join(metrics) + '\n', content_type='text/plain')
@@ -1375,63 +1407,69 @@ class RestApiHandler(BaseHTTPRequestHandler):
         postgresql = self.server.patroni.postgresql
         cluster = self.server.patroni.dcs.cluster
         config = global_config.from_cluster(cluster)
+        is_mysql = getattr(postgresql, 'db_type', None) == 'mysql'
         try:
 
-            if postgresql.state not in (PostgresqlState.RUNNING, PostgresqlState.RESTARTING,
-                                        PostgresqlState.STARTING):
+            if not is_mysql \
+                    and postgresql.state not in (PostgresqlState.RUNNING, PostgresqlState.RESTARTING,
+                                                 PostgresqlState.STARTING):
                 raise RetryFailedError('')
-            replication_state = ("pg_catalog.pg_{0}_{1}_diff(wr.latest_end_lsn, '0/0')::bigint, wr.status"
-                                 if postgresql.major_version >= 90600 else "NULL, NULL") + ", " +\
-                ("pg_catalog.current_setting('restore_command')" if postgresql.major_version >= 120000 else "NULL") +\
-                ", " + ("pg_catalog.pg_wal_lsn_diff(wr.written_lsn, '0/0')::bigint"
-                        if postgresql.major_version >= 130000 else "NULL")
-            stmt = ("SELECT " + postgresql.POSTMASTER_START_TIME + ", " + postgresql.TL_LSN + ","
-                    " pg_catalog.pg_last_xact_replay_timestamp(), " + replication_state + ","
-                    " (SELECT pg_catalog.array_to_json(pg_catalog.array_agg(pg_catalog.row_to_json(ri))) "
-                    "FROM (SELECT (SELECT rolname FROM pg_catalog.pg_authid WHERE oid = usesysid) AS usename,"
-                    " application_name, client_addr, w.state, sync_state, sync_priority"
-                    " FROM pg_catalog.pg_stat_get_wal_senders() w, pg_catalog.pg_stat_get_activity(pid)) AS ri)") +\
-                (" FROM pg_catalog.pg_stat_get_wal_receiver() AS wr" if postgresql.major_version >= 90600 else "")
 
-            row = self.query(stmt.format(postgresql.wal_name, postgresql.lsn_name,
-                                         postgresql.wal_flush), retry=retry)[0]
-            result = {
-                'state': postgresql.state,
-                'postmaster_start_time': row[0],
-                'role': PostgresqlRole.REPLICA if row[1] == 0 else PostgresqlRole.PRIMARY,
-                'server_version': postgresql.server_version,
-                'xlog': ({
-                    'received_location': row[10] or row[4] or row[3],
-                    'replayed_location': row[3],
-                    'replayed_timestamp': row[6],
-                    'paused': row[5]} if row[1] == 0 else {
-                    'location': row[2]
-                })
-            }
-
-            if result['role'] == PostgresqlRole.REPLICA and config.is_standby_cluster:
-                result['role'] = postgresql.role
-
-            if result['role'] == PostgresqlRole.REPLICA and config.is_synchronous_mode\
-                    and cluster and cluster.sync.matches(postgresql.name):
-                result['quorum_standby' if global_config.is_quorum_commit_mode else 'sync_standby'] = True
-
-            if row[1] > 0:
-                result['timeline'] = row[1]
+            if is_mysql:
+                result = self._get_mysql_status(postgresql, retry)
             else:
-                leader_timeline = None\
-                    if not cluster or cluster.is_unlocked() or not cluster.leader else cluster.leader.timeline
-                result['timeline'] = postgresql.replica_cached_timeline(leader_timeline)
+                replication_state = ("pg_catalog.pg_{0}_{1}_diff(wr.latest_end_lsn, '0/0')::bigint, wr.status"
+                                     if postgresql.major_version >= 90600 else "NULL, NULL") + ", " +\
+                    ("pg_catalog.current_setting('restore_command')" if postgresql.major_version >= 120000 else "NULL") +\
+                    ", " + ("pg_catalog.pg_wal_lsn_diff(wr.written_lsn, '0/0')::bigint"
+                            if postgresql.major_version >= 130000 else "NULL")
+                stmt = ("SELECT " + postgresql.POSTMASTER_START_TIME + ", " + postgresql.TL_LSN + ","
+                        " pg_catalog.pg_last_xact_replay_timestamp(), " + replication_state + ","
+                        " (SELECT pg_catalog.array_to_json(pg_catalog.array_agg(pg_catalog.row_to_json(ri))) "
+                        "FROM (SELECT (SELECT rolname FROM pg_catalog.pg_authid WHERE oid = usesysid) AS usename,"
+                        " application_name, client_addr, w.state, sync_state, sync_priority"
+                        " FROM pg_catalog.pg_stat_get_wal_senders() w, pg_catalog.pg_stat_get_activity(pid)) AS ri)") +\
+                    (" FROM pg_catalog.pg_stat_get_wal_receiver() AS wr" if postgresql.major_version >= 90600 else "")
 
-            if row[7]:
-                result['latest_end_lsn'] = row[7]
+                row = self.query(stmt.format(postgresql.wal_name, postgresql.lsn_name,
+                                             postgresql.wal_flush), retry=retry)[0]
+                result = {
+                    'state': postgresql.state,
+                    'postmaster_start_time': row[0],
+                    'role': PostgresqlRole.REPLICA if row[1] == 0 else PostgresqlRole.PRIMARY,
+                    'server_version': postgresql.server_version,
+                    'xlog': ({
+                        'received_location': row[10] or row[4] or row[3],
+                        'replayed_location': row[3],
+                        'replayed_timestamp': row[6],
+                        'paused': row[5]} if row[1] == 0 else {
+                        'location': row[2]
+                    })
+                }
 
-            replication_state = postgresql.replication_state_from_parameters(row[1] > 0, row[8], row[9])
-            if replication_state:
-                result['replication_state'] = replication_state
+                if result['role'] == PostgresqlRole.REPLICA and config.is_standby_cluster:
+                    result['role'] = postgresql.role
 
-            if row[11]:
-                result['replication'] = row[11]
+                if result['role'] == PostgresqlRole.REPLICA and config.is_synchronous_mode\
+                        and cluster and cluster.sync.matches(postgresql.name):
+                    result['quorum_standby' if global_config.is_quorum_commit_mode else 'sync_standby'] = True
+
+                if row[1] > 0:
+                    result['timeline'] = row[1]
+                else:
+                    leader_timeline = None\
+                        if not cluster or cluster.is_unlocked() or not cluster.leader else cluster.leader.timeline
+                    result['timeline'] = postgresql.replica_cached_timeline(leader_timeline)
+
+                if row[7]:
+                    result['latest_end_lsn'] = row[7]
+
+                replication_state = postgresql.replication_state_from_parameters(row[1] > 0, row[8], row[9])
+                if replication_state:
+                    result['replication_state'] = replication_state
+
+                if row[11]:
+                    result['replication'] = row[11]
 
         except (psycopg.Error, RetryFailedError, PostgresConnectionException):
             state = postgresql.state
@@ -1448,6 +1486,64 @@ class RestApiHandler(BaseHTTPRequestHandler):
             result['failsafe_mode_is_active'] = True
         result['dcs_last_seen'] = self.server.patroni.dcs.last_seen
         return result
+
+    def _get_mysql_status(self, mysql_handler: Any, retry: Any) -> Dict[str, Any]:
+        """Get status from MySQL for the REST API response.
+
+        :param mysql_handler: the MySQL handler instance.
+        :param retry: Retry object for database queries.
+        :returns: a dictionary with MySQL status information.
+        """
+        state = mysql_handler.state
+        try:
+            is_primary = mysql_handler.is_primary()
+
+            # SHOW MASTER STATUS columns: File, Position, Binlog_Do_DB, Binlog_Ignore_DB, Executed_Gtid_Set
+            master_row = mysql_handler._query_one_dict("SHOW MASTER STATUS")
+            binlog_file = ''
+            binlog_pos = 0
+            gtid_set = ''
+            if master_row:
+                binlog_file = master_row.get('File', '')
+                binlog_pos = int(master_row.get('Position', 0))
+                gtid_set = master_row.get('Executed_Gtid_Set', '')
+
+            binlog_data = {'location': binlog_pos}
+            if is_primary:
+                binlog_data['binlog_file'] = binlog_file
+                if gtid_set:
+                    binlog_data['gtid_set'] = gtid_set
+            else:
+                slave_row = mysql_handler._query_one_dict("SHOW SLAVE STATUS")
+                if slave_row:
+                    binlog_data['receive_binlog_position'] = int(slave_row.get('Read_Master_Log_Pos', 0) or 0)
+                    binlog_data['replay_binlog_position'] = int(slave_row.get('Exec_Master_Log_Pos', 0) or 0)
+                    binlog_data['master_host'] = slave_row.get('Master_Host', '')
+                    binlog_data['master_port'] = int(slave_row.get('Master_Port', 0) or 0)
+                    binlog_data['slave_io_running'] = slave_row.get('Slave_IO_Running', '')
+                    binlog_data['slave_sql_running'] = slave_row.get('Slave_SQL_Running', '')
+                    sbm = slave_row.get('Seconds_Behind_Master')
+                    binlog_data['seconds_behind_master'] = int(sbm) if sbm is not None else None
+                    if gtid_set:
+                        binlog_data['gtid_set'] = gtid_set
+
+            result = {
+                'state': state,
+                'role': 'primary' if is_primary else 'replica',
+                'server_version': mysql_handler.server_version,
+                'binlog': binlog_data
+            }
+
+            replication_state = mysql_handler.replication_state()
+            if replication_state:
+                result['replication_state'] = replication_state
+
+            return result
+        except Exception as e:
+            logger.error('Failed to get MySQL status: %r', e)
+            if state == PostgresqlState.RUNNING:
+                state = 'unknown'
+            return {'state': state, 'role': mysql_handler.role}
 
     def handle_one_request(self) -> None:
         """Parse and dispatch a request to the appropriate ``do_*`` method.
@@ -1536,7 +1632,7 @@ class RestApiServer(ThreadingMixIn, HTTPServer):
         """Execute *sql* query with *params* and optionally return results.
 
         .. note::
-            Prefer to use own connection to postgres and fallback to ``heartbeat`` when own isn't available.
+            Prefer to use own connection to the database and fallback to ``heartbeat`` when own isn't available.
 
         :param sql: the SQL statement to be run.
         :param params: positional arguments to be used as parameters for *sql*.
@@ -1547,16 +1643,22 @@ class RestApiServer(ThreadingMixIn, HTTPServer):
             :class:`psycopg.Error`: if had issues while executing *sql*.
             :class:`~patroni.exceptions.PostgresConnectionException`: if had issues while connecting to the database.
         """
+        is_mysql = getattr(self.patroni.postgresql, 'db_type', None) == 'mysql'
         # We first try to get a heartbeat connection because it is always required for the main thread.
         try:
             heartbeat_connection = self.patroni.postgresql.connection_pool.get('heartbeat')
-            heartbeat_connection.get()  # try to open psycopg connection to postgres
-        except psycopg.Error as exc:
+            heartbeat_connection.get()
+        except (psycopg.Error, Exception) as exc:
+            if is_mysql:
+                return self.patroni.postgresql._query(sql, *params)
             raise PostgresConnectionException('connection problems') from exc
+
+        if is_mysql:
+            return self.patroni.postgresql._query(sql, *params)
 
         try:
             connection = self.patroni.postgresql.connection_pool.get('restapi')
-            connection.get()  # try to open psycopg connection to postgres
+            connection.get()
         except psycopg.Error:
             logger.debug('restapi connection to postgres is not available')
             connection = heartbeat_connection

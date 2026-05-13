@@ -197,7 +197,7 @@ class TestValidator(unittest.TestCase):
     def test_empty_config(self, mock_out, mock_err):
         errors = schema({})
         output = "\n".join(errors)
-        expected = list(sorted(['name', 'postgresql', 'restapi', 'scope'] + available_dcs))
+        expected = list(sorted(['name', 'restapi', 'scope'] + available_dcs))
         self.assertEqual(expected, parse_output(output))
 
     def test_complete_config(self, mock_out, mock_err):

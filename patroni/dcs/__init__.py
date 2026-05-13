@@ -194,7 +194,7 @@ class Member(Tags, NamedTuple('Member',
             >>> Member.from_node(-1, '', '', '{')
             Member(version=-1, name='', session='', data={})
         """
-        if value.startswith('postgres'):
+        if value.startswith('postgres') or value.startswith('mysql'):
             conn_url, api_url = parse_connection_string(value)
             data = {'conn_url': conn_url, 'api_url': api_url}
         else:
@@ -217,7 +217,9 @@ class Member(Tags, NamedTuple('Member',
 
         conn_kwargs = self.data.get('conn_kwargs')
         if conn_kwargs:
-            conn_url = uri('postgresql', (conn_kwargs.get('host'), conn_kwargs.get('port', 5432)))
+            db_type = conn_kwargs.get('db_type', 'postgresql')
+            default_port = {'postgresql': 5432, 'mysql': 3306}.get(db_type, 5432)
+            conn_url = uri(db_type, (conn_kwargs.get('host'), conn_kwargs.get('port', default_port)))
             self.data['conn_url'] = conn_url
             return conn_url
 
@@ -324,16 +326,16 @@ class Member(Tags, NamedTuple('Member',
 
     @property
     def lsn(self) -> Optional[int]:
-        """Current LSN (receive/flush/replay)."""
-        return parse_int(self.data.get('xlog_location'))
+        """Current WAL/binlog position (receive/flush/replay)."""
+        return parse_int(self.data.get('xlog_location') or self.data.get('binlog_position'))
 
     @property
     def receive_lsn(self) -> Optional[int]:
-        return parse_int(self.data.get('receive_lsn'))
+        return parse_int(self.data.get('receive_lsn') or self.data.get('receive_binlog_position'))
 
     @property
     def replay_lsn(self) -> Optional[int]:
-        return parse_int(self.data.get('replay_lsn'))
+        return parse_int(self.data.get('replay_lsn') or self.data.get('replay_binlog_position'))
 
 
 class RemoteMember(Member):
