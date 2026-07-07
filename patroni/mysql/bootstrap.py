@@ -69,8 +69,12 @@ class Bootstrap:
         return self.create_replica(clone_member)
 
     def create_replica(self, clone_member: Any) -> bool:
+        """Create a replica using the configured clone method.
+
+        Checks ``create_replica_methods`` config; falls back to mysqldump
+        if no methods are configured.
+        """
         import shutil
-        from .postmaster import MySQLProcess
 
         conn_url = None
         if isinstance(clone_member, (Leader, Member, RemoteMember)):
@@ -79,7 +83,31 @@ class Bootstrap:
             logger.error("No connection URL for clone source")
             return False
 
-        logger.info("Creating replica from %s", conn_url)
+        # Determine which method(s) to use
+        replica_methods = getattr(self._config_handler, 'create_replica_methods', None)
+        if replica_methods is None:
+            replica_methods = ['mysqldump']
+
+        for method in replica_methods:
+            logger.info("Creating replica from %s using method=%s", conn_url, method)
+            if method == 'mysqldump':
+                if self._create_replica_via_mysqldump(conn_url):
+                    return True
+            elif method == 'xtrabackup':
+                if self._create_replica_via_xtrabackup(conn_url):
+                    return True
+            else:
+                logger.warning("Unknown create_replica_method: %s", method)
+            logger.error("Method %s failed, trying next if available", method)
+
+        return False
+
+    def _create_replica_via_mysqldump(self, conn_url: str) -> bool:
+        """Clone a replica using mysqldump (logical backup)."""
+        import shutil
+        from .postmaster import MySQLProcess
+
+        logger.info("Creating replica from %s via mysqldump", conn_url)
         data_dir = self._config_handler.data_dir
 
         if os.path.exists(data_dir):
@@ -127,7 +155,7 @@ class Bootstrap:
         else:
             logger.info("Cloning databases: %s", user_dbs)
             dump_cmd = [mysqldump_path] + dump_args + [
-                '--source-data=2', '--databases'
+                '--single-transaction', '--source-data=2', '--databases'
             ] + user_dbs.split() + [
                 '--triggers', '--routines', '--skip-events',
                 '--set-gtid-purged=ON', '--no-tablespaces',
@@ -188,7 +216,116 @@ class Bootstrap:
             return False
 
         os.remove(dump_file)
-        logger.info("Replica created successfully from %s", conn_url)
+        logger.info("Replica created successfully from %s via mysqldump", conn_url)
+        return True
+
+    def _create_replica_via_xtrabackup(self, conn_url: str) -> bool:
+        """Clone a replica using xtrabackup (physical backup).
+
+        Uses ``xtrabackup --backup`` to create a physical snapshot,
+        ``xtrabackup --prepare`` to make it consistent, then copies
+        the prepared data into the data directory.
+        """
+        import shutil
+
+        logger.info("Creating replica from %s via xtrabackup", conn_url)
+        data_dir = self._config_handler.data_dir
+        host, port = self._parse_conn_url(conn_url)
+
+        repl = self._config_handler.replication
+        user = repl.get('username', 'replicator')
+        password = repl.get('password', '')
+
+        xtrabackup_path = self._config_handler.get_xtrabackup_path()
+        tmp_backup_dir = data_dir + '.xtrabackup_tmp'
+
+        # Clean up any stale temp data
+        if os.path.exists(tmp_backup_dir):
+            shutil.rmtree(tmp_backup_dir)
+        if os.path.exists(data_dir):
+            shutil.rmtree(data_dir)
+        os.makedirs(tmp_backup_dir)
+
+        # Phase 1: xtrabackup --backup to temp directory
+        backup_args = [
+            xtrabackup_path, '--backup',
+            '--host=' + host, '--port=' + str(port),
+            '--user=' + user,
+            '--target-dir=' + tmp_backup_dir,
+        ]
+        if password:
+            backup_args.append('--password=' + password)
+
+        logger.info("Running xtrabackup --backup to %s ...", tmp_backup_dir)
+        try:
+            result = subprocess.run(backup_args, capture_output=True, timeout=7200)
+            if result.returncode != 0:
+                stderr_text = result.stderr.decode(errors='replace') if result.stderr else ''
+                logger.error("xtrabackup --backup failed (rc=%s): %s",
+                             result.returncode, stderr_text[:500])
+                shutil.rmtree(tmp_backup_dir)
+                return False
+            if result.stderr:
+                for line in result.stderr.decode(errors='replace').strip().split('\n'):
+                    logger.info("xtrabackup: %s", line)
+        except subprocess.TimeoutExpired:
+            logger.error("xtrabackup --backup timed out")
+            shutil.rmtree(tmp_backup_dir)
+            return False
+        except OSError as e:
+            logger.error("xtrabackup --backup failed: %r", e)
+            shutil.rmtree(tmp_backup_dir)
+            return False
+
+        # Phase 2: xtrabackup --prepare (apply redo logs)
+        prepare_args = [
+            xtrabackup_path, '--prepare',
+            '--target-dir=' + tmp_backup_dir,
+        ]
+        logger.info("Running xtrabackup --prepare ...")
+        try:
+            result = subprocess.run(prepare_args, capture_output=True, timeout=3600)
+            if result.returncode != 0:
+                stderr_text = result.stderr.decode(errors='replace') if result.stderr else ''
+                logger.error("xtrabackup --prepare failed (rc=%s): %s",
+                             result.returncode, stderr_text[:500])
+                shutil.rmtree(tmp_backup_dir)
+                return False
+            if result.stderr:
+                for line in result.stderr.decode(errors='replace').strip().split('\n'):
+                    logger.info("xtrabackup: %s", line)
+        except subprocess.TimeoutExpired:
+            logger.error("xtrabackup --prepare timed out")
+            shutil.rmtree(tmp_backup_dir)
+            return False
+        except OSError as e:
+            logger.error("xtrabackup --prepare failed: %r", e)
+            shutil.rmtree(tmp_backup_dir)
+            return False
+
+        # Phase 3: Move prepared data to data_dir
+        logger.info("Moving prepared backup to %s", data_dir)
+        try:
+            for item in os.listdir(tmp_backup_dir):
+                src = os.path.join(tmp_backup_dir, item)
+                dst = os.path.join(data_dir, item)
+                shutil.move(src, dst)
+        except OSError as e:
+            logger.error("Failed to move backup data: %r", e)
+            shutil.rmtree(tmp_backup_dir)
+            shutil.rmtree(data_dir)
+            return False
+
+        shutil.rmtree(tmp_backup_dir)
+
+        # Phase 4: Write my.cnf and start MySQL
+        self._config_handler.write_my_cnf()
+        logger.info("Starting MySQL on restored data ...")
+        if not self._start_mysql():
+            logger.error("MySQL failed to start after xtrabackup restore")
+            return False
+
+        logger.info("Replica created successfully from %s via xtrabackup", conn_url)
         return True
 
     def post_bootstrap(self, config: Dict[str, Any] = None,

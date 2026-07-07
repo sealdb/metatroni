@@ -205,19 +205,19 @@ class TestMySQL(unittest.TestCase):
         self.assertFalse(self.handler.is_healthy())
 
     @patch.object(MySQL, 'is_running', return_value=False)
-    @patch.object(MySQL, '_query_one')
-    def test_last_operation_replica(self, mock_query_one, mock_running):
-        mock_query_one.side_effect = lambda sql, *params: None
+    @patch.object(MySQL, '_query_one_dict')
+    def test_last_operation_replica(self, mock_query_one_dict, mock_running):
+        mock_query_one_dict.side_effect = lambda sql, *params: None
         self.assertEqual(self.handler.last_operation(), 0)
 
-    @patch.object(MySQL, '_query_one')
-    def test_replication_state_primary(self, mock_query_one):
-        mock_query_one.return_value = None
+    @patch.object(MySQL, '_query_one_dict')
+    def test_replication_state_primary(self, mock_query_one_dict):
+        mock_query_one_dict.return_value = None
         self.assertEqual(self.handler.replication_state(), 'primary')
 
-    @patch.object(MySQL, '_query_one')
-    def test_replication_state_streaming(self, mock_query_one):
-        mock_query_one.return_value = (None, None, None, None, None, None, None, None, None, None, 'Yes', 'Yes')
+    @patch.object(MySQL, '_query_one_dict')
+    def test_replication_state_streaming(self, mock_query_one_dict):
+        mock_query_one_dict.return_value = {'Slave_IO_Running': 'Yes', 'Slave_SQL_Running': 'Yes'}
         self.assertEqual(self.handler.replication_state(), 'streaming')
 
     def test_timeline_methods(self):
@@ -324,7 +324,7 @@ class TestMySQL(unittest.TestCase):
 
     def test_timeline_wal_position_primary(self):
         with patch.object(MySQL, 'is_primary', return_value=True):
-            with patch.object(MySQL, '_query_one', return_value=('mysql-bin.001', 12345)):
+            with patch.object(MySQL, '_query_one_dict', return_value={'File': 'mysql-bin.001', 'Position': 12345}):
                 result = self.handler.timeline_wal_position()
                 self.assertEqual(result[0], 0)
                 self.assertEqual(result[1], 12345)

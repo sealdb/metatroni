@@ -70,6 +70,10 @@ class ConfigHandler:
     def superuser(self) -> Dict[str, str]:
         return self._authentication.get('superuser', {})
 
+    @property
+    def create_replica_methods(self) -> List[str]:
+        return self._config.get('create_replica_methods', ['mysqldump'])
+
     def get_mysqld_path(self) -> str:
         return os.path.join(self._bin_dir, 'mysqld') if self._bin_dir else 'mysqld'
 
@@ -82,6 +86,12 @@ class ConfigHandler:
     def get_mysqldump_path(self) -> str:
         return os.path.join(self._bin_dir, 'mysqldump') if self._bin_dir else 'mysqldump'
 
+    def get_xtrabackup_path(self) -> str:
+        return os.path.join(self._bin_dir, 'xtrabackup') if self._bin_dir else '/usr/bin/xtrabackup'
+
+    def get_xbstream_path(self) -> str:
+        return os.path.join(self._bin_dir, 'xbstream') if self._bin_dir else '/usr/bin/xbstream'
+
     def write_my_cnf(self, config_override: Optional[Dict[str, Any]] = None) -> None:
         """Write my.cnf configuration file."""
         params = dict(self._parameters)
@@ -90,6 +100,7 @@ class ConfigHandler:
 
         params.setdefault('server_id', str(self._server_id))
         params.setdefault('port', str(self._port))
+        params.setdefault('mysqlx', 'OFF')  # disable X Plugin (port 33060) for multi-instance
         params.setdefault('datadir', self._data_dir)
         params.setdefault('socket', self._socket_path())
         params.setdefault('log-error', os.path.join(self._data_dir, f'{self._hostname()}.err'))

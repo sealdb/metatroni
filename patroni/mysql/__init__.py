@@ -295,6 +295,7 @@ class MySQL(DatabaseHandler):
             self._query("STOP SLAVE")
             self._query("RESET SLAVE ALL")
             self.set_role(MySQLRole.PRIMARY)
+            self._enable_semi_sync()
             if async_response:
                 async_response.complete(True)
             return True
@@ -306,6 +307,7 @@ class MySQL(DatabaseHandler):
 
     def demote(self) -> bool:
         logger.info("Demoting MySQL to replica")
+        self._disable_semi_sync()
         self.set_role(MySQLRole.DEMOTED)
         return True
 
@@ -341,10 +343,36 @@ class MySQL(DatabaseHandler):
             )
             self._query("START SLAVE")
             logger.info("Started replication from %s:%s", host, port)
+            self._enable_semi_sync()
             return True
         except MySQLdbError as e:
             logger.error("Failed to configure replication: %r", e)
             return False
+
+    def _semi_sync_configured(self) -> bool:
+        """Check if semi-synchronous replication is enabled in config."""
+        return (self.config.parameters.get('rpl_semi_sync_source_enabled')
+                or self.config.parameters.get('rpl_semi_sync_replica_enabled'))
+
+    def _enable_semi_sync(self) -> None:
+        if not self._semi_sync_configured():
+            return
+        try:
+            if self.is_primary():
+                self._query("SET GLOBAL rpl_semi_sync_source_enabled = 1")
+                logger.info("Semi-sync replication enabled as source")
+            else:
+                self._query("SET GLOBAL rpl_semi_sync_replica_enabled = 1")
+                logger.info("Semi-sync replication enabled as replica")
+        except Exception as e:
+            logger.warning("Failed to enable semi-sync replication: %r", e)
+
+    def _disable_semi_sync(self) -> None:
+        try:
+            self._query("SET GLOBAL rpl_semi_sync_source_enabled = 0")
+            logger.info("Semi-sync replication disabled")
+        except Exception:
+            pass
 
     def set_role(self, role: str) -> None:
         with self._role_lock:
@@ -392,14 +420,13 @@ class MySQL(DatabaseHandler):
     def last_operation(self) -> int:
         try:
             if self.is_primary():
-                row = self._query_one("SHOW MASTER STATUS")
+                row = self._query_one_dict("SHOW MASTER STATUS")
                 if row:
-                    pos = row[1]
-                    return int(pos)
+                    return int(row['Position'])
             else:
-                row = self._query_one("SHOW SLAVE STATUS")
-                if row and row[21]:
-                    return int(row[21])
+                row = self._query_one_dict("SHOW SLAVE STATUS")
+                if row and row.get('Exec_Master_Log_Pos'):
+                    return int(row['Exec_Master_Log_Pos'])
             return 0
         except Exception:
             return 0
@@ -414,28 +441,27 @@ class MySQL(DatabaseHandler):
         replay_pos = 0
         try:
             if self.is_primary():
-                row = self._query_one("SHOW MASTER STATUS")
+                row = self._query_one_dict("SHOW MASTER STATUS")
                 if row:
-                    write_pos = int(row[1])
-                    self._cached_binlog_file = row[0]
+                    write_pos = int(row['Position'])
+                    self._cached_binlog_file = row['File']
                     self._cached_binlog_pos = write_pos
             else:
-                row = self._query_one("SHOW SLAVE STATUS")
+                row = self._query_one_dict("SHOW SLAVE STATUS")
                 if row:
-                    receive_pos = int(row[5]) if row[5] else 0  # Read_Master_Log_Pos
-                    replay_pos = int(row[21]) if len(row) > 21 and row[21] else 0  # Exec_Master_Log_Pos
-                    if row[6]:  # Relay_Master_Log_File
-                        self._cached_binlog_file = row[6]
+                    receive_pos = int(row['Read_Master_Log_Pos']) if row.get('Read_Master_Log_Pos') else 0
+                    replay_pos = int(row['Exec_Master_Log_Pos']) if row.get('Exec_Master_Log_Pos') else 0
+                    self._cached_binlog_file = row.get('Relay_Master_Log_File') or ''
         except Exception:
             pass
         return (0, write_pos, 0, receive_pos, replay_pos)
 
     def replication_state(self) -> Optional[str]:
         try:
-            row = self._query_one("SHOW SLAVE STATUS")
+            row = self._query_one_dict("SHOW SLAVE STATUS")
             if row:
-                io_state = row[10] if len(row) > 10 else ''  # Slave_IO_Running
-                sql_state = row[11] if len(row) > 11 else ''  # Slave_SQL_Running
+                io_state = row.get('Slave_IO_Running', '')
+                sql_state = row.get('Slave_SQL_Running', '')
                 if io_state == 'Yes' and sql_state == 'Yes':
                     return 'streaming'
                 elif io_state == 'Yes':
@@ -493,12 +519,11 @@ class MySQL(DatabaseHandler):
         data = {}
         try:
             if self.is_running():
-                row = self._query_one("SHOW MASTER STATUS")
+                row = self._query_one_dict("SHOW MASTER STATUS")
                 if row:
-                    data['File'] = row[0]
-                    data['Position'] = str(row[1])
-                    if len(row) > 4:
-                        data['Executed_Gtid_Set'] = str(row[4])
+                    data['File'] = row.get('File', '')
+                    data['Position'] = str(row.get('Position', 0))
+                    data['Executed_Gtid_Set'] = str(row.get('Executed_Gtid_Set', ''))
                 row = self._query_one("SELECT VERSION()")
                 if row:
                     data['version'] = row[0]
