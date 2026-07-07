@@ -226,6 +226,77 @@ class DatabaseHandler(abc.ABC):
         :returns: a tuple of ``(checkpoint_lsn, restart_lsn)``, both ``None`` if not applicable.
         """
 
+    # --- Database Engine Capabilities ---
+
+    @property
+    @abc.abstractmethod
+    def db_type(self) -> str:
+        """Database engine type identifier ('postgresql', 'mysql', etc.)."""
+
+    @property
+    def has_timelines(self) -> bool:
+        """Whether this database engine uses timeline-based history.
+        PostgreSQL: True.  MySQL (GTID-based): False.
+        """
+        return True
+
+    @property
+    def needs_rewind(self) -> bool:
+        """Whether the database needs rewind logic after failover.
+        PostgreSQL (pg_rewind): True.  MySQL (GTID auto-positioning): False.
+        """
+        return True
+
+    @property
+    def needs_crash_recovery(self) -> bool:
+        """Whether the database needs explicit crash recovery in single-user mode.
+        PostgreSQL: True.  MySQL (auto-recovery on startup): False.
+        """
+        return True
+
+    def before_promote(self) -> None:
+        """Hook called by ha.py just before promoting.
+        PG: reset rewind state for checkpoint.  MySQL: no-op.
+        """
+
+    def enrich_dcs_data(self, data: Dict[str, Any]) -> None:
+        """Add engine-specific fields to the DCS status data.
+        PG: no-op (xlog_location is set by ha.py).
+        MySQL: adds binlog_position.
+        """
+
+    def readiness_check(self, state: str, replication_state: str) -> Optional[str]:
+        """Check if the node is ready to serve read-only traffic.
+
+        :returns: an error message string if not ready, or None if ready.
+        """
+        if state != 'running':
+            return 'PostgreSQL is not running'
+        if replication_state != 'streaming':
+            return 'PostgreSQL replication state is not streaming'
+        return None
+
+    @staticmethod
+    def replication_lag_field(mode: str, db_type: str) -> str:
+        """Return the status dict field name used for replication lag.
+
+        :param mode: 'write' or 'apply'.
+        :param db_type: 'mysql' or 'postgresql'.
+        """
+        if db_type == 'mysql':
+            return 'receive_binlog_position' if mode == 'write' else 'replay_binlog_position'
+        return 'received_location' if mode == 'write' else 'replayed_location'
+
+    def extra_metrics(self, status: Dict[str, Any], labels: str,
+                      epoch: Any) -> List[str]:
+        """Return additional Prometheus metrics lines specific to this engine.
+
+        PostgreSQL adds: standby_leader, sync_standby, quorum_standby,
+        xlog_replayed_timestamp, xlog_paused, streaming, archive_recovery.
+        MySQL adds nothing.
+        """
+        return []
+
 
 def get_db_handler(config: Dict[str, Any], dcs_mpp: Any = None) -> 'DatabaseHandler':
     """Factory function to get the appropriate database handler.

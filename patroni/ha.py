@@ -472,8 +472,7 @@ class Ha(object):
                     timeline, wal_position, pg_control_timeline, receive_lsn, replay_lsn =\
                         self.state_handler.timeline_wal_position()
                     data['xlog_location'] = self._last_wal_lsn = wal_position
-                    if getattr(self.state_handler, 'db_type', None) == 'mysql':
-                        data['binlog_position'] = wal_position
+                    self.state_handler.enrich_dcs_data(data)
                     if not timeline:  # running as a standby
                         if replay_lsn:
                             data['replay_lsn'] = replay_lsn
@@ -630,7 +629,8 @@ class Ha(object):
 
         :returns: action message, describing what was performed.
         """
-        is_mysql = getattr(self.state_handler, 'db_type', None) == 'mysql'
+        needs_rewind = self.state_handler.needs_rewind
+        needs_crash = self.state_handler.needs_crash_recovery
 
         if self.has_lock() and self.update_lock():
             timeout = global_config.primary_start_timeout
@@ -646,9 +646,9 @@ class Ha(object):
         data = self.state_handler.controldata()
         logger.info('controldata:\n%s\n', '\n'.join('  {0}: {1}'.format(k, v) for k, v in data.items()))
 
-        # MySQL handles crash recovery automatically on startup, just try to start
-        if not is_mysql:
-            # timeout > 0 indicates that we still have the leader lock, and it was just updated
+        # PostgreSQL: attempt fast-start as primary or run single-user crash recovery.
+        # MySQL: crash recovery is handled automatically by mysqld on startup.
+        if needs_crash:
             if timeout\
                     and data.get('Database cluster state') in ('in production', 'in crash recovery',
                                                                'shutting down', 'shut down')\
@@ -661,10 +661,9 @@ class Ha(object):
                     self.recovering = True
                     return msg
 
-        # Database is not running, we will restart in standby mode. Watchdog is not needed until we promote.
         self.watchdog.disable()
 
-        if not is_mysql:
+        if needs_crash:
             if data.get('Database cluster state') in ('in production', 'shutting down', 'in crash recovery'):
                 if self.state_handler.was_restored_from_backup():
                     logger.info('Skipping single-user crash recovery because backup_label exists;'
@@ -678,12 +677,12 @@ class Ha(object):
 
         role = PostgresqlRole.REPLICA
         if self.has_lock() and not self.is_standby_cluster():
-            if not is_mysql:
+            if needs_rewind:
                 self._rewind.reset_state()
             msg = "starting as readonly because i had the session lock"
             node_to_follow = None
         else:
-            if not is_mysql:
+            if needs_rewind:
                 if not self._rewind.executed:
                     self._rewind.trigger_check_diverged_lsn()
                 msg = self._handle_rewind_or_reinitialize()
@@ -1090,8 +1089,8 @@ class Ha(object):
                 self._disable_sync -= 1
 
     def update_cluster_history(self) -> None:
-        if getattr(self.state_handler, 'db_type', None) == 'mysql':
-            return  # MySQL does not have timeline history
+        if not self.state_handler.has_timelines:
+            return  # databases without timelines (e.g., MySQL) don't track history
         primary_timeline = self.state_handler.get_primary_timeline()
         cluster_history = self.cluster.history.lines if self.cluster.history else []
         if primary_timeline == 1:
@@ -1161,7 +1160,8 @@ class Ha(object):
                 self._last_timeline = None
 
                 def before_promote():
-                    if getattr(self.state_handler, 'db_type', None) != 'mysql':
+                    self.state_handler.before_promote()
+                    if self.state_handler.needs_rewind:
                         self._rewind.reset_state()  # make sure we will trigger checkpoint after promote
                     self.notify_mpp_coordinator('before_promote')
 
@@ -1310,7 +1310,7 @@ class Ha(object):
                   themselves as the healthiest because they received/replayed up to the same LSN,
                   but this is totally fine.
         """
-        has_timeline = getattr(self.state_handler, 'db_type', None) != 'mysql'
+        has_timeline = self.state_handler.has_timelines
         cluster_timeline = self.cluster.timeline
         my_timeline = self.state_handler.replica_cached_timeline(cluster_timeline)
         if my_timeline:

@@ -31,6 +31,34 @@ class MySQL(DatabaseHandler):
 
     db_type = 'mysql'
 
+    # --- Database Engine Capabilities ---
+
+    @property
+    def has_timelines(self) -> bool:
+        return False
+
+    @property
+    def needs_rewind(self) -> bool:
+        return False
+
+    @property
+    def needs_crash_recovery(self) -> bool:
+        return False
+
+    def before_promote(self) -> None:
+        pass
+
+    def enrich_dcs_data(self, data: Dict[str, Any]) -> None:
+        """Add MySQL-specific fields to DCS status data."""
+        data['binlog_position'] = data.get('xlog_location', 0)
+
+    def readiness_check(self, state: str, replication_state: str) -> Optional[str]:
+        if state != 'running':
+            return 'MySQL is not running'
+        if replication_state != 'streaming':
+            return f'MySQL replication state is {replication_state}'
+        return None
+
     def __init__(self, config: Dict[str, Any], mpp: Any = None):
         self._name: str = config['name']
         self.scope: str = config.get('scope', 'default')
@@ -202,8 +230,13 @@ class MySQL(DatabaseHandler):
         try:
             mysqladmin = self.config.get_mysqladmin_path()
             host, port = split_host_port(self.config.connect_address)
-            cmd = [mysqladmin, f'-h{host}', f'-P{port}',
-                   '-u', 'root', 'shutdown']
+            superuser = self.config.superuser
+            user = superuser.get('username', 'root')
+            password = superuser.get('password', '')
+            cmd = [mysqladmin, f'-h{host}', f'-P{port}', f'-u{user}']
+            if password:
+                cmd.append(f'-p{password}')
+            cmd.append('shutdown')
             subprocess.run(cmd, timeout=30, capture_output=True)
         except Exception:
             if proc:
@@ -229,9 +262,14 @@ class MySQL(DatabaseHandler):
         try:
             host, port = split_host_port(self.config.connect_address)
             mysqladmin = self.config.get_mysqladmin_path()
-            subprocess.run([mysqladmin, f'-h{host}', f'-P{port}',
-                           '-u', 'root', 'reload'],
-                          timeout=10, capture_output=True)
+            superuser = self.config.superuser
+            user = superuser.get('username', 'root')
+            password = superuser.get('password', '')
+            cmd = [mysqladmin, f'-h{host}', f'-P{port}', f'-u{user}']
+            if password:
+                cmd.append(f'-p{password}')
+            cmd.append('reload')
+            subprocess.run(cmd, timeout=10, capture_output=True)
         except Exception as e:
             logger.error("Failed to reload MySQL config: %r", e)
 

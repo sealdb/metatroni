@@ -66,6 +66,33 @@ def null_context():
 
 class Postgresql(object):
 
+    db_type = 'postgresql'
+
+    @property
+    def has_timelines(self) -> bool:
+        return True
+
+    @property
+    def needs_rewind(self) -> bool:
+        return True
+
+    @property
+    def needs_crash_recovery(self) -> bool:
+        return True
+
+    def before_promote(self) -> None:
+        pass
+
+    def enrich_dcs_data(self, data: Dict[str, Any]) -> None:
+        pass
+
+    def readiness_check(self, state: str, replication_state: str) -> Optional[str]:
+        if state != 'running':
+            return 'PostgreSQL is not running'
+        if replication_state != 'streaming':
+            return 'PostgreSQL replication state is not streaming'
+        return None
+
     POSTMASTER_START_TIME = "pg_catalog.pg_postmaster_start_time()"
     TL_LSN = ("CASE WHEN pg_catalog.pg_is_in_recovery() THEN 0 "
               "ELSE ('x' || pg_catalog.substr(pg_catalog.pg_{0}file_name("

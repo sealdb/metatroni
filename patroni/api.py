@@ -467,22 +467,20 @@ class RestApiHandler(BaseHTTPRequestHandler):
         if patroni.ha.is_leader():
             return
 
-        is_mysql = getattr(patroni.postgresql, 'db_type', None) == 'mysql'
-
-        if not is_mysql and patroni.postgresql.state != PostgresqlState.RUNNING:
-            return 'PostgreSQL is not running'
+        handler = patroni.postgresql
+        # Quick state check: database must be running
+        if handler.state != 'running':
+            return f'{handler.db_type.capitalize()} is not running'
 
         postgres = self.get_postgresql_status(True)
-        latest_end_lsn = postgres.get('latest_end_lsn', 0)
-
-        if is_mysql:
-            rep_state = postgres.get('replication_state', '')
-            if rep_state and rep_state != 'streaming':
-                return f'MySQL replication state is {rep_state}'
-        elif postgres.get('replication_state') != 'streaming':
-            return 'PostgreSQL replication state is not streaming'
+        # Full readiness check including replication state
+        readiness_error = handler.readiness_check(
+            handler.state, postgres.get('replication_state', ''))
+        if readiness_error:
+            return readiness_error
 
         cluster = patroni.dcs.cluster
+        latest_end_lsn = postgres.get('latest_end_lsn', 0)
 
         if not cluster and not latest_end_lsn:
             if patroni.ha.failsafe_is_active():
@@ -493,9 +491,10 @@ class RestApiHandler(BaseHTTPRequestHandler):
 
         mode = 'write' if self.path_query.get('mode', [None])[0] == 'write' else 'apply'
         xlog_data = postgres.get('xlog', postgres.get('binlog', {}))
-        location = 'received_location' if mode == 'write' else 'replayed_location'
-        if is_mysql:
+        if handler.db_type == 'mysql':
             location = 'receive_binlog_position' if mode == 'write' else 'replay_binlog_position'
+        else:
+            location = 'received_location' if mode == 'write' else 'replayed_location'
         lag = leader_optime - xlog_data.get(location, 0)
 
         max_replica_lag = parse_int(self.path_query.get('lag', [None])[0], 'B')
@@ -626,7 +625,8 @@ class RestApiHandler(BaseHTTPRequestHandler):
         """
         postgres = self.get_postgresql_status(True)
         patroni = self.server.patroni
-        is_mysql = getattr(patroni.postgresql, 'db_type', None) == 'mysql'
+        handler = patroni.postgresql
+        db_is_mysql = handler.db_type == 'mysql'
         epoch = datetime.datetime(1970, 1, 1, tzinfo=tzutc)
 
         metrics: List[str] = []
@@ -672,7 +672,7 @@ class RestApiHandler(BaseHTTPRequestHandler):
         metrics.append("# TYPE patroni_xlog_location counter")
         metrics.append("patroni_xlog_location{0} {1}".format(labels, _xlog_or_binlog('location')))
 
-        if not is_mysql:
+        if not db_is_mysql:
             metrics.append("# HELP patroni_standby_leader Value is 1 if this node is the standby_leader, 0 otherwise.")
             metrics.append("# TYPE patroni_standby_leader gauge")
             metrics.append("patroni_standby_leader{0} {1}".format(labels,
@@ -682,7 +682,7 @@ class RestApiHandler(BaseHTTPRequestHandler):
         metrics.append("# TYPE patroni_replica gauge")
         metrics.append("patroni_replica{0} {1}".format(labels, int(postgres['role'] == PostgresqlRole.REPLICA)))
 
-        if not is_mysql:
+        if not db_is_mysql:
             metrics.append("# HELP patroni_sync_standby Value is 1 if this node is a sync standby, 0 otherwise.")
             metrics.append("# TYPE patroni_sync_standby gauge")
             metrics.append("patroni_sync_standby{0} {1}".format(labels, int(postgres.get('sync_standby', False))))
@@ -703,7 +703,7 @@ class RestApiHandler(BaseHTTPRequestHandler):
         metrics.append("patroni_xlog_replayed_location{0} {1}".format(
             labels, _xlog_or_binlog('replayed_location', 'replay_binlog_position')))
 
-        if not is_mysql:
+        if not db_is_mysql:
             metrics.append("# HELP patroni_xlog_replayed_timestamp Current timestamp of the replayed"
                            " transaction log, 0 if null.")
             metrics.append("# TYPE patroni_xlog_replayed_timestamp gauge")
@@ -761,7 +761,7 @@ class RestApiHandler(BaseHTTPRequestHandler):
 
         metrics.append("# HELP patroni_postgres_state Numeric representation of database state.")
         state_enum_cls = PostgresqlState
-        if is_mysql:
+        if db_is_mysql:
             try:
                 from patroni.mysql.misc import MySQLState
                 state_enum_cls = MySQLState
@@ -1407,15 +1407,15 @@ class RestApiHandler(BaseHTTPRequestHandler):
         postgresql = self.server.patroni.postgresql
         cluster = self.server.patroni.dcs.cluster
         config = global_config.from_cluster(cluster)
-        is_mysql = getattr(postgresql, 'db_type', None) == 'mysql'
+        db_is_mysql = postgresql.db_type == 'mysql'
         try:
 
-            if not is_mysql \
+            if not db_is_mysql \
                     and postgresql.state not in (PostgresqlState.RUNNING, PostgresqlState.RESTARTING,
                                                  PostgresqlState.STARTING):
                 raise RetryFailedError('')
 
-            if is_mysql:
+            if db_is_mysql:
                 result = self._get_mysql_status(postgresql, retry)
             else:
                 replication_state = ("pg_catalog.pg_{0}_{1}_diff(wr.latest_end_lsn, '0/0')::bigint, wr.status"
@@ -1643,18 +1643,19 @@ class RestApiServer(ThreadingMixIn, HTTPServer):
             :class:`psycopg.Error`: if had issues while executing *sql*.
             :class:`~patroni.exceptions.PostgresConnectionException`: if had issues while connecting to the database.
         """
-        is_mysql = getattr(self.patroni.postgresql, 'db_type', None) == 'mysql'
+        handler = self.patroni.postgresql
+        db_is_mysql = handler.db_type == 'mysql'
         # We first try to get a heartbeat connection because it is always required for the main thread.
         try:
-            heartbeat_connection = self.patroni.postgresql.connection_pool.get('heartbeat')
+            heartbeat_connection = handler.connection_pool.get('heartbeat')
             heartbeat_connection.get()
         except (psycopg.Error, Exception) as exc:
-            if is_mysql:
-                return self.patroni.postgresql._query(sql, *params)
+            if db_is_mysql:
+                return handler._query(sql, *params)
             raise PostgresConnectionException('connection problems') from exc
 
-        if is_mysql:
-            return self.patroni.postgresql._query(sql, *params)
+        if db_is_mysql:
+            return handler._query(sql, *params)
 
         try:
             connection = self.patroni.postgresql.connection_pool.get('restapi')

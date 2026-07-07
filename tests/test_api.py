@@ -47,6 +47,7 @@ class MockConnectionPool:
 
 class MockPostgresql:
 
+    db_type = 'postgresql'
     connection_pool = MockConnectionPool()
     name = 'test'
     state = PostgresqlState.RUNNING
@@ -78,6 +79,26 @@ class MockPostgresql:
     @staticmethod
     def replication_state_from_parameters(*args):
         return 'streaming'
+
+    has_timelines = True
+    needs_rewind = True
+    needs_crash_recovery = True
+
+    @staticmethod
+    def before_promote():
+        pass
+
+    @staticmethod
+    def enrich_dcs_data(data):
+        pass
+
+    @staticmethod
+    def readiness_check(state=None, replication_state=None):
+        if state != 'running':
+            return 'PostgreSQL is not running'
+        if replication_state != 'streaming':
+            return 'PostgreSQL replication state is not streaming'
+        return None
 
 
 class MockWatchdog(object):
