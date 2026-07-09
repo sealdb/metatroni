@@ -1869,6 +1869,17 @@ class Ha(object):
                     return 'not promoting because failed to update leader lock in DCS'
         else:
             logger.debug('does not have lock')
+
+        # --- MySQL: MGR auto-follow + semi-sync safety ---
+        if self.state_handler.db_type == 'mysql':
+            mgr_action = self.state_handler.run_mgr_cycle(self.has_lock(),
+                                                          self.cluster and len(self.cluster.members) or 1)
+            if mgr_action:
+                return mgr_action
+
+            self.state_handler.run_semi_sync_safety_check(
+                self.cluster and len(self.cluster.members) or 1)
+
         lock_owner = self.cluster.leader and self.cluster.leader.name
         if self.is_standby_cluster():
             return self.follow('cannot be a real primary in a standby cluster',

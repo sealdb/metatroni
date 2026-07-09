@@ -361,6 +361,8 @@ class MySQL(DatabaseHandler):
             if self.is_primary():
                 self._query("SET GLOBAL rpl_semi_sync_source_enabled = 1")
                 logger.info("Semi-sync replication enabled as source")
+                self._configure_semi_sync_timeout()
+                self._configure_semi_sync_wait_count()
             else:
                 self._query("SET GLOBAL rpl_semi_sync_replica_enabled = 1")
                 logger.info("Semi-sync replication enabled as replica")
@@ -370,9 +372,304 @@ class MySQL(DatabaseHandler):
     def _disable_semi_sync(self) -> None:
         try:
             self._query("SET GLOBAL rpl_semi_sync_source_enabled = 0")
+            self._query("SET GLOBAL rpl_semi_sync_replica_enabled = 0")
             logger.info("Semi-sync replication disabled")
         except Exception:
             pass
+
+    def _configure_semi_sync_timeout(self) -> None:
+        """Set rpl_semi_sync_source_timeout to prevent degrading to async.
+
+        For 3+ node clusters: effectively infinite (~1 year in ms).
+        For 2-node clusters: 10 seconds (tolerates brief slave restart).
+        """
+        try:
+            node_count = int(self.config.parameters.get('cluster_size', 3))
+            timeout_ms = 31536000000 if node_count >= 3 else 10000
+            self._query("SET GLOBAL rpl_semi_sync_source_timeout = %s", timeout_ms)
+            logger.info("Semi-sync source timeout set to %s ms (node_count=%s)", timeout_ms, node_count)
+        except Exception as e:
+            logger.warning("Failed to set semi-sync timeout: %r", e)
+
+    def _configure_semi_sync_wait_count(self) -> None:
+        """Set rpl_semi_sync_source_wait_for_replica_count to majority of peers."""
+        try:
+            node_count = int(self.config.parameters.get('cluster_size', 3))
+            # Wait for at least 1 replica, or majority for larger clusters
+            wait_count = max(1, (node_count // 2))
+            self._query("SET GLOBAL rpl_semi_sync_source_wait_for_replica_count = %s", wait_count)
+            logger.info("Semi-sync wait count set to %s (node_count=%s)", wait_count, node_count)
+        except Exception as e:
+            logger.warning("Failed to set semi-sync wait count: %r", e)
+
+    def count_semi_sync_replicas(self) -> int:
+        """Return the number of semi-sync replicas currently connected."""
+        try:
+            row = self._query_one_dict("SHOW STATUS LIKE 'Rpl_semi_sync_source_clients'")
+            if row:
+                return int(row.get('Value', 0))
+        except Exception:
+            pass
+        return 0
+
+    # --- Read-Only Control ---
+
+    def set_read_only(self) -> None:
+        """Set MySQL to read-only (for semi-sync majority loss scenarios)."""
+        try:
+            self._query("SET GLOBAL read_only = ON")
+            self._query("SET GLOBAL super_read_only = ON")
+            logger.info("MySQL set to read-only (super_read_only)")
+        except Exception as e:
+            logger.warning("Failed to set read-only: %r", e)
+
+    def set_read_write(self) -> None:
+        """Set MySQL to read-write (re-enable writes when majority is restored)."""
+        try:
+            self._query("SET GLOBAL super_read_only = OFF")
+            self._query("SET GLOBAL read_only = OFF")
+            logger.info("MySQL set to read-write")
+        except Exception as e:
+            logger.warning("Failed to set read-write: %r", e)
+
+    def is_read_only(self) -> bool:
+        """Check if MySQL is in read-only mode."""
+        try:
+            row = self._query_one_dict("SHOW VARIABLES LIKE 'read_only'")
+            if row:
+                return row.get('Value', 'OFF').upper() == 'ON'
+        except Exception:
+            pass
+        return False
+
+    # --- MGR (Group Replication) Methods ---
+
+    def _is_mgr_configured(self) -> bool:
+        """Check if MGR is configured in parameters."""
+        return bool(self.config.parameters.get('group_replication_group_name'))
+
+    def get_executed_gtid(self) -> str:
+        """Get the executed GTID set of this node.
+
+        Returns ``@@gtid_executed`` which represents all committed transactions.
+        """
+        try:
+            row = self._query_one("SELECT @@gtid_executed")
+            if row:
+                return row[0] or ''
+        except Exception:
+            pass
+        return ''
+
+    def compare_gtid(self, other_gtid: str) -> int:
+        """Compare this node's GTID against another.
+
+        :returns: 1 if local GTID is a strict superset of other,
+                 -1 if other is a strict superset of local,
+                  0 if equal or incomparable.
+        """
+        local = self.get_executed_gtid()
+        if not local or not other_gtid:
+            return 0
+        try:
+            row = self._query_one("SELECT GTID_SUBSET(%s, %s) AS a_sub_b, GTID_SUBSET(%s, %s) AS b_sub_a",
+                                  local, other_gtid, other_gtid, local)
+            if not row:
+                return 0
+            a_sub_b = int(row[0]) if row[0] else 0
+            b_sub_a = int(row[1]) if row[1] else 0
+            if a_sub_b and b_sub_a:
+                return 0   # equal
+            if a_sub_b:
+                return -1  # local is subset → other has more
+            if b_sub_a:
+                return 1   # other is subset → local has more
+            return 0       # incomparable (different uuids)
+        except Exception as e:
+            logger.warning("GTID comparison failed: %r", e)
+            return 0
+
+    def get_mgr_status(self) -> Dict[str, str]:
+        """Query MGR status from ``performance_schema.replication_group_members``.
+
+        :returns: dict with keys role (PRIMARY/SECONDARY), state (ONLINE/RECOVERING/...),
+                  member_id, member_host, member_port, primary_uuid.
+                  Returns empty dict if MGR is not active or query fails.
+        """
+        try:
+            row = self._query_one_dict(
+                "SELECT r.MEMBER_ROLE AS role, r.MEMBER_STATE AS state, "
+                "       r.MEMBER_ID AS member_id, r.MEMBER_HOST AS member_host, "
+                "       r.MEMBER_PORT AS member_port, "
+                "       @@group_replication_primary_member AS primary_uuid "
+                "FROM performance_schema.replication_group_members r "
+                "JOIN performance_schema.replication_group_member_stats s "
+                "  ON r.MEMBER_ID = s.MEMBER_ID "
+                "WHERE r.MEMBER_ID = @@server_uuid "
+                "  AND r.MEMBER_STATE NOT IN ('OFFLINE')"
+            )
+            if row:
+                return {k: (v if v else '') for k, v in row.items()}
+        except Exception as e:
+            logger.debug("Failed to get MGR status: %r", e)
+        return {}
+
+    def is_mgr_healthy(self) -> bool:
+        """Check if the MGR cluster has a healthy majority.
+
+        Counts ONLINE + RECOVERING members and verifies at least one is PRIMARY.
+        """
+        try:
+            rows = self._query(
+                "SELECT MEMBER_STATE, MEMBER_ROLE "
+                "FROM performance_schema.replication_group_members "
+                "WHERE MEMBER_STATE IN ('ONLINE', 'RECOVERING')"
+            )
+            if not rows:
+                return False
+            online_count = len(rows)
+            has_primary = any(row[1] == 'PRIMARY' for row in rows)
+            node_count = int(self.config.parameters.get('cluster_size', 3))
+            quorum = (node_count // 2) + 1
+            return has_primary and online_count >= quorum
+        except Exception as e:
+            logger.debug("Failed to check MGR health: %r", e)
+            return False
+
+    def bootstrap_mgr_group(self) -> bool:
+        """Bootstrap the MGR group when majority is lost.
+
+        This must be called on the node with the highest GTID.
+        Executes: STOP GR → bootstrap_group=ON → START GR → bootstrap_group=OFF.
+        """
+        try:
+            logger.info("Bootstrapping MGR group")
+            self._query("STOP GROUP_REPLICATION")
+            self._query("SET GLOBAL group_replication_bootstrap_group = ON")
+            self._query("START GROUP_REPLICATION")
+            self._query("SET GLOBAL group_replication_bootstrap_group = OFF")
+            logger.info("MGR group bootstrapped successfully")
+            return True
+        except Exception as e:
+            logger.error("Failed to bootstrap MGR group: %r", e)
+            return False
+
+    def rejoin_mgr_group(self, primary_host: str, primary_port: int) -> bool:
+        """Rejoin the MGR group after bootstrap.
+
+        Configures group_replication_recovery channel and starts GR as a joiner.
+        """
+        try:
+            repl = self.config.replication
+            user = repl.get('username', 'replicator')
+            password = repl.get('password', '')
+            logger.info("Rejoining MGR group via %s:%s", primary_host, primary_port)
+            self._query("STOP GROUP_REPLICATION")
+            self._query(
+                "CHANGE MASTER TO "
+                "MASTER_USER = %s, MASTER_PASSWORD = %s "
+                "FOR CHANNEL 'group_replication_recovery'",
+                user, password
+            )
+            self._query("SET GLOBAL group_replication_bootstrap_group = OFF")
+            self._query("START GROUP_REPLICATION")
+            logger.info("MGR group rejoin initiated")
+            return True
+        except Exception as e:
+            logger.error("Failed to rejoin MGR group: %r", e)
+            return False
+
+    def run_mgr_cycle(self, has_lock: bool, cluster_nodes: int) -> Optional[str]:
+        """Run one MGR maintenance cycle.
+
+        Called from ``ha.py`` during ``process_healthy_cluster()``.
+
+        :param has_lock: whether this node holds the DCS leader lock.
+        :param cluster_nodes: total number of cluster nodes (for quorum calc).
+        :returns: action message if action was taken, None otherwise.
+        """
+        if not self._is_mgr_configured():
+            return None
+
+        mgr_status = self.get_mgr_status()
+        if not mgr_status:
+            # MGR not active — check if majority is lost and we need bootstrap
+            return self._handle_mgr_majority_loss(has_lock, cluster_nodes)
+
+        # MGR is active — follow its primary
+        mgr_role = mgr_status.get('role', '')
+        mgr_state = mgr_status.get('state', '')
+
+        if mgr_role == 'PRIMARY' and self.role != MySQLRole.PRIMARY:
+            self.set_role(MySQLRole.MGR_PRIMARY)
+            if self.is_read_only():
+                self.set_read_write()
+            return 'recognized as MGR primary'
+
+        if mgr_role == 'SECONDARY' and self.role in (MySQLRole.PRIMARY, MySQLRole.MGR_PRIMARY):
+            self.set_role(MySQLRole.MGR_SECONDARY)
+            self.set_read_only()
+            return 'demoted to MGR secondary'
+
+        return None
+
+    def _handle_mgr_majority_loss(self, has_lock: bool, cluster_nodes: int) -> Optional[str]:
+        """Handle the case where MGR has no active members (majority lost).
+
+        Strategy:
+        1. All nodes compare GTIDs via DCS.
+        2. Node with highest GTID bootstraps a new group.
+        3. Other nodes rejoin.
+        """
+        if not has_lock:
+            return None
+
+        local_gtid = self.get_executed_gtid()
+        if not local_gtid:
+            logger.warning("Cannot bootstrap MGR: no GTID available")
+            return None
+
+        # In a real implementation, GTIDs would be compared across nodes
+        # via DCS. For now, the lock holder bootstraps.
+        logger.warning("MGR majority lost — bootstrapping group")
+        if self.bootstrap_mgr_group():
+            self.set_role(MySQLRole.MGR_PRIMARY)
+            self.set_read_write()
+            return 'bootstrapped MGR group after majority loss'
+
+        return None
+
+    def run_semi_sync_safety_check(self, cluster_nodes: int) -> Optional[str]:
+        """Check semi-sync replica count and enforce read-only if below majority.
+
+        Called from ``ha.py`` each cycle on the primary.
+
+        :returns: 'read_only_set' if writes were blocked, None otherwise.
+        """
+        if not self._semi_sync_configured() or not self.is_primary():
+            return None
+
+        active_replicas = self.count_semi_sync_replicas()
+        quorum = (cluster_nodes // 2)  # number of replicas needed for majority of cluster
+
+        if active_replicas < quorum:
+            if not self.is_read_only():
+                self.set_read_only()
+                logger.warning(
+                    "Semi-sync replicas (%d) below quorum (%d/%d nodes) — set read_only",
+                    active_replicas, quorum, cluster_nodes
+                )
+                return 'read_only_set'
+        else:
+            if self.is_read_only():
+                self.set_read_write()
+                logger.info(
+                    "Semi-sync replicas (%d) restored to quorum (%d/%d nodes) — set read_write",
+                    active_replicas, quorum, cluster_nodes
+                )
+                return 'read_write_restored'
+
+        return None
 
     def set_role(self, role: str) -> None:
         with self._role_lock:

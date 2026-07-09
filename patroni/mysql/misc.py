@@ -44,12 +44,31 @@ class MySQLRole(str, Enum):
     DEMOTED = 'demoted'
     UNINITIALIZED = 'uninitialized'
     PROMOTED = 'promoted'
+    MGR_PRIMARY = 'mgr_primary'       # node is the MGR primary
+    MGR_SECONDARY = 'mgr_secondary'   # node is an MGR secondary
 
     def __repr__(self) -> str:
         return self.value
 
     def __str__(self) -> str:
         return self.__repr__()
+
+
+class MGRMemberState(str, Enum):
+    """Mirrors performance_schema.replication_group_members.MEMBER_STATE."""
+
+    ONLINE = 'ONLINE'
+    RECOVERING = 'RECOVERING'
+    OFFLINE = 'OFFLINE'
+    ERROR = 'ERROR'
+    UNREACHABLE = 'UNREACHABLE'
+
+
+class MGRMemberRole(str, Enum):
+    """Mirrors performance_schema.replication_group_members.MEMBER_ROLE (MySQL 8.0+)."""
+
+    PRIMARY = 'PRIMARY'
+    SECONDARY = 'SECONDARY'
 
 
 def parse_binlog_position(position_str: str) -> int:

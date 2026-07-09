@@ -106,6 +106,21 @@ class ConfigHandler:
         params.setdefault('log-error', os.path.join(self._data_dir, f'{self._hostname()}.err'))
         params.setdefault('pid-file', os.path.join(self._data_dir, 'mysqld.pid'))
 
+        # MGR defaults — ensure required parameters are set when MGR is configured
+        if params.get('group_replication_group_name'):
+            gr_host = self._listen.split(':')[0] if ':' in self._listen else self._listen
+            params.setdefault('loose-group_replication_start_on_boot', 'OFF')
+            params.setdefault('loose-group_replication_bootstrap_group', 'OFF')
+            params.setdefault('loose-group_replication_local_address',
+                              f'{gr_host}:{self._get_mgr_port()}')
+            params.setdefault('loose-group_replication_group_seeds',
+                              params.get('loose-group_replication_group_seeds',
+                                         f'{gr_host}:{self._get_mgr_port()}'))
+            # Use AFTER mode for SYNC_BINLOG consistency
+            params.setdefault('loose-binlog_transaction_dependency_tracking', 'WRITESET')
+            params.setdefault('transaction_write_set_extraction', 'XXHASH64')
+            params.setdefault('loose-group_replication_recovery_use_ssl', 'OFF')
+
         lines = ['[mysqld]']
         for key, value in params.items():
             lines.append(f'{key} = {value}')
@@ -131,6 +146,11 @@ class ConfigHandler:
 
     def _socket_path(self) -> str:
         return os.path.join(self._data_dir, 'mysql.sock')
+
+    def _get_mgr_port(self) -> int:
+        """Get the MGR communication port (default: mysql_port * 10 + 1)."""
+        base_port = self._port or 3306
+        return base_port * 10 + 1
 
     @staticmethod
     def _hostname() -> str:
