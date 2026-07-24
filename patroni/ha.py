@@ -1532,11 +1532,13 @@ class Ha(object):
             # 3. Patroni on node1 comes back, notices that Postgres is running as primary but there is
             #    no leader key and "happily" acquires the leader lock.
             # That is, node1 discarded promotion of node2. To avoid it we want to detect timeline change.
-            my_timeline = self.state_handler.get_primary_timeline()
-            if my_timeline < self.cluster.timeline:
-                logger.warning('My timeline %s is behind last known cluster timeline %s',
-                               my_timeline, self.cluster.timeline)
-                return False
+            # Databases without timelines (e.g. MySQL) skip this check.
+            if self.state_handler.has_timelines:
+                my_timeline = self.state_handler.get_primary_timeline()
+                if my_timeline is None or my_timeline < self.cluster.timeline:
+                    logger.warning('My timeline %s is behind last known cluster timeline %s',
+                                   my_timeline, self.cluster.timeline)
+                    return False
             return True
 
         if self.is_paused():
@@ -1853,6 +1855,14 @@ class Ha(object):
                           'promoted self to a standby leader because i had the session lock'
                     return self.enforce_follow_remote_member(msg)
                 else:
+                    # MySQL primary: MGR + semi-sync quorum must run while we hold the lock.
+                    # (Previously these lived only on the non-lock path and never executed.)
+                    if self.state_handler.db_type == 'mysql':
+                        cluster_nodes = self.cluster and len(self.cluster.members) or 1
+                        mgr_action = self.state_handler.run_mgr_cycle(True, cluster_nodes)
+                        if mgr_action:
+                            return mgr_action
+                        self.state_handler.run_semi_sync_safety_check(cluster_nodes)
                     return self.enforce_primary_role(
                         'no action. I am ({0}), the leader with the lock'.format(self.state_handler.name),
                         'promoted self to leader because I had the session lock'
@@ -1870,15 +1880,12 @@ class Ha(object):
         else:
             logger.debug('does not have lock')
 
-        # --- MySQL: MGR auto-follow + semi-sync safety ---
+        # MySQL replica / unlocked: MGR auto-follow (majority-loss bootstrap needs has_lock=False path)
         if self.state_handler.db_type == 'mysql':
-            mgr_action = self.state_handler.run_mgr_cycle(self.has_lock(),
+            mgr_action = self.state_handler.run_mgr_cycle(False,
                                                           self.cluster and len(self.cluster.members) or 1)
             if mgr_action:
                 return mgr_action
-
-            self.state_handler.run_semi_sync_safety_check(
-                self.cluster and len(self.cluster.members) or 1)
 
         lock_owner = self.cluster.leader and self.cluster.leader.name
         if self.is_standby_cluster():
@@ -2290,12 +2297,18 @@ class Ha(object):
                 # check if we are allowed to join
                 data_sysid = self.state_handler.sysid
                 if not self.sysid_valid(data_sysid):
-                    # data directory is not empty, but no valid sysid, cluster must be broken, suggest reinit
-                    return ("data dir for the cluster is not empty, "
-                            "but system ID is invalid; consider doing reinitialize")
+                    # For engines where sysid is cluster-wide (PostgreSQL), an
+                    # unreadable/invalid sysid means a broken data directory.
+                    # MySQL keeps a unique server_uuid per instance and may be
+                    # temporarily unreadable while mysqld is down — continue
+                    # into recover()/start rather than permanently blocking.
+                    if self.state_handler.requires_sysid_match:
+                        return ("data dir for the cluster is not empty, "
+                                "but system ID is invalid; consider doing reinitialize")
 
-                if self.sysid_valid(self.cluster.initialize):
-                    if self.cluster.initialize != data_sysid:
+                if self.sysid_valid(self.cluster.initialize) and self.sysid_valid(data_sysid):
+                    if self.state_handler.requires_sysid_match \
+                            and self.cluster.initialize != data_sysid:
                         if self.is_paused():
                             logger.warning('system ID has changed while in paused mode. Patroni will exit when resuming'
                                            ' unless system ID is reset: %s != %s', self.cluster.initialize, data_sysid)
@@ -2313,7 +2326,8 @@ class Ha(object):
                         logger.error('No initialize key in DCS and PostgreSQL is running as replica, aborting start')
                         logger.error('Please first start Patroni on the node running as primary')
                         sys.exit(1)
-                    self.dcs.initialize(create_new=(self.cluster.initialize is None), sysid=data_sysid)
+                    if self.sysid_valid(data_sysid):
+                        self.dcs.initialize(create_new=(self.cluster.initialize is None), sysid=data_sysid)
 
             if not self.state_handler.is_healthy():
                 if self.is_paused():

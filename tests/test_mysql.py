@@ -129,12 +129,30 @@ class TestMySQLConfig(unittest.TestCase):
         self.assertIn('mysqld', self.handler.get_mysqld_path())
         self.assertIn('mysqladmin', self.handler.get_mysqladmin_path())
         self.assertIn('mysql', self.handler.get_mysql_path())
+        xb = self.handler.get_xtrabackup_path()
+        self.assertTrue(xb.endswith('xtrabackup'))
 
     def test_check_recovery_conf(self):
         from patroni.dcs import Member
         member = Member(0, 'test', 0, {'conn_url': 'mysql://1.2.3.4:3306'})
-        self.assertEqual(self.handler.check_recovery_conf(member), (True, True))
-        self.assertEqual(self.handler.check_recovery_conf(None), (True, True))
+        # MySQL reconfigures replication without restart
+        self.assertEqual(self.handler.check_recovery_conf(member), (True, False))
+        self.assertEqual(self.handler.check_recovery_conf(None), (True, False))
+
+    def test_write_my_cnf_loads_semi_sync_plugins(self):
+        cfg = get_mysql_config()
+        cfg['parameters']['rpl_semi_sync_source_enabled'] = 'ON'
+        cfg['parameters']['rpl_semi_sync_replica_enabled'] = 'ON'
+        cfg['parameters']['cluster_size'] = '3'
+        os.makedirs(cfg['data_dir'], exist_ok=True)
+        handler = ConfigHandler(cfg)
+        handler.write_my_cnf()
+        with open(handler.config_file_path) as f:
+            text = f.read()
+        self.assertIn('semisync_source.so', text)
+        self.assertIn('semisync_replica.so', text)
+        self.assertNotIn('cluster_size', text)
+        shutil.rmtree(cfg['data_dir'], ignore_errors=True)
 
 
 class TestMySQL(unittest.TestCase):
@@ -221,15 +239,34 @@ class TestMySQL(unittest.TestCase):
         self.assertEqual(self.handler.replication_state(), 'streaming')
 
     def test_timeline_methods(self):
-        self.assertIsNone(self.handler.received_timeline())
-        self.assertIsNone(self.handler.replica_cached_timeline(None))
-        self.assertIsNone(self.handler.pg_control_timeline())
-        self.assertIsNone(self.handler.get_primary_timeline())
+        self.assertEqual(self.handler.received_timeline(), 0)
+        self.assertEqual(self.handler.replica_cached_timeline(None), 0)
+        self.assertEqual(self.handler.pg_control_timeline(), 0)
+        self.assertEqual(self.handler.get_primary_timeline(), 0)
         self.assertEqual(self.handler.get_history(1), [])
         self.assertEqual(self.handler.slots(), {})
 
+    @patch.object(MySQL, 'is_primary', return_value=True)
+    @patch.object(MySQL, 'count_semi_sync_replicas', return_value=0)
+    @patch.object(MySQL, 'is_read_only', return_value=False)
+    @patch.object(MySQL, 'set_read_only')
+    def test_semi_sync_safety_sets_ro(self, mock_ro, _mock_is_ro, _mock_cnt, _mock_pri):
+        self.handler.config._parameters['rpl_semi_sync_source_enabled'] = 'ON'
+        self.assertEqual(self.handler.run_semi_sync_safety_check(3), 'read_only_set')
+        mock_ro.assert_called_once()
+
+    @patch.object(MySQL, 'is_primary', return_value=True)
+    @patch.object(MySQL, 'count_semi_sync_replicas', return_value=2)
+    @patch.object(MySQL, 'is_read_only', return_value=True)
+    @patch.object(MySQL, 'set_read_write')
+    def test_semi_sync_safety_restores_rw(self, mock_rw, _mock_is_ro, _mock_cnt, _mock_pri):
+        self.handler.config._parameters['rpl_semi_sync_source_enabled'] = 'ON'
+        self.assertEqual(self.handler.run_semi_sync_safety_check(3), 'read_write_restored')
+        mock_rw.assert_called_once()
+
     def test_bootstrap_methods(self):
         self.assertTrue(self.handler.can_create_replica_without_replication_connection(['mysqldump']))
+        self.assertTrue(self.handler.can_create_replica_without_replication_connection(['xtrabackup']))
         self.assertTrue(self.handler.can_create_replica_without_replication_connection())
         self.assertFalse(self.handler.can_create_replica_without_replication_connection([]))
 
@@ -264,27 +301,31 @@ class TestMySQL(unittest.TestCase):
         self.handler.demote()
         self.assertEqual(self.handler.role, MySQLRole.DEMOTED)
 
+    @patch.object(MySQL, 'is_running', return_value=True)
     @patch.object(MySQL, '_query')
-    def test_follow_none(self, mock_query):
+    def test_follow_none(self, mock_query, _mock_running):
         result = self.handler.follow(None)
         self.assertTrue(result)
         mock_query.assert_any_call("STOP SLAVE")
         mock_query.assert_any_call("RESET SLAVE ALL")
 
+    @patch.object(MySQL, 'is_running', return_value=True)
     @patch.object(MySQL, '_query')
-    def test_follow_leader(self, mock_query):
+    def test_follow_leader(self, mock_query, _mock_running):
         member = Member(0, 'leader', 0, {'conn_url': 'mysql://1.2.3.4:3306'})
         result = self.handler.follow(member)
         self.assertTrue(result)
 
+    @patch.object(MySQL, 'is_running', return_value=True)
     @patch.object(MySQL, '_query')
-    def test_follow_with_role(self, mock_query):
+    def test_follow_with_role(self, mock_query, _mock_running):
         member = Member(0, 'leader', 0, {'conn_url': 'mysql://1.2.3.4:3306'})
         result = self.handler.follow(member, role=MySQLRole.REPLICA)
         self.assertTrue(result)
         self.assertEqual(self.handler.role, MySQLRole.REPLICA)
 
-    def test_follow_no_conn_url(self):
+    @patch.object(MySQL, 'is_running', return_value=True)
+    def test_follow_no_conn_url(self, _mock_running):
         member = Member(0, 'leader', 0, {})
         result = self.handler.follow(member)
         self.assertFalse(result)
@@ -385,9 +426,37 @@ class TestBootstrap(unittest.TestCase):
         result = self.handler.bootstrap.post_bootstrap()
         self.assertTrue(result)
 
+    def test_ensure_replication_user(self):
+        self.handler.bootstrap._query = Mock()
+        self.assertTrue(self.handler.bootstrap.ensure_replication_user())
+        sqls = [c.args[0] for c in self.handler.bootstrap._query.call_args_list]
+        self.assertTrue(any(s == 'SET sql_log_bin=0' for s in sqls))
+        self.assertTrue(any(s == 'SET sql_log_bin=1' for s in sqls))
+        self.assertTrue(any('CREATE USER IF NOT EXISTS' in s for s in sqls))
+        self.assertTrue(any('ALTER USER' in s for s in sqls))
+        self.assertTrue(any('GRANT REPLICATION SLAVE' in s for s in sqls))
+        self.assertTrue(any('BACKUP_ADMIN' in s for s in sqls))
+        self.assertTrue(any(s == 'FLUSH PRIVILEGES' for s in sqls))
+        # host pattern must be a single '%' (parameter), not literal '%%'
+        create_call = next(c for c in self.handler.bootstrap._query.call_args_list
+                           if 'CREATE USER' in c.args[0])
+        self.assertEqual(create_call.args[2], '%')
+
     def test_can_create_replica(self):
         self.assertTrue(self.handler.bootstrap.initialize() or True)
         self.assertTrue(os.path.exists(self.data_dir))
+
+    def test_cleanup_helpers(self):
+        path = os.path.join(self.data_dir, 'tmp_cleanup')
+        os.makedirs(path, exist_ok=True)
+        fpath = os.path.join(path, 'f')
+        open(fpath, 'w').close()
+        self.handler.bootstrap._unlink_quiet(fpath)
+        self.assertFalse(os.path.exists(fpath))
+        self.handler.bootstrap._rmtree_quiet(path)
+        self.assertFalse(os.path.exists(path))
+        self.handler.bootstrap._rmtree_quiet('/nonexistent/path')
+        self.handler.bootstrap._unlink_quiet('/nonexistent/file')
 
 
 class TestMySQLConnection(unittest.TestCase):

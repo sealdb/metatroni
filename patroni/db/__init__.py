@@ -216,8 +216,12 @@ class DatabaseHandler(abc.ABC):
         """Schedule sanity checks after maintenance mode."""
 
     @abc.abstractmethod
-    def reset_cluster_info_state(self, state: Optional[str]) -> None:
-        """Reset cluster info state."""
+    def reset_cluster_info_state(self, cluster: Optional[Any], tags: Optional[Any] = None) -> None:
+        """Reset monitoring/query cache at the start of each HA loop.
+
+        :param cluster: currently known cluster state from DCS.
+        :param tags: reference to an object implementing the Tags interface.
+        """
 
     @abc.abstractmethod
     def latest_checkpoint_locations(self) -> Tuple[Optional[int], Optional[int]]:
@@ -251,6 +255,15 @@ class DatabaseHandler(abc.ABC):
     def needs_crash_recovery(self) -> bool:
         """Whether the database needs explicit crash recovery in single-user mode.
         PostgreSQL: True.  MySQL (auto-recovery on startup): False.
+        """
+        return True
+
+    @property
+    def requires_sysid_match(self) -> bool:
+        """Whether local data-dir sysid must equal the DCS initialize key.
+
+        PostgreSQL: True (system identifier is cluster-wide).
+        MySQL: False (``server_uuid`` is unique per instance for GTID).
         """
         return True
 

@@ -9,8 +9,9 @@ Phases:
   3. Clone a replica from the primary (mysqldump)
   4. Configure GTID-based replication
   5. Verify data replication
-  6. Promote replica to primary
-  7. Demote and re-follow
+  6. Failover: stop primary, promote replica, write new data
+  7. Old primary rejoin: restart, demote, follow new primary
+  8. Verify catch-up on rejoined node
 
 Configuration (priority: CLI args > env vars > defaults):
 
@@ -500,26 +501,99 @@ class MySQLHATest:
             self.check('row id=3 value correct', rows[2][1] == 'replicated',
                        f'got {rows[2][1]}')
 
-    def phase6_promote(self, p1: 'MySQL') -> None:
-        logger.info("\n=== Phase 6: Promote replica (p1) to primary ===")
+    def phase6_failover(self, p0: 'MySQL', p1: 'MySQL') -> None:
+        """Simulate primary failure: stop p0, promote p1, write on new primary."""
+        logger.info("\n=== Phase 6: Failover (stop p0, promote p1) ===")
+
+        self.check('p0 stop() before failover', p0.stop())
+        time.sleep(1)
+        self.check('p0 is stopped', not p0.is_running())
+
         self.check('promote() returns True', p1.promote(10))
         self.check('p1.is_primary() after promote', p1.is_primary())
         self.check('p1 replication_state == primary',
                    p1.replication_state() == 'primary',
                    f'actual={p1.replication_state()}')
 
-    def phase7_demote_and_refollow(self, p1: 'MySQL') -> None:
-        logger.info("\n=== Phase 7: Demote and re-follow ===")
-        p1.demote()
-        self.check('role == demoted after demote()', p1.role == 'demoted',
-                   f'actual={p1.role}')
+        # New writes must succeed on the promoted primary
+        p1._query("INSERT INTO ha_test.t1 VALUES (4, 'after_failover')")
+        cnt = p1._query_one("SELECT COUNT(*) FROM ha_test.t1")
+        self.check('new primary accepts writes (4 rows)',
+                   cnt and cnt[0] == 4, f'cnt={cnt}')
 
-        leader = self.Member(0, 'p0', 0, {'conn_url': f'mysql://127.0.0.1:{self.p0_port}'})
-        p1.follow(leader)
+    def phase7_old_primary_rejoin(self, p0: 'MySQL', p1: 'MySQL') -> None:
+        """Restart old primary, demote it, follow the new primary."""
+        logger.info("\n=== Phase 7: Old primary (p0) rejoin as replica ===")
+
+        self.check('p0 start() after failover', p0.start())
         time.sleep(2)
-        rep_state = p1.replication_state()
-        self.check('replication resumes after re-follow', rep_state == 'streaming',
-                   f'actual={rep_state}')
+        self.check('p0 is_running() after restart', p0.is_running())
+
+        # Without demote+follow, the restarted node still thinks it is primary
+        self.check('p0.is_primary() before demote (stale primary)', p0.is_primary())
+
+        p0.demote()
+        self.check('p0 role == demoted after demote()', p0.role == 'demoted',
+                   f'actual={p0.role}')
+
+        new_leader = self.Member(0, 'p1', 0, {'conn_url': f'mysql://127.0.0.1:{self.p1_port}'})
+        ok = p0.follow(new_leader)
+        self.check('p0.follow(p1) returns True', ok is not False)
+
+        # Replication IO may take a few seconds to leave Connecting
+        deadline = time.time() + self.timeout
+        rep_state = None
+        last_io_error = ''
+        while time.time() < deadline:
+            rep_state = p0.replication_state()
+            if rep_state == 'streaming':
+                break
+            sl = p0._query_one_dict("SHOW SLAVE STATUS") or {}
+            last_io_error = sl.get('Last_IO_Error', '') or ''
+            time.sleep(0.5)
+
+        self.check('p0 replication_state == streaming after rejoin',
+                   rep_state == 'streaming',
+                   f'actual={rep_state} io_error={last_io_error[:120]}')
+        self.check('p0 is no longer primary', not p0.is_primary())
+        self.check('p1 remains primary', p1.is_primary())
+
+    def phase8_verify_catchup(self, p0: 'MySQL', p1: 'MySQL') -> None:
+        """Confirm rejoined node has failover writes and continues to receive new ones."""
+        logger.info("\n=== Phase 8: Verify catch-up on rejoined primary ===")
+
+        def _wait_row(handler: 'MySQL', row_id: int, value: str) -> bool:
+            deadline = time.time() + self.timeout
+            while time.time() < deadline:
+                rows = handler._query(
+                    "SELECT id, v FROM ha_test.t1 WHERE id = %s", row_id)
+                if rows and rows[0][1] == value:
+                    return True
+                time.sleep(0.5)
+            return False
+
+        # Failover write (id=4) must be visible on rejoined p0
+        caught_up = _wait_row(p0, 4, 'after_failover')
+        if not caught_up:
+            sl = p0._query_one_dict("SHOW SLAVE STATUS") or {}
+            logger.error("  catch-up debug: count=%s gtid=%s retrieved=%s executed=%s sql_err=%s",
+                         p0._query_one("SELECT COUNT(*) FROM ha_test.t1"),
+                         p0.get_executed_gtid(),
+                         sl.get('Retrieved_Gtid_Set'),
+                         sl.get('Executed_Gtid_Set'),
+                         sl.get('Last_SQL_Error'))
+        self.check('p0 caught up failover write (id=4)', caught_up)
+
+        # Continuous replication after rejoin
+        p1._query("INSERT INTO ha_test.t1 VALUES (5, 'after_rejoin')")
+        visible = _wait_row(p0, 5, 'after_rejoin')
+        self.check('p0 receives post-rejoin write (id=5)', visible)
+
+        cnt_p0 = p0._query_one("SELECT COUNT(*) FROM ha_test.t1")
+        cnt_p1 = p1._query_one("SELECT COUNT(*) FROM ha_test.t1")
+        self.check('both nodes have 5 rows',
+                   cnt_p0 and cnt_p1 and cnt_p0[0] == 5 and cnt_p1[0] == 5,
+                   f'p0={cnt_p0} p1={cnt_p1}')
 
     def phase_cleanup(self, p0: 'MySQL', p1: 'MySQL') -> None:
         logger.info("\n=== Cleanup ===")
@@ -559,13 +633,17 @@ class MySQLHATest:
             # Phase 5
             self.phase5_verify_replication(p0, p1)
 
-            # Phase 6
-            self.phase6_promote(p1)
-            self._print_cluster(p0, p1, "After promote — p1 is now primary")
+            # Phase 6 — real failover
+            self.phase6_failover(p0, p1)
+            self._print_cluster(p0, p1, "After failover — p0 stopped, p1 is primary")
 
-            # Phase 7
-            self.phase7_demote_and_refollow(p1)
-            self._print_cluster(p0, p1, "After demote + re-follow — p0 primary, p1 streaming again")
+            # Phase 7 — old primary rejoins
+            self.phase7_old_primary_rejoin(p0, p1)
+            self._print_cluster(p0, p1, "After rejoin — p1 primary, p0 streaming from p1")
+
+            # Phase 8 — catch-up verification
+            self.phase8_verify_catchup(p0, p1)
+            self._print_cluster(p0, p1, "After catch-up — both nodes at 5 rows")
 
         except SystemExit:
             pass

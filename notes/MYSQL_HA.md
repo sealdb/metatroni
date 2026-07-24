@@ -373,39 +373,74 @@ When the former primary comes back:
 
 | Limitation | Description |
 |------------|-------------|
-| **Clone method** | Only `mysqldump` is implemented. For large databases, this will be slow. `xtrabackup` support is planned. |
-| **No pg_rewind equivalent** | Patroni's pg_rewind logic is skipped for MySQL. Old primary rejoins by following the new primary. MySQL handles this gracefully via GTID auto-positioning and `RESET SLAVE ALL`. |
-| **Synchronous replication** | Not yet supported. MySQL semi-sync replication integration is planned. |
-| **Crash recovery** | MySQL handles crash recovery automatically on startup. Patroni monitors the recovery state. |
+| **Clone methods** | `mysqldump` (default) and `xtrabackup` are both implemented and integration-tested. Configure via `mysql.create_replica_methods`. xtrabackup must match the MySQL major.minor (e.g. 8.0.35). |
+| **No pg_rewind equivalent** | Patroni's pg_rewind logic is skipped for MySQL (`needs_rewind=False`). Old primary rejoins by following the new primary. MySQL handles this via GTID auto-positioning and `RESET SLAVE ALL`. |
+| **Semi-synchronous replication** | Supported when `rpl_semi_sync_source_enabled` / `rpl_semi_sync_replica_enabled` are set (plugins auto-loaded). Primary runs a quorum check each HA cycle while holding the lock; below-quorum clients force `super_read_only`. Use Patroni-only `parameters.cluster_size` to size wait_count / timeout. |
+| **MGR (Group Replication)** | Optional: when `group_replication_group_name` is set, Patroni follows MGR primary role changes. Majority-loss bootstrap still uses a simplified lock-holder strategy (GTID comparison via DCS is the next phase). |
+| **Crash recovery** | MySQL handles crash recovery automatically on startup. Patroni `start()` / `follow()` wait until the socket accepts connections. |
 | **Replication slots** | Not applicable (MySQL uses GTID-based auto-positioning). |
 | **Standby cluster** | Not supported. The standby cluster feature assumes PostgreSQL WAL archiving. |
+| **Full Patroni+DCS E2E** | Validated by `integration-tests/test_mysql_patroni_ha.py` (etcd3, dual Patroni, failover + rejoin). |
 
 ### MySQL-Specific
 
 | Limitation | Description |
 |------------|-------------|
-| **X Plugin port conflict** | MySQL 8.0 enables X Plugin (port 33060) by default. Multiple instances on the same host will conflict. Set `mysqlx=OFF` in parameters. |
-| **`--single-transaction`** | Not used in clone dumps (was causing empty data in some configurations). Clone uses a consistent snapshot via `mysqldump`. |
-| **User database dump** | Clone only dumps user databases (excludes `mysql`, `sys`, `performance_schema`, `information_schema`). |
+| **X Plugin port conflict** | MySQL 8.0 enables X Plugin (port 33060) by default. Patroni defaults `mysqlx=OFF` in `my.cnf` to avoid multi-instance conflicts. |
+| **Logical clone and system users** | `mysqldump` clone only dumps user databases. Patroni calls `ensure_replication_user()` after clone and on promote (with `sql_log_bin=0`) so the replication account exists on every primary candidate. |
+| **Physical clone UUID** | After xtrabackup restore, Patroni removes donor `auto.cnf` so mysqld generates a new `server_uuid`. |
+| **caching_sha2_password** | `CHANGE MASTER` sets `GET_MASTER_PUBLIC_KEY=1` for MySQL 8 replication auth over TCP. |
+| **No timelines / sysid match** | `has_timelines=False`; `requires_sysid_match=False` (each MySQL instance has its own `server_uuid`). |
 
 ## Running Integration Tests
 
 ```bash
 # Prerequisites
 pip install pymysql
+# Optional for physical clone: Percona XtraBackup matching MySQL version
 
-# Clone repo and run test
-cd /path/to/patroni
-MYSQL_BASE=/usr/local/mysql python integration-tests/test_mysql_ha.py
+MYSQL_BASE=/home/wslu/work/mysql/mysql80-debug
+
+# Handler-level async GTID HA (failover + rejoin)
+python3 integration-tests/test_mysql_ha.py
+
+# Full Patroni + etcd3
+PYTHONPATH=. python3 -u integration-tests/test_mysql_patroni_ha.py
+
+# Semi-sync quorum → read_only / restore
+PYTHONPATH=. python3 -u integration-tests/test_mysql_semi_sync.py
+
+# xtrabackup clone + stream
+PYTHONPATH=. python3 -u integration-tests/test_mysql_xtrabackup.py
 ```
 
-The test exercises the complete HA flow:
+Handler HA flow:
 1. Bootstrap primary
-2. Clone replica
-3. Configure replication
+2. Clone replica (mysqldump)
+3. Configure GTID replication
 4. Verify data replication
-5. Promote and demote
-6. Clean up
+5. Failover (stop primary, promote replica, write)
+6. Old primary rejoin (restart, demote, follow)
+7. Verify catch-up
+
+### Semi-sync config sketch
+
+```yaml
+mysql:
+  parameters:
+    rpl_semi_sync_source_enabled: ON
+    rpl_semi_sync_replica_enabled: ON
+    cluster_size: 3   # Patroni-only; not written to my.cnf
+```
+
+### xtrabackup config sketch
+
+```yaml
+mysql:
+  create_replica_methods:
+    - xtrabackup
+    - mysqldump   # fallback
+```
 
 ## Development
 
@@ -427,14 +462,13 @@ patroni/
 
 ### Implementing a Custom Clone Method
 
-To add xtrabackup support, modify `patroni/mysql/__init__.py`:
+`create_replica_methods` already supports `mysqldump` and `xtrabackup`. To add another method, extend `Bootstrap.create_replica()` in `patroni/mysql/bootstrap.py` and list the name in `can_create_replica_without_replication_connection()`.
 
-```python
-# In create_replica or can_create_replica_without_replication_connection
-def can_create_replica_without_replication_connection(self, methods=None):
-    if methods is None:
-        return True
-    return any(m in ('mysqldump', 'xtrabackup', 'clone_plugin') for m in methods)
+```yaml
+mysql:
+  create_replica_methods:
+    - xtrabackup
+    - mysqldump   # fallback
 ```
 
 ## Reference

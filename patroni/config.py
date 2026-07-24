@@ -763,6 +763,16 @@ class Config(object):
 
         pg_config.update({p: config[p] for p in updated_fields if p in config})
 
+        # Same for MySQL backend: inject top-level identity fields into the
+        # engine section so MySQL(config['mysql']) receives name/scope.
+        db_type = (config.get('database') or {}).get('type', 'postgresql')
+        if db_type == 'mysql' and 'mysql' in config:
+            mysql_config = config['mysql']
+            if isinstance(mysql_config, dict):
+                mysql_config.update({p: config[p] for p in ('name', 'scope') if p in config})
+                if 'name' not in config and 'name' in mysql_config:
+                    config['name'] = mysql_config['name']
+
         return config
 
     def get(self, key: str, default: Optional[Any] = None) -> Any:

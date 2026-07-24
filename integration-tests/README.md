@@ -2,13 +2,12 @@
 
 ## MySQL HA Test
 
+Handler-level end-to-end test (bootstrap → clone → replicate → failover → rejoin).
+
 ```bash
-# Default MySQL path is /usr/local/mysql
-python integration-tests/test_mysql_ha.py
+MYSQL_BASE=/home/wslu/work/mysql/mysql80-debug python3 integration-tests/test_mysql_ha.py
 
-# Or specify a custom path:
-MYSQL_BASE=/path/to/mysql python integration-tests/test_mysql_ha.py
-python integration-tests/test_mysql_ha.py /path/to/mysql
+# Preserve datadir on failure
+MYSQL_KEEP_DATA=1 MYSQL_BASE=/home/wslu/work/mysql/mysql80-debug \
+  python3 integration-tests/test_mysql_ha.py --keep-data
 ```
-
-Tests the complete MySQL HA flow: bootstrap, clone, replication, failover.

@@ -45,6 +45,11 @@ class MySQLConnection:
                 kwargs = dict(self._conn_kwargs)
                 kwargs.setdefault('autocommit', True)
                 self._connection = pymysql.connect(**kwargs)
+                # Avoid stale REPEATABLE READ snapshots on long-lived heartbeat
+                # connections (e.g. after replica catch-up via a different session).
+                with self._connection.cursor() as cursor:
+                    cursor.execute("SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED")
+                    cursor.execute("SET autocommit = 1")
                 ver = self._query_one("SELECT VERSION()")
                 if ver:
                     from .misc import mysql_version_to_int
@@ -57,7 +62,11 @@ class MySQLConnection:
                     try:
                         kwargs = dict(self._pool.conn_kwargs)
                         kwargs.update(self._kwargs_override)
+                        kwargs.setdefault('autocommit', True)
                         self._connection = pymysql.connect(**kwargs)
+                        with self._connection.cursor() as cursor:
+                            cursor.execute("SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED")
+                            cursor.execute("SET autocommit = 1")
                     except MySQLdbError as e:
                         raise PostgresConnectionException(f'mysql connection failed: {e}')
             return self._connection

@@ -74,6 +74,15 @@ class ConfigHandler:
     def create_replica_methods(self) -> List[str]:
         return self._config.get('create_replica_methods', ['mysqldump'])
 
+    @property
+    def synchronous_standby_names(self) -> str:
+        """MySQL has no PostgreSQL-style synchronous_standby_names."""
+        return ''
+
+    def set_synchronous_standby_names(self, value: Optional[str]) -> Optional[bool]:
+        """No-op for MySQL (no synchronous_standby_names GUC)."""
+        return None
+
     def get_mysqld_path(self) -> str:
         return os.path.join(self._bin_dir, 'mysqld') if self._bin_dir else 'mysqld'
 
@@ -87,10 +96,21 @@ class ConfigHandler:
         return os.path.join(self._bin_dir, 'mysqldump') if self._bin_dir else 'mysqldump'
 
     def get_xtrabackup_path(self) -> str:
-        return os.path.join(self._bin_dir, 'xtrabackup') if self._bin_dir else '/usr/bin/xtrabackup'
+        """Resolve xtrabackup binary (often outside MySQL ``bin_dir``)."""
+        if self._bin_dir:
+            candidate = os.path.join(self._bin_dir, 'xtrabackup')
+            if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+                return candidate
+        found = shutil.which('xtrabackup')
+        return found or '/usr/bin/xtrabackup'
 
     def get_xbstream_path(self) -> str:
-        return os.path.join(self._bin_dir, 'xbstream') if self._bin_dir else '/usr/bin/xbstream'
+        if self._bin_dir:
+            candidate = os.path.join(self._bin_dir, 'xbstream')
+            if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+                return candidate
+        found = shutil.which('xbstream')
+        return found or '/usr/bin/xbstream'
 
     def write_my_cnf(self, config_override: Optional[Dict[str, Any]] = None) -> None:
         """Write my.cnf configuration file."""
@@ -121,8 +141,16 @@ class ConfigHandler:
             params.setdefault('transaction_write_set_extraction', 'XXHASH64')
             params.setdefault('loose-group_replication_recovery_use_ssl', 'OFF')
 
+        # Semi-sync plugins (MySQL 8 source/replica naming)
+        if (params.get('rpl_semi_sync_source_enabled')
+                or params.get('rpl_semi_sync_replica_enabled')):
+            params.setdefault('plugin-load-add', 'semisync_source.so;semisync_replica.so')
+
         lines = ['[mysqld]']
         for key, value in params.items():
+            # Skip cluster_size — Patroni-only hint for wait_count / timeout
+            if key == 'cluster_size':
+                continue
             lines.append(f'{key} = {value}')
         lines.append('')
 
@@ -140,9 +168,13 @@ class ConfigHandler:
 
     def check_recovery_conf(self, node_to_follow: Union[Leader, Member, RemoteMember, None]) \
             -> Tuple[bool, bool]:
-        if node_to_follow is None:
-            return True, True
-        return True, True
+        """Return ``(change_required, restart_required)`` for replication config.
+
+        MySQL replication is reconfigured via ``CHANGE MASTER TO`` without a
+        server restart. ``MySQL.follow()`` is idempotent, so we always request a
+        soft reconfigure (no restart) and let follow decide whether work is needed.
+        """
+        return True, False
 
     def _socket_path(self) -> str:
         return os.path.join(self._data_dir, 'mysql.sock')

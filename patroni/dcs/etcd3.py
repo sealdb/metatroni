@@ -22,6 +22,7 @@ from ..exceptions import DCSError, PatroniException
 from ..postgresql.mpp import AbstractMPP
 from ..utils import deep_compare, enable_keepalive, iter_response_objects, \
     parse_bool, RetryFailedError, USER_AGENT, WHITESPACE_RE
+from .. import parse_version
 from . import catch_return_false_exception, Cluster, ClusterConfig, \
     Failover, Leader, Member, Status, SyncState, TimelineHistory
 from .etcd import AbstractEtcd, AbstractEtcdClientWithFailover, catch_etcd_errors, \
@@ -290,9 +291,9 @@ class Etcd3Client(AbstractEtcdClientWithFailover):
             response = self._handle_server_response(response)
 
             server_version_str = response['etcdserver']
-            server_version = tuple(int(x) for x in server_version_str.split('.'))
+            server_version = parse_version(server_version_str)
             cluster_version_str = response['etcdcluster']
-            self._cluster_version = tuple(int(x) for x in cluster_version_str.split('.'))
+            self._cluster_version = parse_version(cluster_version_str)
 
             if self._cluster_version < (3, 0) or server_version < (3, 0, 4):
                 raise UnsupportedEtcdVersion('Detected Etcd version {0} is lower than 3.0.4'.format(server_version_str))

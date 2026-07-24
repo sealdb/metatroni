@@ -45,6 +45,11 @@ class MySQL(DatabaseHandler):
     def needs_crash_recovery(self) -> bool:
         return False
 
+    @property
+    def requires_sysid_match(self) -> bool:
+        # server_uuid is unique per mysqld instance (required for GTID).
+        return False
+
     def before_promote(self) -> None:
         pass
 
@@ -132,11 +137,27 @@ class MySQL(DatabaseHandler):
 
     @property
     def sysid(self) -> Optional[str]:
+        """Return MySQL ``server_uuid``.
+
+        Prefer a live query; fall back to ``auto.cnf`` so Patroni can still
+        identify the datadir when mysqld is not running.
+        """
         try:
             row = self._query("SELECT @@server_uuid")
-            return row[0][0] if row else None
+            if row and row[0][0]:
+                return row[0][0]
         except Exception:
-            return None
+            pass
+        auto_cnf = os.path.join(self._data_dir, 'auto.cnf')
+        try:
+            with open(auto_cnf) as f:
+                for line in f:
+                    line = line.strip()
+                    if line.lower().startswith('server-uuid='):
+                        return line.split('=', 1)[1].strip() or None
+        except OSError:
+            pass
+        return None
 
     def postmaster_start_time(self) -> float:
         return time.time()
@@ -210,16 +231,30 @@ class MySQL(DatabaseHandler):
 
         self.set_state(MySQLState.STARTING)
         self.config.write_my_cnf()
+        # Drop stale connections from before stop()/crash.
+        self.connection_pool.close()
         mysqld_path = self.config.get_mysqld_path()
         proc = MySQLProcess.start(mysqld_path, self.config.config_file_path,
                                   self._data_dir)
-        if proc:
-            self._postmaster_process = proc
-            self.set_state(MySQLState.RUNNING)
-            logger.info("MySQL started successfully")
-            return True
-        self.set_state(MySQLState.START_FAILED)
-        return False
+        if not proc:
+            self.set_state(MySQLState.START_FAILED)
+            return False
+
+        self._postmaster_process = proc
+        # Wait until mysqld accepts connections. Crash recovery after a hard
+        # kill can take well over the default 30s on debug builds.
+        wait_timeout = float(timeout) if timeout else 120.0
+        sock = os.path.join(self._data_dir, 'mysql.sock')
+        if not proc.wait_for_ready(sock, wait_timeout):
+            logger.error("MySQL started but not ready after %ss", wait_timeout)
+            proc.signal_kill()
+            self._postmaster_process = None
+            self.set_state(MySQLState.START_FAILED)
+            return False
+
+        self.set_state(MySQLState.RUNNING)
+        logger.info("MySQL started successfully")
+        return True
 
     def stop(self, mode: str = 'fast', block_callbacks: bool = True,
               check_executor: bool = True, **kwargs: Any) -> bool:
@@ -243,6 +278,7 @@ class MySQL(DatabaseHandler):
                 proc.signal_stop(mode)
                 proc.wait_for_stop(30)
 
+        self.connection_pool.close()
         self._postmaster_process = None
         pid_file = os.path.join(self._data_dir, 'mysqld.pid')
         try:
@@ -295,6 +331,9 @@ class MySQL(DatabaseHandler):
             self._query("STOP SLAVE")
             self._query("RESET SLAVE ALL")
             self.set_role(MySQLRole.PRIMARY)
+            # Safety net: clones via mysqldump do not copy mysql.user. Ensure
+            # the replication account exists before other nodes try to follow us.
+            self.bootstrap.ensure_replication_user()
             self._enable_semi_sync()
             if async_response:
                 async_response.complete(True)
@@ -313,23 +352,57 @@ class MySQL(DatabaseHandler):
 
     def follow(self, node_to_follow: Union[Leader, Member, RemoteMember, None],
                role: Optional[str] = None,
+               timeout: Optional[float] = None,
                do_reload: bool = False) -> Optional[bool]:
+        """Start/reconfigure MySQL to follow *node_to_follow*.
+
+        Mirrors PostgreSQL ``follow``: when mysqld is not running, ``start()``
+        first. ``ha.recover`` calls this as ``follow(member, role, timeout)``.
+        """
+        if role:
+            self.set_role(role)
+        elif node_to_follow is not None:
+            self.set_role(MySQLRole.REPLICA)
+
+        if not self.is_running():
+            # Crash recovery / cold start: wait for mysqld before any SQL.
+            if not self.start(timeout=int(timeout) if timeout else None):
+                return False
+
         if node_to_follow is None:
-            self._query("STOP SLAVE")
-            self._query("RESET SLAVE ALL")
+            # Recover path when we still hold the lock: start as writable
+            # primary without configuring replication.
+            try:
+                self._query("STOP SLAVE")
+                self._query("RESET SLAVE ALL")
+            except Exception:
+                pass
+            if role != MySQLRole.REPLICA:
+                self.set_role(MySQLRole.PRIMARY)
             return True
 
         conn_url = node_to_follow.conn_url
         if not conn_url:
             return False
 
-        if role:
-            self.set_role(role)
-
         host, port = self._parse_conn_url(conn_url)
         repl = self.config.replication
         user = repl.get('username', 'replicator')
         password = repl.get('password', '')
+
+        # Idempotent: skip STOP/RESET/CHANGE if already streaming from target.
+        try:
+            slave = self._query_one_dict("SHOW SLAVE STATUS")
+            if slave:
+                cur_host = str(slave.get('Master_Host') or '')
+                cur_port = int(slave.get('Master_Port') or 0)
+                io_ok = slave.get('Slave_IO_Running') == 'Yes'
+                sql_ok = slave.get('Slave_SQL_Running') == 'Yes'
+                if cur_host == host and cur_port == port and io_ok and sql_ok:
+                    logger.debug("Already replicating from %s:%s", host, port)
+                    return True
+        except Exception:
+            pass
 
         try:
             self._query("STOP SLAVE")
@@ -338,12 +411,17 @@ class MySQL(DatabaseHandler):
                 "CHANGE MASTER TO "
                 "MASTER_HOST=%s, MASTER_PORT=%s, "
                 "MASTER_USER=%s, MASTER_PASSWORD=%s, "
-                "MASTER_AUTO_POSITION=1",
+                "MASTER_AUTO_POSITION=1, "
+                "MASTER_CONNECT_RETRY=5, "
+                "GET_MASTER_PUBLIC_KEY=1",
                 host, port, user, password
             )
             self._query("START SLAVE")
             logger.info("Started replication from %s:%s", host, port)
             self._enable_semi_sync()
+            # Refresh heartbeat connection so subsequent reads do not see a
+            # pre-follow REPEATABLE READ snapshot.
+            self.connection_pool.close()
             return True
         except MySQLdbError as e:
             logger.error("Failed to configure replication: %r", e)
@@ -772,16 +850,16 @@ class MySQL(DatabaseHandler):
             return None
 
     def received_timeline(self) -> Optional[int]:
-        return None
+        return 0
 
     def replica_cached_timeline(self, leader_timeline: Optional[int]) -> Optional[int]:
-        return None
+        return 0
 
     def pg_control_timeline(self) -> Optional[int]:
-        return None
+        return 0
 
     def get_primary_timeline(self) -> Optional[int]:
-        return None
+        return 0
 
     def get_history(self, timeline: int) -> List[Any]:
         return []
@@ -860,7 +938,8 @@ class MySQL(DatabaseHandler):
     def schedule_sanity_checks_after_pause(self) -> None:
         pass
 
-    def reset_cluster_info_state(self, state: Optional[str]) -> None:
+    def reset_cluster_info_state(self, cluster: Optional[Any] = None,
+                                 tags: Optional[Any] = None) -> None:
         pass
 
     def latest_checkpoint_locations(self) -> Tuple[Optional[int], Optional[int]]:

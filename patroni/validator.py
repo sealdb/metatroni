@@ -1198,7 +1198,7 @@ schema = Schema({
         "connect_address": validate_connect_address,
         Optional("data_dir"): str,
         Optional("config_dir"): str,
-        Optional("bin_dir", ""): BinDirectory(),
+        Optional("bin_dir"): str,
         Optional("parameters"): dict,
         Optional("port"): IntValidator(min=0, max=65535, expected_type=int, raise_assert=True),
         Optional("server_id"): IntValidator(min=0, expected_type=int, raise_assert=True),
