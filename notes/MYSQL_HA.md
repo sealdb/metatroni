@@ -376,7 +376,7 @@ When the former primary comes back:
 | **Clone methods** | `mysqldump` (default) and `xtrabackup` are both implemented and integration-tested. Configure via `mysql.create_replica_methods`. xtrabackup must match the MySQL major.minor (e.g. 8.0.35). |
 | **No pg_rewind equivalent** | Patroni's pg_rewind logic is skipped for MySQL (`needs_rewind=False`). Old primary rejoins by following the new primary. MySQL handles this via GTID auto-positioning and `RESET SLAVE ALL`. |
 | **Semi-synchronous replication** | Supported when `rpl_semi_sync_source_enabled` / `rpl_semi_sync_replica_enabled` are set (plugins auto-loaded). Primary runs a quorum check each HA cycle while holding the lock; below-quorum clients force `super_read_only`. Use Patroni-only `parameters.cluster_size` to size wait_count / timeout. |
-| **MGR (Group Replication)** | Optional: when `group_replication_group_name` is set, Patroni follows MGR primary role changes. Majority-loss bootstrap still uses a simplified lock-holder strategy (GTID comparison via DCS is the next phase). |
+| **MGR (Group Replication)** | Optional: when `group_replication_group_name` is set, Patroni follows MGR primary/secondary. On majority loss, nodes elect a bootstrapper from DCS-published `gtid_executed` (GTID_SUBSET); the winner bootstraps only with the leader lock; a lock holder that is behind yields the lock; others rejoin. Incomparable GTID sets refuse election. Validated by `integration-tests/test_mysql_mgr_e2e.py` (3-node GR). |
 | **Crash recovery** | MySQL handles crash recovery automatically on startup. Patroni `start()` / `follow()` wait until the socket accepts connections. |
 | **Replication slots** | Not applicable (MySQL uses GTID-based auto-positioning). |
 | **Standby cluster** | Not supported. The standby cluster feature assumes PostgreSQL WAL archiving. |
@@ -389,7 +389,7 @@ When the former primary comes back:
 | **X Plugin port conflict** | MySQL 8.0 enables X Plugin (port 33060) by default. Patroni defaults `mysqlx=OFF` in `my.cnf` to avoid multi-instance conflicts. |
 | **Logical clone and system users** | `mysqldump` clone only dumps user databases. Patroni calls `ensure_replication_user()` after clone and on promote (with `sql_log_bin=0`) so the replication account exists on every primary candidate. |
 | **Physical clone UUID** | After xtrabackup restore, Patroni removes donor `auto.cnf` so mysqld generates a new `server_uuid`. |
-| **caching_sha2_password** | `CHANGE MASTER` sets `GET_MASTER_PUBLIC_KEY=1` for MySQL 8 replication auth over TCP. |
+| **caching_sha2_password** | Async `CHANGE MASTER` sets `GET_MASTER_PUBLIC_KEY=1` for MySQL 8 replication auth over TCP. The `group_replication_recovery` channel rejects that option (ER 3139), so the replication user is created with `mysql_native_password` for MGR distributed recovery without TLS. |
 | **No timelines / sysid match** | `has_timelines=False`; `requires_sysid_match=False` (each MySQL instance has its own `server_uuid`). |
 
 ## Running Integration Tests
@@ -412,6 +412,9 @@ PYTHONPATH=. python3 -u integration-tests/test_mysql_semi_sync.py
 
 # xtrabackup clone + stream
 PYTHONPATH=. python3 -u integration-tests/test_mysql_xtrabackup.py
+
+# 3-node MGR majority-loss GTID election E2E
+PYTHONPATH=. python3 -u integration-tests/test_mysql_mgr_e2e.py
 ```
 
 Handler HA flow:
@@ -441,6 +444,52 @@ mysql:
     - xtrabackup
     - mysqldump   # fallback
 ```
+
+### MGR majority-loss GTID election
+
+1. Every HA cycle, `touch_member` publishes `gtid_executed` via `enrich_dcs_data`.
+2. If local MGR status is empty, each node runs `select_mgr_bootstrap_winner`:
+   - drop candidates that are a strict GTID subset of another;
+   - among equal maximal sets, pick the lexicographically smallest name;
+   - if maximal sets are incomparable → **GTID fork** (see below).
+3. Winner + holds DCS lock → `bootstrap_mgr_group()`.
+4. Lock holder that is not the winner → `mgr_yield_lock` → release leader key.
+5. Non-winners → wait / `rejoin_mgr_group` once a primary is advertised.
+6. While racing for the lock after a yield, `_is_healthiest_node` compares GTIDs
+   (not binlog file offsets) when MGR is configured.
+
+### MGR GTID fork (incomparable sets)
+
+When two or more members each hold transactions the others lack, automatic
+bootstrap is unsafe. Patroni then:
+
+1. Logs a `CRITICAL` alert with each maximal member's `gtid_executed`.
+2. Forces `super_read_only` on the detecting node.
+3. Returns `mgr_gtid_fork` from `run_mgr_cycle` (no bootstrap).
+4. By default writes DCS `pause: true` plus a `mgr_gtid_fork` breadcrumb so
+   autofailover stops (`patronictl pause` equivalent). Disable with
+   `mysql.parameters.mgr_pause_on_gtid_fork: false`.
+5. Publishes `mgr_gtid_fork` on the member key and `/patroni` until the group
+   is healthy again.
+
+Operator recovery: repair/reconcile GTIDs (or rebuild the divergent node),
+then `patronictl resume`.
+
+```bash
+# Handler-level election helpers (no real multi-member GR)
+PYTHONPATH=. python3 -u integration-tests/test_mysql_mgr_election.py
+
+# Real 3-node GR: form group → STOP all → n2-only GTID advance → bootstrap + rejoin
+PYTHONPATH=. python3 -u integration-tests/test_mysql_mgr_e2e.py
+
+# etcd3 + 3 Patroni processes (HA loops drive recovery)
+PYTHONPATH=. python3 -u integration-tests/test_mysql_mgr_patroni_ha.py
+```
+
+MGR E2E notes:
+- Local MGR port = client port + 10 (avoids `port*10+1` overflow).
+- `get_mgr_status` reads `performance_schema.replication_group_members` (primary via subquery; `@@group_replication_primary_member` is not a sysvar).
+- Recovery channel: `CHANGE MASTER ... FOR CHANNEL 'group_replication_recovery'` without `GET_MASTER_PUBLIC_KEY`.
 
 ## Development
 

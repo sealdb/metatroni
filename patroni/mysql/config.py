@@ -26,6 +26,12 @@ class ConfigHandler:
         self._parameters: Dict[str, Any] = config.get('parameters', {})
         self._authentication: Dict[str, Any] = config.get('authentication', {})
 
+    def get(self, key: str, default: Any = None) -> Any:
+        """Dict-like access for Rewind/HA helpers that expect Postgresql.config.get."""
+        if key in self._config:
+            return self._config[key]
+        return self._parameters.get(key, default)
+
     @property
     def data_dir(self) -> str:
         return self._data_dir
@@ -126,30 +132,47 @@ class ConfigHandler:
         params.setdefault('log-error', os.path.join(self._data_dir, f'{self._hostname()}.err'))
         params.setdefault('pid-file', os.path.join(self._data_dir, 'mysqld.pid'))
 
+        # Collect plugins to load (merged into one plugin-load-add line)
+        plugins: List[str] = []
+        existing_plugins = str(params.get('plugin-load-add') or '')
+        if existing_plugins:
+            plugins.extend(p for p in existing_plugins.replace(',', ';').split(';') if p)
+
         # MGR defaults — ensure required parameters are set when MGR is configured
         if params.get('group_replication_group_name'):
             gr_host = self._listen.split(':')[0] if ':' in self._listen else self._listen
+            if 'group_replication.so' not in plugins:
+                plugins.append('group_replication.so')
             params.setdefault('loose-group_replication_start_on_boot', 'OFF')
             params.setdefault('loose-group_replication_bootstrap_group', 'OFF')
+            params.setdefault('loose-group_replication_single_primary_mode', 'ON')
             params.setdefault('loose-group_replication_local_address',
                               f'{gr_host}:{self._get_mgr_port()}')
             params.setdefault('loose-group_replication_group_seeds',
                               params.get('loose-group_replication_group_seeds',
                                          f'{gr_host}:{self._get_mgr_port()}'))
-            # Use AFTER mode for SYNC_BINLOG consistency
+            # Loopback-only allowlist for local multi-instance tests / single host.
+            params.setdefault('loose-group_replication_ip_allowlist',
+                              '127.0.0.1/32,::1/128')
             params.setdefault('loose-binlog_transaction_dependency_tracking', 'WRITESET')
-            params.setdefault('transaction_write_set_extraction', 'XXHASH64')
             params.setdefault('loose-group_replication_recovery_use_ssl', 'OFF')
+            params.setdefault('report_host', gr_host)
+            params.setdefault('report_port', str(self._port))
 
         # Semi-sync plugins (MySQL 8 source/replica naming)
         if (params.get('rpl_semi_sync_source_enabled')
                 or params.get('rpl_semi_sync_replica_enabled')):
-            params.setdefault('plugin-load-add', 'semisync_source.so;semisync_replica.so')
+            for p in ('semisync_source.so', 'semisync_replica.so'):
+                if p not in plugins:
+                    plugins.append(p)
+
+        if plugins:
+            params['plugin-load-add'] = ';'.join(plugins)
 
         lines = ['[mysqld]']
         for key, value in params.items():
-            # Skip cluster_size — Patroni-only hint for wait_count / timeout
-            if key == 'cluster_size':
+            # Patroni-only hints — never write into my.cnf
+            if key in ('cluster_size', 'mgr_pause_on_gtid_fork'):
                 continue
             lines.append(f'{key} = {value}')
         lines.append('')
@@ -180,9 +203,13 @@ class ConfigHandler:
         return os.path.join(self._data_dir, 'mysql.sock')
 
     def _get_mgr_port(self) -> int:
-        """Get the MGR communication port (default: mysql_port * 10 + 1)."""
+        """Get the MGR communication port (default: mysql_port + 10).
+
+        Older formula ``port * 10 + 1`` overflows TCP port range for
+        5-digit mysql ports (e.g. 34407 → 344071).
+        """
         base_port = self._port or 3306
-        return base_port * 10 + 1
+        return base_port + 10
 
     @staticmethod
     def _hostname() -> str:

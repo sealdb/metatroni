@@ -29,6 +29,7 @@ class Bootstrap:
         logger.info("Initializing MySQL data directory: %s", data_dir)
         cmdline = [mysqld_path, f'--datadir={data_dir}',
                    '--initialize-insecure',
+                   '--skip-networking',
                    f'--user={os.getenv("USER", "root")}']
         try:
             result = subprocess.run(cmdline, capture_output=True, text=True, timeout=120)
@@ -163,7 +164,8 @@ class Bootstrap:
                 logger.error("Failed to get user databases: %r", e)
                 return False
 
-            if not user_dbs:
+            # mysql -N prints the word NULL when GROUP_CONCAT has no rows.
+            if not user_dbs or user_dbs.upper() == 'NULL':
                 logger.info("No user databases to clone, skipping dump")
                 if not self.ensure_replication_user():
                     return False
@@ -396,12 +398,17 @@ class Bootstrap:
             try:
                 # Parameterized so '%' is a real host pattern (not literal '%%').
                 # ALTER so a pre-existing account always gets the configured password.
+                # Use mysql_native_password: group_replication_recovery rejects
+                # GET_MASTER_PUBLIC_KEY (ER 3139), and caching_sha2_password then
+                # requires TLS for donor auth during distributed recovery.
                 self._query(
-                    "CREATE USER IF NOT EXISTS %s@%s IDENTIFIED BY %s",
+                    "CREATE USER IF NOT EXISTS %s@%s "
+                    "IDENTIFIED WITH mysql_native_password BY %s",
                     user, '%', password
                 )
                 self._query(
-                    "ALTER USER %s@%s IDENTIFIED BY %s",
+                    "ALTER USER %s@%s "
+                    "IDENTIFIED WITH mysql_native_password BY %s",
                     user, '%', password
                 )
                 self._query(
@@ -410,6 +417,16 @@ class Bootstrap:
                     "ON *.* TO %s@%s",
                     user, '%'
                 )
+                # Group Replication recovery / admin privileges (MySQL 8.0+).
+                for extra in (
+                    "GRANT CONNECTION_ADMIN ON *.* TO %s@%s",
+                    "GRANT GROUP_REPLICATION_STREAM ON *.* TO %s@%s",
+                    "GRANT GROUP_REPLICATION_ADMIN ON *.* TO %s@%s",
+                ):
+                    try:
+                        self._query(extra, user, '%')
+                    except Exception:
+                        pass
                 # Needed by xtrabackup for consistent backup coordinates.
                 try:
                     self._query(

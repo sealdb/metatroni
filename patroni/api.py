@@ -1507,12 +1507,14 @@ class RestApiHandler(BaseHTTPRequestHandler):
                 binlog_file = master_row.get('File', '')
                 binlog_pos = int(master_row.get('Position', 0))
                 gtid_set = master_row.get('Executed_Gtid_Set', '')
+            # Prefer @@gtid_executed — available on primary and replica alike.
+            gtid_set = mysql_handler.get_executed_gtid() or gtid_set
 
             binlog_data = {'location': binlog_pos}
+            if gtid_set:
+                binlog_data['gtid_set'] = gtid_set
             if is_primary:
                 binlog_data['binlog_file'] = binlog_file
-                if gtid_set:
-                    binlog_data['gtid_set'] = gtid_set
             else:
                 slave_row = mysql_handler._query_one_dict("SHOW SLAVE STATUS")
                 if slave_row:
@@ -1524,8 +1526,6 @@ class RestApiHandler(BaseHTTPRequestHandler):
                     binlog_data['slave_sql_running'] = slave_row.get('Slave_SQL_Running', '')
                     sbm = slave_row.get('Seconds_Behind_Master')
                     binlog_data['seconds_behind_master'] = int(sbm) if sbm is not None else None
-                    if gtid_set:
-                        binlog_data['gtid_set'] = gtid_set
 
             result = {
                 'state': state,
@@ -1533,6 +1533,10 @@ class RestApiHandler(BaseHTTPRequestHandler):
                 'server_version': mysql_handler.server_version,
                 'binlog': binlog_data
             }
+
+            fork = getattr(mysql_handler, '_mgr_gtid_fork', None)
+            if fork:
+                result['mgr_gtid_fork'] = fork
 
             replication_state = mysql_handler.replication_state()
             if replication_state:

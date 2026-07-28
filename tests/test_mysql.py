@@ -264,6 +264,121 @@ class TestMySQL(unittest.TestCase):
         self.assertEqual(self.handler.run_semi_sync_safety_check(3), 'read_write_restored')
         mock_rw.assert_called_once()
 
+    def test_gtid_relation(self):
+        uuid = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+        with patch.object(MySQL, '_query_one', return_value=(1, 1)):
+            self.assertEqual(self.handler.gtid_relation(f'{uuid}:1-10', f'{uuid}:1-10'), 'equal')
+        with patch.object(MySQL, '_query_one', return_value=(0, 1)):
+            self.assertEqual(self.handler.gtid_relation(f'{uuid}:1-20', f'{uuid}:1-10'), 'a_ahead')
+        with patch.object(MySQL, '_query_one', return_value=(1, 0)):
+            self.assertEqual(self.handler.gtid_relation(f'{uuid}:1-10', f'{uuid}:1-20'), 'b_ahead')
+        with patch.object(MySQL, '_query_one', return_value=(0, 0)):
+            self.assertEqual(self.handler.gtid_relation('u1:1-5', 'u2:1-5'), 'incomparable')
+        self.assertEqual(self.handler.gtid_relation('', 'u:1-1'), 'incomparable')
+
+    def test_select_mgr_bootstrap_winner(self):
+        uuid = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+        local = f'{uuid}:1-20'
+        peer_behind = Member(0, 'mysql1', 0, {'gtid_executed': f'{uuid}:1-10'})
+        peer_ahead = Member(0, 'mysql1', 0, {'gtid_executed': f'{uuid}:1-30'})
+        peer_equal = Member(0, 'zzz', 0, {'gtid_executed': local})
+
+        def rel(a, b):
+            # Encode simple numeric max txn from same uuid for tests
+            def end(g):
+                return int(g.rsplit('-', 1)[-1])
+            if a == b:
+                return 'equal'
+            if end(a) > end(b):
+                return 'a_ahead'
+            if end(a) < end(b):
+                return 'b_ahead'
+            return 'incomparable'
+
+        with patch.object(MySQL, 'gtid_relation', side_effect=rel):
+            self.assertEqual(self.handler.select_mgr_bootstrap_winner(local, [peer_behind]), 'mysql0')
+            self.assertEqual(self.handler.select_mgr_bootstrap_winner(local, [peer_ahead]), 'mysql1')
+            # equal GTIDs → lexicographically smallest name
+            self.assertEqual(self.handler.select_mgr_bootstrap_winner(local, [peer_equal]), 'mysql0')
+
+    def test_describe_mgr_gtid_fork_and_pause_action(self):
+        self.handler.config._parameters['group_replication_group_name'] = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
+        local = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa:1-10'
+        peer = Member(0, 'mysql1', 0, {
+            'gtid_executed': 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb:1-10',
+        })
+
+        def rel(a, b):
+            if a == b:
+                return 'equal'
+            return 'incomparable'
+
+        with patch.object(MySQL, 'gtid_relation', side_effect=rel):
+            fork = self.handler.describe_mgr_gtid_fork(local, [peer])
+            self.assertEqual(len(fork), 2)
+            names = {m['name'] for m in fork}
+            self.assertEqual(names, {'mysql0', 'mysql1'})
+            self.assertIsNone(self.handler.select_mgr_bootstrap_winner(local, [peer]))
+
+        with patch.object(MySQL, 'get_mgr_status', return_value={}), \
+                patch.object(MySQL, 'get_executed_gtid', return_value=local), \
+                patch.object(MySQL, 'select_mgr_bootstrap_winner', return_value=None), \
+                patch.object(MySQL, 'gtid_relation', side_effect=rel), \
+                patch.object(MySQL, 'set_read_only') as mock_ro:
+            msg = self.handler.run_mgr_cycle(True, 3, [peer])
+        self.assertEqual(msg, 'mgr_gtid_fork')
+        mock_ro.assert_called()
+        self.assertIsNotNone(self.handler._mgr_gtid_fork)
+        data = {}
+        self.handler.enrich_dcs_data(data)
+        self.assertIn('mgr_gtid_fork', data)
+
+    def test_mgr_pause_on_gtid_fork_flag(self):
+        self.assertTrue(self.handler.mgr_pause_on_gtid_fork_enabled())
+        self.handler.config._parameters['mgr_pause_on_gtid_fork'] = False
+        self.assertFalse(self.handler.mgr_pause_on_gtid_fork_enabled())
+
+    @patch.object(MySQL, 'bootstrap_mgr_group', return_value=True)
+    @patch.object(MySQL, 'get_executed_gtid', return_value='u:1-20')
+    @patch.object(MySQL, 'select_mgr_bootstrap_winner', return_value='mysql0')
+    def test_mgr_majority_loss_winner_with_lock_bootstraps(self, _win, _gtid, mock_boot):
+        self.handler.config._parameters['group_replication_group_name'] = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
+        with patch.object(MySQL, 'get_mgr_status', return_value={}):
+            msg = self.handler.run_mgr_cycle(True, 3, [])
+        self.assertEqual(msg, 'bootstrapped MGR group after majority loss')
+        mock_boot.assert_called_once()
+        self.assertEqual(self.handler.role, MySQLRole.MGR_PRIMARY)
+
+    @patch.object(MySQL, 'get_executed_gtid', return_value='u:1-10')
+    @patch.object(MySQL, 'select_mgr_bootstrap_winner', return_value='mysql1')
+    def test_mgr_majority_loss_lock_holder_yields(self, _win, _gtid):
+        self.handler.config._parameters['group_replication_group_name'] = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
+        with patch.object(MySQL, 'get_mgr_status', return_value={}):
+            msg = self.handler.run_mgr_cycle(True, 3, [])
+        self.assertEqual(msg, 'mgr_yield_lock')
+
+    @patch.object(MySQL, 'rejoin_mgr_group', return_value=True)
+    @patch.object(MySQL, 'get_executed_gtid', return_value='u:1-10')
+    @patch.object(MySQL, 'select_mgr_bootstrap_winner', return_value='mysql1')
+    def test_mgr_majority_loss_non_winner_rejoins(self, _win, _gtid, mock_rejoin):
+        self.handler.config._parameters['group_replication_group_name'] = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
+        primary = Member(0, 'mysql1', 0, {
+            'role': 'mgr_primary',
+            'conn_url': 'mysql://127.0.0.1:3307',
+            'gtid_executed': 'u:1-20',
+        })
+        with patch.object(MySQL, 'get_mgr_status', return_value={}):
+            msg = self.handler.run_mgr_cycle(False, 3, [primary])
+        self.assertEqual(msg, 'rejoining MGR group after majority loss')
+        mock_rejoin.assert_called_once_with('127.0.0.1', 3307)
+
+    @patch.object(MySQL, 'get_executed_gtid', return_value='u:1-20')
+    def test_enrich_dcs_data_publishes_gtid(self, _gtid):
+        data = {'xlog_location': 123}
+        self.handler.enrich_dcs_data(data)
+        self.assertEqual(data['binlog_position'], 123)
+        self.assertEqual(data['gtid_executed'], 'u:1-20')
+
     def test_bootstrap_methods(self):
         self.assertTrue(self.handler.can_create_replica_without_replication_connection(['mysqldump']))
         self.assertTrue(self.handler.can_create_replica_without_replication_connection(['xtrabackup']))

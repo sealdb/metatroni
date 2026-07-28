@@ -56,9 +56,12 @@ class MySQLConnection:
                     self.server_version = mysql_version_to_int(ver[0])
             else:
                 try:
+                    if self._connection is None:
+                        raise AttributeError('connection is None')
                     self._connection.ping(reconnect=False)
-                except (MySQLdbError, AttributeError):
+                except (MySQLdbError, AttributeError, TypeError):
                     logger.info("re-establishing patroni %s connection to mysql", self._name)
+                    self._connection = None
                     try:
                         kwargs = dict(self._pool.conn_kwargs)
                         kwargs.update(self._kwargs_override)
@@ -68,6 +71,7 @@ class MySQLConnection:
                             cursor.execute("SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED")
                             cursor.execute("SET autocommit = 1")
                     except MySQLdbError as e:
+                        self._connection = None
                         raise PostgresConnectionException(f'mysql connection failed: {e}')
             return self._connection
 
@@ -109,9 +113,14 @@ class MySQLConnection:
 
     def _is_closed(self, cursor: Any) -> bool:
         try:
-            cursor.connection.ping(reconnect=False)
+            # pymysql may null out cursor.connection after some OperationalErrors
+            # (e.g. rejected CHANGE MASTER on group_replication_recovery).
+            conn = getattr(cursor, 'connection', None)
+            if conn is None:
+                return True
+            conn.ping(reconnect=False)
             return False
-        except MySQLdbError:
+        except (MySQLdbError, AttributeError, TypeError):
             return True
 
     def close(self, silent: bool = False) -> bool:

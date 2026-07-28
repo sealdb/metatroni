@@ -283,6 +283,63 @@ class Ha(object):
         """:returns: `True` if in maintenance mode."""
         return global_config.is_paused
 
+    def _handle_mgr_gtid_fork(self) -> str:
+        """Respond to incomparable MGR GTID sets (data fork).
+
+        Refuses automatic bootstrap, keeps the node read-only, and by default
+        writes ``pause: true`` to the DCS config so autofailover stops until an
+        operator resumes the cluster (``patronictl resume``) after repairing
+        the fork.
+        """
+        fork = getattr(self.state_handler, '_mgr_gtid_fork', None) or {}
+        members = fork.get('members') if isinstance(fork, dict) else fork
+        logger.error(
+            "CRITICAL: MGR GTID fork detected by %s; members=%s",
+            self.state_handler.name, members
+        )
+
+        pause_enabled = True
+        if hasattr(self.state_handler, 'mgr_pause_on_gtid_fork_enabled'):
+            pause_enabled = bool(self.state_handler.mgr_pause_on_gtid_fork_enabled())
+
+        if pause_enabled and not self.is_paused():
+            data: Dict[str, Any] = {}
+            version = None
+            if self.cluster and self.cluster.config:
+                data = dict(self.cluster.config.data or {})
+                version = self.cluster.config.version
+            data['pause'] = True
+            data['mgr_gtid_fork'] = {
+                'reason': 'incomparable_gtid_sets',
+                'detected_by': self.state_handler.name,
+                'members': members or [],
+            }
+            try:
+                value = json.dumps(data, separators=(',', ':'))
+                if self.dcs.set_config_value(value, version):
+                    logger.error(
+                        "Wrote DCS pause=true due to MGR GTID fork "
+                        "(resume with patronictl resume after manual recovery)"
+                    )
+                else:
+                    logger.error(
+                        "Failed to write DCS pause for MGR GTID fork "
+                        "(CAS conflict); will retry next cycle"
+                    )
+            except Exception:
+                logger.exception("Exception while pausing cluster for MGR GTID fork")
+
+        try:
+            if hasattr(self.state_handler, 'set_read_only'):
+                self.state_handler.set_read_only()
+        except Exception:
+            logger.exception("Failed to set read_only after MGR GTID fork")
+
+        if pause_enabled:
+            return ('MGR GTID fork detected; cluster paused for manual '
+                    'intervention')
+        return 'MGR GTID fork detected; automatic bootstrap refused'
+
     def check_timeline(self) -> bool:
         """:returns: `True` if should check whether the timeline is latest during the leader race."""
         return global_config.check_mode('check_timeline')
@@ -1141,7 +1198,11 @@ class Ha(object):
         if self.state_handler.is_primary():
             # Inform the state handler about its primary role.
             # It may be unaware of it if postgres is promoted manually.
-            self.state_handler.set_role(PostgresqlRole.PRIMARY)
+            # Preserve MySQL MGR primary label so run_mgr_cycle does not flap.
+            cur_role = getattr(self.state_handler, 'role', None)
+            if not (getattr(self.state_handler, 'db_type', None) == 'mysql'
+                    and cur_role in ('mgr_primary',)):
+                self.state_handler.set_role(PostgresqlRole.PRIMARY)
             self.process_sync_replication()
             self.update_cluster_history()
             self.state_handler.mpp_handler.sync_meta_data(self.cluster)
@@ -1355,11 +1416,54 @@ class Ha(object):
         else:
             leader_name = leader and leader.name
 
+        # MySQL MGR: binlog file offsets are not comparable across instances.
+        # Prefer GTID_SUBSET when Group Replication is configured.
+        use_gtid = (
+            self.state_handler.db_type == 'mysql'
+            and bool(getattr(getattr(self.state_handler, 'config', None), 'parameters', {})
+                     .get('group_replication_group_name'))
+        )
+        my_gtid = self.state_handler.get_executed_gtid() if use_gtid else ''
+
         for st in self.fetch_nodes_statuses(members):
             if st.failover_limitation() is None:
                 if st.in_recovery is False:
                     logger.warning('Primary (%s) is still alive', st.member.name)
                     return False
+
+                peer_gtid = ''
+                if use_gtid and my_gtid:
+                    binlog = st.data.get('binlog') or {}
+                    peer_gtid = (binlog.get('gtid_set') or binlog.get('gtid_executed')
+                                 or st.data.get('gtid_executed')
+                                 or (st.member.data or {}).get('gtid_executed') or '')
+
+                if peer_gtid:
+                    rel = self.state_handler.gtid_relation(my_gtid, peer_gtid)
+                    if rel == 'b_ahead':
+                        nodes_ahead += 1
+                        logger.info('GTID of %s is ahead of my GTID', st.member.name)
+                        if not self.sync_mode_is_active() or not self.cluster.sync.leader_matches(st.member.name):
+                            return False
+                        logger.info('Ignoring the former leader being ahead of us')
+                        continue
+                    if rel in ('a_ahead', 'equal'):
+                        quorum_vote = st.member.name in voting_set
+                        low_priority = (rel == 'equal'
+                                        and self.patroni.failover_priority < st.failover_priority)
+                        if low_priority and leader_name and leader_name == st.member.name:
+                            low_priority = False
+                        if low_priority and (not self.quorum_commit_mode_is_active() or quorum_vote):
+                            logger.info(
+                                '%s has equal GTID and priority %s, while this node has priority %s',
+                                st.member.name, st.failover_priority, self.patroni.failover_priority)
+                            return False
+                        if quorum_vote:
+                            logger.info('Got quorum vote from %s', st.member.name)
+                            quorum_votes += 1
+                        continue
+                    # incomparable → fall through to integer position heuristic
+
                 if my_wal_position < st.wal_position:
                     nodes_ahead += 1
                     logger.info('Wal position of %s is ahead of my wal position', st.member.name)
@@ -1859,7 +1963,14 @@ class Ha(object):
                     # (Previously these lived only on the non-lock path and never executed.)
                     if self.state_handler.db_type == 'mysql':
                         cluster_nodes = self.cluster and len(self.cluster.members) or 1
-                        mgr_action = self.state_handler.run_mgr_cycle(True, cluster_nodes)
+                        members = self.cluster.members if self.cluster else []
+                        mgr_action = self.state_handler.run_mgr_cycle(True, cluster_nodes, members)
+                        if mgr_action == 'mgr_yield_lock':
+                            self.release_leader_key_voluntarily()
+                            return ('released leader lock; peer has more GTIDs '
+                                    'for MGR bootstrap')
+                        if mgr_action == 'mgr_gtid_fork':
+                            return self._handle_mgr_gtid_fork()
                         if mgr_action:
                             return mgr_action
                         self.state_handler.run_semi_sync_safety_check(cluster_nodes)
@@ -1880,12 +1991,23 @@ class Ha(object):
         else:
             logger.debug('does not have lock')
 
-        # MySQL replica / unlocked: MGR auto-follow (majority-loss bootstrap needs has_lock=False path)
+        # MySQL replica / unlocked: MGR auto-follow + GTID election wait/rejoin
         if self.state_handler.db_type == 'mysql':
-            mgr_action = self.state_handler.run_mgr_cycle(False,
-                                                          self.cluster and len(self.cluster.members) or 1)
+            cluster_nodes = self.cluster and len(self.cluster.members) or 1
+            members = self.cluster.members if self.cluster else []
+            mgr_action = self.state_handler.run_mgr_cycle(False, cluster_nodes, members)
+            if mgr_action == 'mgr_gtid_fork':
+                return self._handle_mgr_gtid_fork()
             if mgr_action:
                 return mgr_action
+            # In MGR mode never fall through to async CHANGE MASTER follow() —
+            # that fights Group Replication and trips PG-only rewind helpers.
+            if getattr(self.state_handler, 'is_mgr_configured', lambda: False)():
+                st = self.state_handler.get_mgr_status()
+                if st:
+                    return ('no action. I am ({0}), MGR {1}/{2}'.format(
+                        self.state_handler.name, st.get('role'), st.get('state')))
+                return 'waiting for MGR group recovery'
 
         lock_owner = self.cluster.leader and self.cluster.leader.name
         if self.is_standby_cluster():

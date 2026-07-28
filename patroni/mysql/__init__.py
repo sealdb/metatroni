@@ -56,6 +56,15 @@ class MySQL(DatabaseHandler):
     def enrich_dcs_data(self, data: Dict[str, Any]) -> None:
         """Add MySQL-specific fields to DCS status data."""
         data['binlog_position'] = data.get('xlog_location', 0)
+        # Publish executed GTID for MGR majority-loss bootstrap election.
+        gtid = self.get_executed_gtid()
+        if gtid:
+            data['gtid_executed'] = gtid
+        fork = getattr(self, '_mgr_gtid_fork', None)
+        if fork:
+            data['mgr_gtid_fork'] = fork
+        elif 'mgr_gtid_fork' in data:
+            data.pop('mgr_gtid_fork', None)
 
     def readiness_check(self, state: str, replication_state: str) -> Optional[str]:
         if state != 'running':
@@ -196,12 +205,22 @@ class MySQL(DatabaseHandler):
 
     def _query(self, sql: str, *params: Any,
                retry: Optional[Any] = None) -> List[Tuple[Any, ...]]:
-        connection = self.connection_pool.get('heartbeat')
-        try:
-            connection.get()
-        except PostgresConnectionException:
-            raise
-        return connection.query(sql, *params)
+        last_exc: Optional[Exception] = None
+        for attempt in range(2):
+            connection = self.connection_pool.get('heartbeat')
+            try:
+                connection.get()
+                return connection.query(sql, *params)
+            except (PostgresConnectionException, AttributeError, TypeError) as e:
+                last_exc = e
+                # GR start/stop flips super_read_only and can drop the pooled conn.
+                self.connection_pool.close()
+                if attempt == 0:
+                    continue
+                raise
+        if last_exc:
+            raise last_exc
+        return []
 
     def _query_one(self, sql: str, *params: Any) -> Optional[Tuple[Any, ...]]:
         results = self._query(sql, *params)
@@ -526,6 +545,9 @@ class MySQL(DatabaseHandler):
         """Check if MGR is configured in parameters."""
         return bool(self.config.parameters.get('group_replication_group_name'))
 
+    def is_mgr_configured(self) -> bool:
+        return self._is_mgr_configured()
+
     def get_executed_gtid(self) -> str:
         """Get the executed GTID set of this node.
 
@@ -534,10 +556,40 @@ class MySQL(DatabaseHandler):
         try:
             row = self._query_one("SELECT @@gtid_executed")
             if row:
-                return row[0] or ''
+                # Collapse whitespace/newlines MySQL may include in the set.
+                return ' '.join(str(row[0] or '').split())
         except Exception:
             pass
         return ''
+
+    def gtid_relation(self, gtid_a: str, gtid_b: str) -> str:
+        """Compare two GTID sets using MySQL ``GTID_SUBSET``.
+
+        :returns: ``'equal'``, ``'a_ahead'``, ``'b_ahead'``, or ``'incomparable'``.
+        """
+        gtid_a = ' '.join(str(gtid_a or '').split())
+        gtid_b = ' '.join(str(gtid_b or '').split())
+        if not gtid_a or not gtid_b:
+            return 'incomparable'
+        try:
+            row = self._query_one(
+                "SELECT GTID_SUBSET(%s, %s), GTID_SUBSET(%s, %s)",
+                gtid_a, gtid_b, gtid_b, gtid_a
+            )
+            if not row:
+                return 'incomparable'
+            a_sub_b = int(row[0] or 0)
+            b_sub_a = int(row[1] or 0)
+            if a_sub_b and b_sub_a:
+                return 'equal'
+            if a_sub_b:
+                return 'b_ahead'  # a ⊂ b
+            if b_sub_a:
+                return 'a_ahead'  # b ⊂ a
+            return 'incomparable'
+        except Exception as e:
+            logger.warning("GTID comparison failed: %r", e)
+            return 'incomparable'
 
     def compare_gtid(self, other_gtid: str) -> int:
         """Compare this node's GTID against another.
@@ -547,25 +599,12 @@ class MySQL(DatabaseHandler):
                   0 if equal or incomparable.
         """
         local = self.get_executed_gtid()
-        if not local or not other_gtid:
-            return 0
-        try:
-            row = self._query_one("SELECT GTID_SUBSET(%s, %s) AS a_sub_b, GTID_SUBSET(%s, %s) AS b_sub_a",
-                                  local, other_gtid, other_gtid, local)
-            if not row:
-                return 0
-            a_sub_b = int(row[0]) if row[0] else 0
-            b_sub_a = int(row[1]) if row[1] else 0
-            if a_sub_b and b_sub_a:
-                return 0   # equal
-            if a_sub_b:
-                return -1  # local is subset → other has more
-            if b_sub_a:
-                return 1   # other is subset → local has more
-            return 0       # incomparable (different uuids)
-        except Exception as e:
-            logger.warning("GTID comparison failed: %r", e)
-            return 0
+        rel = self.gtid_relation(local, other_gtid)
+        if rel == 'a_ahead':
+            return 1
+        if rel == 'b_ahead':
+            return -1
+        return 0
 
     def get_mgr_status(self) -> Dict[str, str]:
         """Query MGR status from ``performance_schema.replication_group_members``.
@@ -575,19 +614,21 @@ class MySQL(DatabaseHandler):
                   Returns empty dict if MGR is not active or query fails.
         """
         try:
+            # Avoid joining member_stats — it can lag right after START GR and
+            # make a healthy ONLINE member look absent.
+            # group_replication_primary_member is a STATUS variable, not @@sysvar.
             row = self._query_one_dict(
-                "SELECT r.MEMBER_ROLE AS role, r.MEMBER_STATE AS state, "
-                "       r.MEMBER_ID AS member_id, r.MEMBER_HOST AS member_host, "
-                "       r.MEMBER_PORT AS member_port, "
-                "       @@group_replication_primary_member AS primary_uuid "
-                "FROM performance_schema.replication_group_members r "
-                "JOIN performance_schema.replication_group_member_stats s "
-                "  ON r.MEMBER_ID = s.MEMBER_ID "
-                "WHERE r.MEMBER_ID = @@server_uuid "
-                "  AND r.MEMBER_STATE NOT IN ('OFFLINE')"
+                "SELECT MEMBER_ROLE AS role, MEMBER_STATE AS state, "
+                "       MEMBER_ID AS member_id, MEMBER_HOST AS member_host, "
+                "       MEMBER_PORT AS member_port, "
+                "       (SELECT MEMBER_ID FROM performance_schema.replication_group_members "
+                "         WHERE MEMBER_ROLE = 'PRIMARY' LIMIT 1) AS primary_uuid "
+                "FROM performance_schema.replication_group_members "
+                "WHERE MEMBER_ID = @@server_uuid "
+                "  AND MEMBER_STATE NOT IN ('OFFLINE', 'ERROR')"
             )
             if row:
-                return {k: (v if v else '') for k, v in row.items()}
+                return {k: (v if v is not None else '') for k, v in row.items()}
         except Exception as e:
             logger.debug("Failed to get MGR status: %r", e)
         return {}
@@ -614,24 +655,6 @@ class MySQL(DatabaseHandler):
             logger.debug("Failed to check MGR health: %r", e)
             return False
 
-    def bootstrap_mgr_group(self) -> bool:
-        """Bootstrap the MGR group when majority is lost.
-
-        This must be called on the node with the highest GTID.
-        Executes: STOP GR → bootstrap_group=ON → START GR → bootstrap_group=OFF.
-        """
-        try:
-            logger.info("Bootstrapping MGR group")
-            self._query("STOP GROUP_REPLICATION")
-            self._query("SET GLOBAL group_replication_bootstrap_group = ON")
-            self._query("START GROUP_REPLICATION")
-            self._query("SET GLOBAL group_replication_bootstrap_group = OFF")
-            logger.info("MGR group bootstrapped successfully")
-            return True
-        except Exception as e:
-            logger.error("Failed to bootstrap MGR group: %r", e)
-            return False
-
     def rejoin_mgr_group(self, primary_host: str, primary_port: int) -> bool:
         """Rejoin the MGR group after bootstrap.
 
@@ -642,7 +665,20 @@ class MySQL(DatabaseHandler):
             user = repl.get('username', 'replicator')
             password = repl.get('password', '')
             logger.info("Rejoining MGR group via %s:%s", primary_host, primary_port)
-            self._query("STOP GROUP_REPLICATION")
+            try:
+                self._query("STOP GROUP_REPLICATION")
+            except Exception:
+                pass
+            # Single-primary MGR refuses START while async channels are running.
+            try:
+                self._query("STOP SLAVE")
+            except Exception:
+                pass
+            try:
+                self._query("RESET SLAVE ALL")
+            except Exception:
+                pass
+            # GET_MASTER_PUBLIC_KEY is rejected on group_replication_recovery (ER 3139).
             self._query(
                 "CHANGE MASTER TO "
                 "MASTER_USER = %s, MASTER_PASSWORD = %s "
@@ -651,19 +687,60 @@ class MySQL(DatabaseHandler):
             )
             self._query("SET GLOBAL group_replication_bootstrap_group = OFF")
             self._query("START GROUP_REPLICATION")
+            self.connection_pool.close()
             logger.info("MGR group rejoin initiated")
             return True
         except Exception as e:
             logger.error("Failed to rejoin MGR group: %r", e)
+            self.connection_pool.close()
             return False
 
-    def run_mgr_cycle(self, has_lock: bool, cluster_nodes: int) -> Optional[str]:
+    def bootstrap_mgr_group(self) -> bool:
+        """Bootstrap the MGR group when majority is lost.
+
+        This must be called on the node with the highest GTID.
+        Executes: STOP GR → bootstrap_group=ON → START GR → bootstrap_group=OFF.
+        """
+        try:
+            logger.info("Bootstrapping MGR group")
+            try:
+                self._query("STOP GROUP_REPLICATION")
+            except Exception:
+                pass
+            # Recovery credentials are required even for the bootstrapper on MySQL 8.
+            # GET_MASTER_PUBLIC_KEY is rejected on group_replication_recovery (ER 3139).
+            repl = self.config.replication
+            user = repl.get('username', 'replicator')
+            password = repl.get('password', '')
+            try:
+                self._query(
+                    "CHANGE MASTER TO "
+                    "MASTER_USER = %s, MASTER_PASSWORD = %s "
+                    "FOR CHANNEL 'group_replication_recovery'",
+                    user, password
+                )
+            except Exception as e:
+                logger.warning("Could not set group_replication_recovery channel: %r", e)
+            self._query("SET GLOBAL group_replication_bootstrap_group = ON")
+            self._query("START GROUP_REPLICATION")
+            self._query("SET GLOBAL group_replication_bootstrap_group = OFF")
+            self.connection_pool.close()
+            logger.info("MGR group bootstrapped successfully")
+            return True
+        except Exception as e:
+            logger.error("Failed to bootstrap MGR group: %r", e)
+            self.connection_pool.close()
+            return False
+
+    def run_mgr_cycle(self, has_lock: bool, cluster_nodes: int,
+                      members: Optional[List[Any]] = None) -> Optional[str]:
         """Run one MGR maintenance cycle.
 
         Called from ``ha.py`` during ``process_healthy_cluster()``.
 
         :param has_lock: whether this node holds the DCS leader lock.
         :param cluster_nodes: total number of cluster nodes (for quorum calc).
+        :param members: current DCS members (used for GTID election / rejoin).
         :returns: action message if action was taken, None otherwise.
         """
         if not self._is_mgr_configured():
@@ -671,50 +748,265 @@ class MySQL(DatabaseHandler):
 
         mgr_status = self.get_mgr_status()
         if not mgr_status:
-            # MGR not active — check if majority is lost and we need bootstrap
-            return self._handle_mgr_majority_loss(has_lock, cluster_nodes)
+            # MGR not active — majority lost or never started; elect bootstrapper.
+            return self._handle_mgr_majority_loss(has_lock, cluster_nodes, members)
 
         # MGR is active — follow its primary
         mgr_role = mgr_status.get('role', '')
-        mgr_state = mgr_status.get('state', '')
 
-        if mgr_role == 'PRIMARY' and self.role != MySQLRole.PRIMARY:
+        if mgr_role == 'PRIMARY' and self.role != MySQLRole.MGR_PRIMARY:
             self.set_role(MySQLRole.MGR_PRIMARY)
             if self.is_read_only():
                 self.set_read_write()
+            self._clear_mgr_gtid_fork()
             return 'recognized as MGR primary'
 
-        if mgr_role == 'SECONDARY' and self.role in (MySQLRole.PRIMARY, MySQLRole.MGR_PRIMARY):
+        if mgr_role == 'SECONDARY' and self.role != MySQLRole.MGR_SECONDARY:
             self.set_role(MySQLRole.MGR_SECONDARY)
             self.set_read_only()
+            self._clear_mgr_gtid_fork()
             return 'demoted to MGR secondary'
 
+        if mgr_status:
+            self._clear_mgr_gtid_fork()
         return None
 
-    def _handle_mgr_majority_loss(self, has_lock: bool, cluster_nodes: int) -> Optional[str]:
-        """Handle the case where MGR has no active members (majority lost).
+    def _member_gtid(self, member: Any) -> str:
+        data = getattr(member, 'data', None) or {}
+        binlog = data.get('binlog') or {}
+        gtid = (data.get('gtid_executed')
+                or binlog.get('gtid_set')
+                or binlog.get('gtid_executed')
+                or '')
+        return ' '.join(str(gtid).split())
+
+    def _mgr_gtid_candidates(self, local_gtid: str,
+                             members: Optional[List[Any]] = None) -> List[Tuple[str, str]]:
+        local_gtid = ' '.join(str(local_gtid or '').split())
+        candidates: List[Tuple[str, str]] = []
+        if local_gtid:
+            candidates.append((self.name, local_gtid))
+        for m in members or []:
+            name = getattr(m, 'name', None)
+            if not name or name == self.name:
+                continue
+            gtid = self._member_gtid(m)
+            if gtid:
+                candidates.append((name, gtid))
+        return candidates
+
+    def _mgr_maximal_candidates(self, candidates: List[Tuple[str, str]]
+                                ) -> List[Tuple[str, str]]:
+        maximal: List[Tuple[str, str]] = []
+        for name_a, gtid_a in candidates:
+            dominated = False
+            for name_b, gtid_b in candidates:
+                if name_a == name_b:
+                    continue
+                if self.gtid_relation(gtid_a, gtid_b) == 'b_ahead':
+                    dominated = True
+                    break
+            if not dominated:
+                maximal.append((name_a, gtid_a))
+        return maximal
+
+    def describe_mgr_gtid_fork(self, local_gtid: str,
+                               members: Optional[List[Any]] = None
+                               ) -> List[Dict[str, str]]:
+        """Return maximal incomparable GTID candidates, or ``[]`` if no fork.
+
+        A fork means two or more members each hold transactions the others lack
+        (``GTID_SUBSET`` both ways false). Automatic MGR bootstrap is unsafe.
+        """
+        candidates = self._mgr_gtid_candidates(local_gtid, members)
+        if len(candidates) < 2:
+            return []
+        maximal = self._mgr_maximal_candidates(candidates)
+        if len(maximal) < 2:
+            return []
+        base_name, base_gtid = maximal[0]
+        for name, gtid in maximal[1:]:
+            if self.gtid_relation(base_gtid, gtid) != 'equal':
+                return [{'name': n, 'gtid_executed': g} for n, g in maximal]
+        return []
+
+    def _clear_mgr_gtid_fork(self) -> None:
+        if getattr(self, '_mgr_gtid_fork', None):
+            self._mgr_gtid_fork = None
+
+    def _record_mgr_gtid_fork(self, fork: List[Dict[str, str]]) -> None:
+        self._mgr_gtid_fork = {
+            'reason': 'incomparable_gtid_sets',
+            'members': fork,
+        }
+
+    def mgr_pause_on_gtid_fork_enabled(self) -> bool:
+        """Whether detecting a GTID fork should write ``pause: true`` to DCS.
+
+        Controlled by Patroni-only ``parameters.mgr_pause_on_gtid_fork``
+        (default ``True``). Not written to ``my.cnf``.
+        """
+        raw = self.config.parameters.get('mgr_pause_on_gtid_fork', True)
+        if raw in (False, 0, '0', 'false', 'False', 'off', 'OFF', 'no', 'NO'):
+            return False
+        return True
+
+    def select_mgr_bootstrap_winner(self, local_gtid: str,
+                                    members: Optional[List[Any]] = None) -> Optional[str]:
+        """Choose which member should bootstrap MGR after majority loss.
+
+        Uses GTID_SUBSET over DCS-published ``gtid_executed`` values plus the
+        local GTID. Among equal maximal sets, the lexicographically smallest
+        member name wins. Returns ``None`` when sets are incomparable.
+        """
+        candidates = self._mgr_gtid_candidates(local_gtid, members)
+        if not candidates:
+            return None
+        if len(candidates) == 1:
+            return candidates[0][0]
+
+        maximal = self._mgr_maximal_candidates(candidates)
+        if not maximal:
+            return None
+        if len(maximal) == 1:
+            return maximal[0][0]
+
+        # Multiple maximal: require all equal; then name tie-break.
+        base_name, base_gtid = maximal[0]
+        for name, gtid in maximal[1:]:
+            rel = self.gtid_relation(base_gtid, gtid)
+            if rel != 'equal':
+                logger.error(
+                    "MGR bootstrap election stalled: incomparable GTID sets "
+                    "among %s (e.g. %s vs %s)",
+                    [n for n, _ in maximal], base_name, name
+                )
+                return None
+        return min(n for n, _ in maximal)
+
+    def _find_mgr_primary_member(self, members: Optional[List[Any]]) -> Optional[Any]:
+        """Return a DCS member that already claims MGR/async primary role."""
+        for m in members or []:
+            if getattr(m, 'name', None) == self.name:
+                continue
+            data = getattr(m, 'data', None) or {}
+            role = str(data.get('role') or '')
+            if role in (MySQLRole.MGR_PRIMARY, MySQLRole.PRIMARY, 'primary', 'master'):
+                if data.get('conn_url') or getattr(m, 'conn_url', None):
+                    return m
+        return None
+
+    def _try_rejoin_mgr(self, members: Optional[List[Any]]) -> Optional[str]:
+        """Attempt to rejoin via an existing primary advertised in DCS."""
+        primary = self._find_mgr_primary_member(members)
+        if not primary:
+            return None
+        conn_url = getattr(primary, 'conn_url', None) or (primary.data or {}).get('conn_url')
+        if not conn_url:
+            return None
+        host, port = self._parse_conn_url(conn_url)
+        if self.rejoin_mgr_group(host, port):
+            self.set_role(MySQLRole.MGR_SECONDARY)
+            self.set_read_only()
+            return 'rejoining MGR group after majority loss'
+        return None
+
+    def _handle_mgr_majority_loss(self, has_lock: bool, cluster_nodes: int,
+                                  members: Optional[List[Any]] = None) -> Optional[str]:
+        """Elect a bootstrapper from DCS GTIDs after MGR majority loss.
 
         Strategy:
-        1. All nodes compare GTIDs via DCS.
-        2. Node with highest GTID bootstraps a new group.
-        3. Other nodes rejoin.
+        1. Every node publishes ``gtid_executed`` via ``enrich_dcs_data``.
+        2. All nodes compute the same winner (max GTID, name tie-break).
+        3. Winner bootstraps only while holding the DCS lock.
+        4. Lock holder that is *not* the winner yields the lock so the winner
+           can acquire it.
+        5. Non-winners rejoin once a primary is advertised.
         """
-        if not has_lock:
-            return None
+        local_gtid = self.get_executed_gtid() or ''
+        peer_gtids = []
+        for m in members or []:
+            if getattr(m, 'name', None) == self.name:
+                continue
+            g = self._member_gtid(m)
+            if g:
+                peer_gtids.append(g)
 
-        local_gtid = self.get_executed_gtid()
+        # Fresh initialize often has empty gtid_executed (post_bootstrap DDL
+        # runs with sql_log_bin=0). Allow lock-holder to form the first group.
         if not local_gtid:
-            logger.warning("Cannot bootstrap MGR: no GTID available")
+            if has_lock and not peer_gtids:
+                logger.warning("MGR initial bootstrap with empty local GTID")
+                if self.bootstrap_mgr_group():
+                    self.set_role(MySQLRole.MGR_PRIMARY)
+                    self.set_read_write()
+                    self._clear_mgr_gtid_fork()
+                    return 'bootstrapped MGR group after majority loss'
+                return None
+            # Joiners may also have empty GTID before any local writes — still
+            # rejoin if a primary is already advertised in DCS.
+            rejoined = self._try_rejoin_mgr(members)
+            if rejoined:
+                return rejoined
+            logger.warning("MGR majority loss: no local GTID available yet")
             return None
 
-        # In a real implementation, GTIDs would be compared across nodes
-        # via DCS. For now, the lock holder bootstraps.
-        logger.warning("MGR majority lost — bootstrapping group")
+        winner = self.select_mgr_bootstrap_winner(local_gtid, members)
+        logger.warning(
+            "MGR majority lost (cluster_nodes=%s): local=%s winner=%s has_lock=%s",
+            cluster_nodes, self.name, winner, has_lock
+        )
+
+        if winner is None:
+            fork = self.describe_mgr_gtid_fork(local_gtid, members)
+            if fork:
+                logger.error(
+                    "CRITICAL: MGR GTID fork (incomparable sets) among %s — "
+                    "refusing automatic bootstrap; manual recovery required",
+                    [m['name'] for m in fork]
+                )
+                for entry in fork:
+                    logger.error("  fork member %s gtid_executed=%s",
+                                 entry['name'], entry['gtid_executed'])
+                self._record_mgr_gtid_fork(fork)
+                try:
+                    self.set_read_only()
+                except Exception:
+                    pass
+                return 'mgr_gtid_fork'
+            return None
+
+        self._clear_mgr_gtid_fork()
+
+        if winner != self.name:
+            if has_lock:
+                # Let the GTID-ahead peer take the lock and bootstrap.
+                return 'mgr_yield_lock'
+            rejoined = self._try_rejoin_mgr(members)
+            if rejoined:
+                return rejoined
+            return 'waiting for MGR bootstrap winner ({0})'.format(winner)
+
+        # We are the elected winner.
+        if not has_lock:
+            # Wait until we hold the lock (previous holder should yield).
+            return 'elected MGR bootstrap winner; waiting for leader lock'
+
+        # Guard against split-brain: if another member already advertises an
+        # MGR/async primary, rejoin that group instead of bootstrapping again.
+        existing = self._find_mgr_primary_member(members)
+        if existing:
+            logger.warning(
+                "MGR primary already advertised as %s; yielding lock instead of bootstrap",
+                getattr(existing, 'name', existing)
+            )
+            return 'mgr_yield_lock'
+
+        logger.warning("MGR majority lost — bootstrapping group as GTID winner")
         if self.bootstrap_mgr_group():
             self.set_role(MySQLRole.MGR_PRIMARY)
             self.set_read_write()
             return 'bootstrapped MGR group after majority loss'
-
         return None
 
     def run_semi_sync_safety_check(self, cluster_nodes: int) -> Optional[str]:
@@ -969,11 +1261,12 @@ class MySQL(DatabaseHandler):
     def set_synchronous_standby_names(self, names: Any) -> None:
         pass
 
-    def copy_logical_slots(self, cluster: Cluster) -> None:
+    def copy_logical_slots(self, cluster: Cluster, *args: Any, **kwargs: Any) -> None:
         pass
 
-    def sync_replication_slots(self, cluster: Cluster) -> None:
-        pass
+    def sync_replication_slots(self, cluster: Cluster, tags: Any = None) -> List[str]:
+        # MySQL has no PG-style replication slots; match SlotsHandler signature.
+        return []
 
     # --- Internal Helpers ---
 

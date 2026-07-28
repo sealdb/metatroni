@@ -1,74 +1,79 @@
 # Patroni MySQL HA 开发进度
 
 ## 环境信息
-- MySQL 8.0.35-debug 源码安装路径: `/home/wslu/work/mysql/mysql80-debug`
+- MySQL 8.0.35-debug: `/home/wslu/work/mysql/mysql80-debug`
 - 工作目录: `/home/wslu/work/github/db/sealdb/metatroni`
-- 项目分支: `dev_base_v4.1.3` (基于 commit `429972a6`)
-- etcd: `/usr/bin/etcd` **3.7.0-alpha.0**（必须用 `etcd3:`，v2 API 已移除）
-- xtrabackup: `/usr/bin/xtrabackup` **8.0.35-36**（与 MySQL 8.0.35 匹配）
+- 分支: `dev_base_v4.1.3`
+- etcd 3.7 → 必须用 `etcd3:`
+- xtrabackup 8.0.35-36 @ `/usr/bin/xtrabackup`
 
-## 已完成的工作
+## 已完成
 
-### 核心修复 / 能力下沉 / Clone / Failover
-见历史条目：ABC、mysqldump/xtrabackup、sysid、follow/start、Patroni+etcd 11/11 等。
+### 主路径
+- Handler / Patroni+etcd async GTID HA（failover + rejoin）
+- Semi-sync quorum → `super_read_only`（持锁主路径）
+- xtrabackup clone E2E + create_replica 失败清理
+- `follow()`/`start()` 对齐 PG；sysid/timeline MySQL 适配
 
-### Semi-Sync 安全与集成（2026-07-24）
+### MGR majority-loss GTID 选举（2026-07-27）
 | 项 | 说明 |
 |----|------|
-| `ha.process_healthy_cluster` | semi-sync / MGR 检查改到 **持锁主路径**（原先只在无锁路径，主上从不执行） |
-| `write_my_cnf` | 配置 `rpl_semi_sync_*` 时自动 `plugin-load-add` semisync_source/replica；忽略 Patroni 专用 `cluster_size` |
-| 集成测试 | `integration-tests/test_mysql_semi_sync.py` — **16/16 passed**（quorum RO → 副本恢复 RW → 副本丢失再 RO） |
+| DCS 发布 | `enrich_dcs_data` → `gtid_executed` |
+| 比较 | `gtid_relation()` / `GTID_SUBSET` → equal / a_ahead / b_ahead / incomparable |
+| 选举 | `select_mgr_bootstrap_winner`：最大 GTID，相等则名字字典序最小 |
+| 持锁落后 | 返回 `mgr_yield_lock` → `ha.release_leader_key_voluntarily()` |
+| 赢家无锁 | 等待租约；竞锁时 `_is_healthiest_node` 在 MGR 模式下比 GTID |
+| 非赢家 | `rejoin_mgr_group`（若 DCS 已有 primary）或等待 |
+| REST | `/patroni` 始终带 `binlog.gtid_set`（`@@gtid_executed`） |
+| 插件 | `write_my_cnf` 自动 `plugin-load-add=group_replication.so` |
+| 单测 | `tests/test_mysql.py` 覆盖选举 / yield / rejoin / enrich / **GTID fork**（61 passed） |
+| 集成 | `test_mysql_mgr_election.py` + `test_mysql_mgr_e2e.py` 31/31 + **`test_mysql_mgr_patroni_ha.py` 24/24**（etcd3 + 3 Patroni） |
 
-### xtrabackup E2E（2026-07-24）
+### GTID 分叉 pause/告警（2026-07-27）
 | 项 | 说明 |
 |----|------|
-| `get_xtrabackup_path` | 优先 `bin_dir`，否则 `PATH` / `/usr/bin` |
-| `ensure_replication_user` | 增加 `BACKUP_ADMIN` + `performance_schema.log_status` |
-| 物理恢复 | 删除捐赠者 `auto.cnf`，避免 UUID 冲突 |
-| 失败清理 | `try/finally` 清理 tmp / 半成品 datadir；超时 kill 子进程 |
-| 集成测试 | `integration-tests/test_mysql_xtrabackup.py` — **13/13 passed** |
+| 检测 | `describe_mgr_gtid_fork`：多个 maximal 且 `GTID_SUBSET` 互不包含 |
+| 动作 | `run_mgr_cycle` → `mgr_gtid_fork`；强制 `super_read_only`；**不** bootstrap |
+| Pause | `ha._handle_mgr_gtid_fork` 默认写 DCS `pause: true` + `mgr_gtid_fork` 面包屑 |
+| 开关 | `mysql.parameters.mgr_pause_on_gtid_fork`（默认 true，不进 my.cnf） |
+| 可见性 | member DCS / `/patroni` 带 `mgr_gtid_fork`；组恢复健康后清除 |
+| 运维 | 修好分叉后 `patronictl resume` |
 
-### create_replica 清理（2026-07-24）
-- mysqldump：失败时 kill mysqld、删 `clone.sql`、rmtree 半成品 datadir
-- xtrabackup：始终清理 `*.xtrabackup_tmp`；失败时清理 datadir
+### 三节点 MGR E2E 踩坑（已修）
+- `@@group_replication_primary_member` 不是 sysvar → status 恒空；改查 `replication_group_members`
+- `GET_MASTER_PUBLIC_KEY` 在 `group_replication_recovery` 上 ER 3139；且 pymysql 出错后 `cursor.connection=None` 触发 ping AttributeError
+- `caching_sha2_password` 无 TLS 无法做 distributed recovery → replicator 用 `mysql_native_password`
+- MGR 通信端口改为 `client_port+10`
+- 空库 `GROUP_CONCAT` → 字面量 `NULL` 导致 mysqldump 失败
+- `rejoin_mgr_group` 须先 `STOP/RESET SLAVE`（单主 MGR 拒绝与异步通道并存）
+- 空 GTID 初始 bootstrap；`sync_replication_slots` 签名对齐 PG
+- MGR 模式下勿落入 async `follow()`（会触发 PG rewind / 双通道）
+- 多数丢失恢复：先让 GTID winner 单独 bootstrap 并写入 DCS `mgr_primary`，再恢复其余节点，避免双主抢 bootstrap
 
-## 测试
-- `tests/test_mysql.py` — 53 unit tests
-- `integration-tests/test_mysql_ha.py` — 44/44（handler failover + rejoin）
-- `integration-tests/test_mysql_patroni_ha.py` — 11/11（Patroni + etcd）
-- `integration-tests/test_mysql_semi_sync.py` — **16/16**
-- `integration-tests/test_mysql_xtrabackup.py` — **13/13**
+## 待办
 
-## 待办事项
-
-### 优先级: 高（下一阶段）
-
-1. **MGR majority-loss GTID 选举做实**
-   - `_handle_mgr_majority_loss` 仍是「持锁节点直接 bootstrap」
-   - 需经 DCS 比较各节点 GTID 再选 bootstrap 者
-   - 配套 MGR 集成测试（primary 切换、majority loss）
-
-### 优先级: 低
-
-2. 文档/示例 YAML 持续同步（semi-sync / xtrabackup 配置样例）
+### 优先级: 中
+1. MGR 与 async GTID 复制模式切换文档
 
 ## 测试命令
 ```bash
-# 单元测试
 python3 -m unittest tests.test_mysql -q
 
-# Handler HA（含 failover + rejoin）
-MYSQL_BASE=/home/wslu/work/mysql/mysql80-debug python3 integration-tests/test_mysql_ha.py
+MYSQL_BASE=/home/wslu/work/mysql/mysql80-debug PYTHONPATH=. \
+  python3 -u integration-tests/test_mysql_mgr_election.py
 
-# Patroni + etcd
+MYSQL_BASE=/home/wslu/work/mysql/mysql80-debug PYTHONPATH=. \
+  python3 -u integration-tests/test_mysql_mgr_e2e.py
+
+MYSQL_BASE=/home/wslu/work/mysql/mysql80-debug PYTHONPATH=. \
+  python3 -u integration-tests/test_mysql_mgr_patroni_ha.py
+
 MYSQL_BASE=/home/wslu/work/mysql/mysql80-debug PYTHONPATH=. \
   python3 -u integration-tests/test_mysql_patroni_ha.py
 
-# Semi-sync quorum safety
 MYSQL_BASE=/home/wslu/work/mysql/mysql80-debug PYTHONPATH=. \
   python3 -u integration-tests/test_mysql_semi_sync.py
 
-# xtrabackup clone
 MYSQL_BASE=/home/wslu/work/mysql/mysql80-debug PYTHONPATH=. \
   python3 -u integration-tests/test_mysql_xtrabackup.py
 ```
