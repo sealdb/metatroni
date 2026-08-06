@@ -1,0 +1,16 @@
+# Semi-sync block — xenon MySQL.md + AFTER_SYNC (ops / financial-grade).
+# MySQL 8.0 source/replica names (xenon docs use master/slave).
+#
+# Startup posture matches xenon:
+#   source(master) OFF until Patroni promotes; replica(slave) ON.
+# Runtime: Patroni sets AFTER_SYNC, infinite timeout (≥3 nodes), wait_count=(N-1)//2.
+
+rpl_semi_sync_source_enabled: "OFF"
+rpl_semi_sync_replica_enabled: "ON"
+# MySQL 8.0.26+ name (xenon docs still say wait_no_slave)
+rpl_semi_sync_source_wait_no_replica: "ON"
+rpl_semi_sync_source_wait_point: "AFTER_SYNC"
+# Placeholder values; initcmd overwrites timeout / wait_count / cluster_size
+rpl_semi_sync_source_timeout: "1000000000000000000"
+rpl_semi_sync_source_wait_for_replica_count: "1"
+cluster_size: "3"

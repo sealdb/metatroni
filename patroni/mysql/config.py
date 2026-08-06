@@ -159,20 +159,36 @@ class ConfigHandler:
             params.setdefault('report_host', gr_host)
             params.setdefault('report_port', str(self._port))
 
-        # Semi-sync plugins (MySQL 8 source/replica naming)
-        if (params.get('rpl_semi_sync_source_enabled')
-                or params.get('rpl_semi_sync_replica_enabled')):
-            for p in ('semisync_source.so', 'semisync_replica.so'):
+        # Semi-sync plugins — name depends on MySQL version (5.7 master/slave vs 8.0.26+ source/replica)
+        if any(params.get(k) for k in (
+                'rpl_semi_sync_source_enabled', 'rpl_semi_sync_replica_enabled',
+                'rpl_semi_sync_master_enabled', 'rpl_semi_sync_slave_enabled')):
+            if (params.get('rpl_semi_sync_source_enabled') is not None
+                    or params.get('rpl_semi_sync_replica_enabled') is not None):
+                plugin_pair = ('semisync_source.so', 'semisync_replica.so')
+            else:
+                plugin_pair = ('semisync_master.so', 'semisync_slave.so')
+            for p in plugin_pair:
                 if p not in plugins:
                     plugins.append(p)
 
         if plugins:
             params['plugin-load-add'] = ';'.join(plugins)
 
+        # plugin-load* MUST appear before plugin-owned variables, otherwise
+        # mysqld treats them as unknown (e.g. rpl_semi_sync_*) and aborts.
         lines = ['[mysqld]']
+        skip_keys = {'cluster_size', 'mgr_pause_on_gtid_fork'}
+        if 'plugin-load-add' in params:
+            lines.append(f"plugin-load-add = {params['plugin-load-add']}")
+            skip_keys.add('plugin-load-add')
+        if 'plugin-load' in params:
+            lines.append(f"plugin-load = {params['plugin-load']}")
+            skip_keys.add('plugin-load')
+
         for key, value in params.items():
             # Patroni-only hints — never write into my.cnf
-            if key in ('cluster_size', 'mgr_pause_on_gtid_fork'):
+            if key in skip_keys:
                 continue
             lines.append(f'{key} = {value}')
         lines.append('')

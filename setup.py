@@ -61,7 +61,8 @@ CONSOLE_SCRIPTS = ['patroni = patroni.__main__:main',
                    'patroni_raft_controller = patroni.raft_controller:main',
                    "patroni_wale_restore = patroni.scripts.wale_restore:main",
                    "patroni_aws = patroni.scripts.aws:main",
-                   "patroni_barman = patroni.scripts.barman.cli:main"]
+                   "patroni_barman = patroni.scripts.barman.cli:main",
+                   "patroni_mysql_init = patroni.mysql.initcmd:main"]
 
 
 class _Command(Command):

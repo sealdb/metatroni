@@ -11,9 +11,10 @@
 
 ### 主路径
 - Handler / Patroni+etcd async GTID HA（failover + rejoin）
-- Semi-sync quorum → `super_read_only`（持锁主路径）
+- Semi-sync：`AFTER_SYNC` + 3 节点无限 timeout（对齐 xenon）+ quorum→`super_read_only`
 - xtrabackup clone E2E + create_replica 失败清理
 - `follow()`/`start()` 对齐 PG；sysid/timeline MySQL 适配
+- **`patroni_mysql_init`**：模板生成 `patroni.yml`/`my.cnf`，单机多节点端口错开，内存按百分比均分
 
 ### MGR majority-loss GTID 选举（2026-07-27）
 | 项 | 说明 |
@@ -55,9 +56,18 @@
 ### 优先级: 中
 1. MGR 与 async GTID 复制模式切换文档
 
+### 工具
+- `patroni_mysql_init`：生成单机多节点 `patroni.yml` + `my.cnf`（见 MYSQL_HA.md）
+
 ## 测试命令
 ```bash
-python3 -m unittest tests.test_mysql -q
+python3 -m unittest tests.test_mysql tests.test_mysql_init -q
+
+# 生成 3 节点 semi-sync（默认输出到项目 deploy/mysql-ha）
+PYTHONPATH=. python3 -m patroni.mysql.initcmd --force \
+  --bin-dir /home/wslu/work/mysql/mysql80-debug/bin \
+  --memory-pct 50
+```
 
 MYSQL_BASE=/home/wslu/work/mysql/mysql80-debug PYTHONPATH=. \
   python3 -u integration-tests/test_mysql_mgr_election.py

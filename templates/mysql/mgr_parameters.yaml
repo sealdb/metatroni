@@ -1,0 +1,16 @@
+# Group Replication (xenon-mgr) — single-primary.
+# Local address / seeds / report_* are filled per node by initcmd.
+# Plugin group_replication.so is added by ConfigHandler.write_my_cnf.
+
+group_replication_group_name: "00000000-0000-0000-0000-000000000000"
+loose-group_replication_start_on_boot: "OFF"
+loose-group_replication_bootstrap_group: "OFF"
+loose-group_replication_single_primary_mode: "ON"
+loose-group_replication_local_address: "127.0.0.1:3316"
+loose-group_replication_group_seeds: "127.0.0.1:3316"
+loose-group_replication_ip_allowlist: "127.0.0.1/32,::1/128"
+loose-group_replication_recovery_use_ssl: "OFF"
+loose-binlog_transaction_dependency_tracking: "WRITESET"
+transaction_write_set_extraction: "XXHASH64"
+binlog_checksum: "NONE"
+cluster_size: "3"

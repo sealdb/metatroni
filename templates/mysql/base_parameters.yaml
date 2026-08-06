@@ -1,0 +1,52 @@
+# Shared mysqld parameters — SUPERSEDED by patroni.mysql.versioning
+#
+# Keep this file only as a human-readable 8.0-oriented example.
+# initcmd builds parameters via versioning.build_mysqld_parameters().
+# See templates/mysql/VERSIONS.md and templates/mysql/versions/*.yaml.
+
+# --- Replication / GTID (xenon MySQL.md) ---
+gtid_mode: "ON"
+enforce_gtid_consistency: "ON"
+log-bin: "mysql-bin"
+log_slave_updates: "ON"
+binlog_format: "ROW"
+skip_slave_start: "ON"
+slave_parallel_type: "LOGICAL_CLOCK"
+slave_parallel_workers: "64"
+
+# --- Relay / metadata (radondb-ansible) ---
+master_info_repository: "TABLE"
+relay_log_info_repository: "TABLE"
+sync_relay_log: "1000"
+sync_master_info: "1000"
+sync_relay_log_info: "1000"
+
+# --- Durability for financial-grade semi-sync / MGR ---
+# (AFTER_SYNC alone is insufficient without durable binlog + redo)
+sync_binlog: "1"
+innodb_flush_log_at_trx_commit: "1"
+innodb_flush_method: "O_DIRECT"
+
+# --- General (radondb-ansible defaults) ---
+read_only: "ON"
+mysqlx: "OFF"
+open_files_limit: "65536"
+slow_query_log: "1"
+long_query_time: "1"
+tmp_table_size: "32M"
+max_heap_table_size: "32M"
+thread_cache_size: "128"
+table_open_cache: "2000"
+table_definition_cache: "2000"
+max_allowed_packet: "4194304"
+max_connect_errors: "655360"
+back_log: "2048"
+key_buffer_size: "33554432"
+# query_cache_* removed in MySQL 8.0 (present in xenon/5.7 ansible templates)
+# ansible used expire_logs_days=1; MySQL 8 prefers seconds (1 day)
+binlog_expire_logs_seconds: "86400"
+max_binlog_size: "100M"
+character_set_server: "utf8mb4"
+collation_server: "utf8mb4_0900_ai_ci"
+skip_name_resolve: "ON"
+log_bin_trust_function_creators: "1"

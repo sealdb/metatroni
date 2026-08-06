@@ -1,0 +1,21 @@
+# Reference profile — MySQL 8.0.x
+# Naming flips at 8.0.26 (master/slave → source/replica).
+# Redo: innodb_redo_log_capacity from 8.0.30+.
+family: "8.0"
+semi_sync_pre_8_0_26:
+  rpl_semi_sync_master_enabled: "OFF"
+  rpl_semi_sync_slave_enabled: "ON"
+  rpl_semi_sync_master_wait_no_slave: "ON"
+  rpl_semi_sync_master_wait_point: "AFTER_SYNC"
+  plugins: ["semisync_master.so", "semisync_slave.so"]
+semi_sync_8_0_26_plus:
+  rpl_semi_sync_source_enabled: "OFF"
+  rpl_semi_sync_replica_enabled: "ON"
+  rpl_semi_sync_source_wait_no_replica: "ON"
+  rpl_semi_sync_source_wait_point: "AFTER_SYNC"
+  plugins: ["semisync_source.so", "semisync_replica.so"]
+notes:
+  - no query_cache
+  - binlog_expire_logs_seconds
+  - mysqlx=OFF
+  - collation utf8mb4_0900_ai_ci

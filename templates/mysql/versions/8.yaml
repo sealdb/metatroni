@@ -1,0 +1,12 @@
+# Reference profile — MySQL 8.1+ innovation / 8.x LTS-style
+family: "8"
+semi_sync:
+  rpl_semi_sync_source_enabled: "OFF"
+  rpl_semi_sync_replica_enabled: "ON"
+  rpl_semi_sync_source_wait_no_replica: "ON"
+  rpl_semi_sync_source_wait_point: "AFTER_SYNC"
+  plugins: ["semisync_source.so", "semisync_replica.so"]
+notes:
+  - log_replica_updates / skip_replica_start / replica_parallel_*
+  - innodb_redo_log_capacity
+  - binlog_expire_logs_seconds

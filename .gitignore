@@ -68,5 +68,8 @@ venv*/
 # Default test data directory
 data/
 
+# Generated local multi-node layouts (templates stay in templates/mysql/)
+deploy/
+
 # macOS
 **/.DS_Store

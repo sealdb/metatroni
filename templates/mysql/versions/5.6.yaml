@@ -1,0 +1,17 @@
+# Reference profile — MySQL 5.6 (xenon-compatible GTID + semi-sync)
+# Actual generation: patroni.mysql.versioning.build_mysqld_parameters()
+
+family: "5.6"
+semi_sync:
+  rpl_semi_sync_master_enabled: "OFF"
+  rpl_semi_sync_slave_enabled: "ON"
+  rpl_semi_sync_master_wait_no_slave: "ON"
+  rpl_semi_sync_master_timeout: "1000000000000000000"
+  plugins: ["semisync_master.so", "semisync_slave.so"]
+notes:
+  - no AFTER_SYNC wait_point (added in 5.7.2)
+  - no wait_for_slave_count (added in 5.7.3)
+  - query_cache_type/size present (set OFF)
+  - expire_logs_days (not binlog_expire_logs_seconds)
+  - innodb_log_file_size (not redo_log_capacity)
+  - MGR not available

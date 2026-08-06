@@ -353,6 +353,7 @@ class MySQL(DatabaseHandler):
             # Safety net: clones via mysqldump do not copy mysql.user. Ensure
             # the replication account exists before other nodes try to follow us.
             self.bootstrap.ensure_replication_user()
+            self.set_read_write()
             self._enable_semi_sync()
             if async_response:
                 async_response.complete(True)
@@ -419,6 +420,10 @@ class MySQL(DatabaseHandler):
                 sql_ok = slave.get('Slave_SQL_Running') == 'Yes'
                 if cur_host == host and cur_port == port and io_ok and sql_ok:
                     logger.debug("Already replicating from %s:%s", host, port)
+                    try:
+                        self.set_read_only()
+                    except Exception:
+                        pass
                     return True
         except Exception:
             pass
@@ -437,6 +442,7 @@ class MySQL(DatabaseHandler):
             )
             self._query("START SLAVE")
             logger.info("Started replication from %s:%s", host, port)
+            self.set_read_only()
             self._enable_semi_sync()
             # Refresh heartbeat connection so subsequent reads do not see a
             # pre-follow REPEATABLE READ snapshot.
@@ -456,8 +462,28 @@ class MySQL(DatabaseHandler):
             return
         try:
             if self.is_primary():
+                # Financial-grade: AFTER_SYNC so the commit waits until the event
+                # is durable on the source and ACKed by enough replicas (xenon).
+                try:
+                    self._query("SET GLOBAL rpl_semi_sync_source_wait_point = 'AFTER_SYNC'")
+                except Exception:
+                    # MySQL 5.7 legacy name
+                    try:
+                        self._query("SET GLOBAL rpl_semi_sync_master_wait_point = 'AFTER_SYNC'")
+                    except Exception as e:
+                        logger.warning("Failed to set semi-sync wait_point=AFTER_SYNC: %r", e)
+                try:
+                    self._query("SET GLOBAL rpl_semi_sync_source_wait_no_replica = 1")
+                except Exception:
+                    try:
+                        self._query("SET GLOBAL rpl_semi_sync_source_wait_no_slave = 1")
+                    except Exception:
+                        try:
+                            self._query("SET GLOBAL rpl_semi_sync_master_wait_no_slave = 1")
+                        except Exception:
+                            pass
                 self._query("SET GLOBAL rpl_semi_sync_source_enabled = 1")
-                logger.info("Semi-sync replication enabled as source")
+                logger.info("Semi-sync replication enabled as source (wait_point=AFTER_SYNC)")
                 self._configure_semi_sync_timeout()
                 self._configure_semi_sync_wait_count()
             else:
@@ -466,6 +492,37 @@ class MySQL(DatabaseHandler):
         except Exception as e:
             logger.warning("Failed to enable semi-sync replication: %r", e)
 
+    def _configure_semi_sync_timeout(self) -> None:
+        """Set rpl_semi_sync_source_timeout to prevent degrading to async.
+
+        Matches xenon: 3+ nodes use an effectively infinite timeout; 2-node
+        clusters keep a short timeout (default 10s).
+        """
+        try:
+            node_count = int(self.config.parameters.get('cluster_size', 3))
+            # 10**18 ms — same magnitude as xenon's semisyncTimeout.
+            timeout_ms = 10 ** 18 if node_count >= 3 else 10000
+            try:
+                self._query("SET GLOBAL rpl_semi_sync_source_timeout = %s", timeout_ms)
+            except Exception:
+                self._query("SET GLOBAL rpl_semi_sync_master_timeout = %s", timeout_ms)
+            logger.info("Semi-sync source timeout set to %s ms (node_count=%s)", timeout_ms, node_count)
+        except Exception as e:
+            logger.warning("Failed to set semi-sync timeout: %r", e)
+
+    def _configure_semi_sync_wait_count(self) -> None:
+        """Set wait_for_replica_count to (N-1)//2 (xenon majority of peers)."""
+        try:
+            node_count = int(self.config.parameters.get('cluster_size', 3))
+            wait_count = max(1, (node_count - 1) // 2)
+            try:
+                self._query("SET GLOBAL rpl_semi_sync_source_wait_for_replica_count = %s", wait_count)
+            except Exception:
+                self._query("SET GLOBAL rpl_semi_sync_master_wait_for_slave_count = %s", wait_count)
+            logger.info("Semi-sync wait count set to %s (node_count=%s)", wait_count, node_count)
+        except Exception as e:
+            logger.warning("Failed to set semi-sync wait count: %r", e)
+
     def _disable_semi_sync(self) -> None:
         try:
             self._query("SET GLOBAL rpl_semi_sync_source_enabled = 0")
@@ -473,31 +530,6 @@ class MySQL(DatabaseHandler):
             logger.info("Semi-sync replication disabled")
         except Exception:
             pass
-
-    def _configure_semi_sync_timeout(self) -> None:
-        """Set rpl_semi_sync_source_timeout to prevent degrading to async.
-
-        For 3+ node clusters: effectively infinite (~1 year in ms).
-        For 2-node clusters: 10 seconds (tolerates brief slave restart).
-        """
-        try:
-            node_count = int(self.config.parameters.get('cluster_size', 3))
-            timeout_ms = 31536000000 if node_count >= 3 else 10000
-            self._query("SET GLOBAL rpl_semi_sync_source_timeout = %s", timeout_ms)
-            logger.info("Semi-sync source timeout set to %s ms (node_count=%s)", timeout_ms, node_count)
-        except Exception as e:
-            logger.warning("Failed to set semi-sync timeout: %r", e)
-
-    def _configure_semi_sync_wait_count(self) -> None:
-        """Set rpl_semi_sync_source_wait_for_replica_count to majority of peers."""
-        try:
-            node_count = int(self.config.parameters.get('cluster_size', 3))
-            # Wait for at least 1 replica, or majority for larger clusters
-            wait_count = max(1, (node_count // 2))
-            self._query("SET GLOBAL rpl_semi_sync_source_wait_for_replica_count = %s", wait_count)
-            logger.info("Semi-sync wait count set to %s (node_count=%s)", wait_count, node_count)
-        except Exception as e:
-            logger.warning("Failed to set semi-sync wait count: %r", e)
 
     def count_semi_sync_replicas(self) -> int:
         """Return the number of semi-sync replicas currently connected."""

@@ -58,7 +58,54 @@ class Bootstrap:
             logger.error("MySQL started but not ready after 30s")
             proc.signal_kill()
             return False
+        # --initialize-insecure only creates root@localhost (socket).
+        # Patroni heartbeat uses TCP (connect_address) → open root@127.0.0.1.
+        if not self._grant_bootstrap_tcp_access(sock):
+            logger.error("Failed to grant TCP access for Patroni after MySQL start")
+            return False
         return True
+
+    def _grant_bootstrap_tcp_access(self, sock: str) -> bool:
+        """Allow Patroni TCP connections after mysqld --initialize-insecure.
+
+        Fresh datadir only has ``root@localhost`` over the unix socket. Without
+        ``root@127.0.0.1`` (or ``root@%``), heartbeat fails with ER 1130 and
+        HA stays stuck on \"waiting for end of recovery after bootstrap\".
+        """
+        mysql_path = self._config_handler.get_mysql_path()
+        su = self._config_handler.superuser or {}
+        user = su.get('username', 'root') or 'root'
+        password = su.get('password', '') or ''
+        # Escape single quotes for SQL literals.
+        pw_sql = password.replace("\\", "\\\\").replace("'", "''")
+        user_sql = user.replace("'", "''")
+        sql = (
+            "SET sql_log_bin=0; "
+            f"CREATE USER IF NOT EXISTS '{user_sql}'@'127.0.0.1' "
+            f"IDENTIFIED WITH mysql_native_password BY '{pw_sql}'; "
+            f"CREATE USER IF NOT EXISTS '{user_sql}'@'localhost' "
+            f"IDENTIFIED WITH mysql_native_password BY '{pw_sql}'; "
+            f"ALTER USER '{user_sql}'@'localhost' "
+            f"IDENTIFIED WITH mysql_native_password BY '{pw_sql}'; "
+            f"GRANT ALL PRIVILEGES ON *.* TO '{user_sql}'@'127.0.0.1' WITH GRANT OPTION; "
+            f"GRANT ALL PRIVILEGES ON *.* TO '{user_sql}'@'localhost' WITH GRANT OPTION; "
+            "FLUSH PRIVILEGES; "
+            # Template starts with read_only=ON (xenon); bootstrap primary must be RW.
+            "SET GLOBAL super_read_only=OFF; "
+            "SET GLOBAL read_only=OFF; "
+            "SET sql_log_bin=1;"
+        )
+        cmd = [mysql_path, f'--socket={sock}', '-uroot', '--connect-timeout=5', '-e', sql]
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            if result.returncode != 0:
+                logger.error("grant TCP access failed: %s", (result.stderr or result.stdout)[-500:])
+                return False
+            logger.info("Granted %s@127.0.0.1 TCP access for Patroni", user)
+            return True
+        except Exception as e:
+            logger.error("grant TCP access exception: %r", e)
+            return False
 
     def bootstrap(self, config: Dict[str, Any]) -> bool:
         if not self.initialize():
@@ -141,6 +188,14 @@ class Bootstrap:
                 logger.error("Failed to start MySQL for cloning")
                 return False
 
+            sock = os.path.join(data_dir, 'mysql.sock')
+            if not proc.wait_for_ready(sock, 30):
+                logger.error("MySQL not ready after 30s (clone)")
+                return False
+            if not self._grant_bootstrap_tcp_access(sock):
+                logger.error("Failed to grant TCP access after clone start")
+                return False
+
             host, port = self._parse_conn_url(conn_url)
             repl = self._config_handler.replication
             user = repl.get('username', 'replicator')
@@ -212,11 +267,6 @@ class Bootstrap:
                 return False
 
             logger.info("Restoring data locally...")
-            sock = os.path.join(data_dir, 'mysql.sock')
-            if not proc.wait_for_ready(sock, 30):
-                logger.error("MySQL not ready after 30s")
-                return False
-
             restore_cmd = [mysql_path, '-S', sock, '-u', 'root']
             try:
                 with open(dump_file, 'rb') as f:

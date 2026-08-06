@@ -8,7 +8,13 @@ from unittest.mock import Mock, patch, PropertyMock
 # Mock pymysql before importing any MySQL modules
 mock_pymysql = type(sys)('pymysql')
 mock_pymysql.connect = Mock()
+mock_err = type(sys)('pymysql.err')
+mock_err.Error = Exception
+mock_err.OperationalError = type('OperationalError', (Exception,), {})
+mock_err.DatabaseError = type('DatabaseError', (Exception,), {})
+mock_pymysql.err = mock_err
 sys.modules['pymysql'] = mock_pymysql
+sys.modules['pymysql.err'] = mock_err
 
 from patroni.dcs import Leader, Member
 from patroni.mysql import MySQL
@@ -40,6 +46,15 @@ def get_mysql_config(name='mysql0'):
             'enforce_gtid_consistency': 'ON',
         }
     }
+
+
+def _wire_pymysql_mock():
+    """Point both sys.modules and connection.pymysql at MockMySQLConnection."""
+    from patroni.mysql import connection as mysql_connection
+    conn = MockMySQLConnection()
+    mock_pymysql.connect.return_value = conn
+    if hasattr(mysql_connection, 'pymysql'):
+        mysql_connection.pymysql.connect.return_value = conn
 
 
 def mock_query_results(results):
@@ -152,6 +167,8 @@ class TestMySQLConfig(unittest.TestCase):
         self.assertIn('semisync_source.so', text)
         self.assertIn('semisync_replica.so', text)
         self.assertNotIn('cluster_size', text)
+        # plugin-load must come before plugin-owned variables
+        self.assertLess(text.find('plugin-load-add'), text.find('rpl_semi_sync'))
         shutil.rmtree(cfg['data_dir'], ignore_errors=True)
 
 
@@ -159,6 +176,7 @@ class TestMySQL(unittest.TestCase):
 
     def setUp(self):
         mock_pymysql.connect.return_value = MockMySQLConnection()
+        _wire_pymysql_mock()
         self.config = get_mysql_config()
 
         self.data_dir = self.config['data_dir']
@@ -490,6 +508,7 @@ class TestMySQLIntegration(unittest.TestCase):
 
     def setUp(self):
         mock_pymysql.connect.return_value = MockMySQLConnection()
+        _wire_pymysql_mock()
         self.config = get_mysql_config()
         self.data_dir = self.config['data_dir']
         os.makedirs(self.data_dir, exist_ok=True)
@@ -515,6 +534,7 @@ class TestBootstrap(unittest.TestCase):
 
     def setUp(self):
         mock_pymysql.connect.return_value = MockMySQLConnection()
+        _wire_pymysql_mock()
         self.config = get_mysql_config()
         self.data_dir = self.config['data_dir']
         os.makedirs(self.data_dir, exist_ok=True)
@@ -533,7 +553,9 @@ class TestBootstrap(unittest.TestCase):
 
     @patch.object(MySQL, '_query')
     def test_post_bootstrap(self, mock_query):
-        result = self.handler.bootstrap.post_bootstrap({})
+        # Recreate under the patch so Bootstrap captures the mocked _query.
+        handler = MySQL(self.config)
+        result = handler.bootstrap.post_bootstrap({})
         self.assertTrue(result)
 
     def test_post_bootstrap_no_config(self):
@@ -578,6 +600,7 @@ class TestMySQLConnection(unittest.TestCase):
 
     def setUp(self):
         mock_pymysql.connect.return_value = MockMySQLConnection()
+        _wire_pymysql_mock()
 
     def tearDown(self):
         pass

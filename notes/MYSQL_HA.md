@@ -375,12 +375,35 @@ When the former primary comes back:
 |------------|-------------|
 | **Clone methods** | `mysqldump` (default) and `xtrabackup` are both implemented and integration-tested. Configure via `mysql.create_replica_methods`. xtrabackup must match the MySQL major.minor (e.g. 8.0.35). |
 | **No pg_rewind equivalent** | Patroni's pg_rewind logic is skipped for MySQL (`needs_rewind=False`). Old primary rejoins by following the new primary. MySQL handles this via GTID auto-positioning and `RESET SLAVE ALL`. |
-| **Semi-synchronous replication** | Supported when `rpl_semi_sync_source_enabled` / `rpl_semi_sync_replica_enabled` are set (plugins auto-loaded). Primary runs a quorum check each HA cycle while holding the lock; below-quorum clients force `super_read_only`. Use Patroni-only `parameters.cluster_size` to size wait_count / timeout. |
+| **Semi-synchronous replication** | Templates and runtime enforce xenon-style strong consistency: `wait_point=AFTER_SYNC`, `wait_no_slave=ON`, timeout `10**18` ms for 3+ nodes (no async degrade), wait count `(N-1)//2`. Quorum loss still forces `super_read_only`. |
 | **MGR (Group Replication)** | Optional: when `group_replication_group_name` is set, Patroni follows MGR primary/secondary. On majority loss, nodes elect a bootstrapper from DCS-published `gtid_executed` (GTID_SUBSET); the winner bootstraps only with the leader lock; a lock holder that is behind yields the lock; others rejoin. Incomparable GTID sets refuse election. Validated by `integration-tests/test_mysql_mgr_e2e.py` (3-node GR). |
 | **Crash recovery** | MySQL handles crash recovery automatically on startup. Patroni `start()` / `follow()` wait until the socket accepts connections. |
 | **Replication slots** | Not applicable (MySQL uses GTID-based auto-positioning). |
 | **Standby cluster** | Not supported. The standby cluster feature assumes PostgreSQL WAL archiving. |
 | **Full Patroni+DCS E2E** | Validated by `integration-tests/test_mysql_patroni_ha.py` (etcd3, dual Patroni, failover + rejoin). |
+
+## Config bootstrap (`patroni_mysql_init`)
+
+Templates (committed): ``templates/mysql/`` — aligned with xenon / radondb-ansible /
+xenon-mgr (see ``templates/mysql/README.md``).
+
+Default generate path (project-local): ``deploy/mysql-ha/``
+
+```bash
+PYTHONPATH=. python3 -m patroni.mysql.initcmd --force \
+  --bin-dir /usr/local/mysql/bin --memory-pct 50
+
+# Absolute per-node buffer pool / MGR
+patroni_mysql_init -o deploy/mysql-mgr --nodes 3 --innodb-buffer-pool-size 2G --mode mgr --force
+```
+
+Defaults:
+- Version: auto-detect via `mysqld --version`, or `--mysql-version 5.6|5.7|8.0|8.x|9.x`
+- Parameters from `patroni.mysql.versioning` (see `templates/mysql/VERSIONS.md`)
+- Memory budget = `MemTotal × --memory-pct` (default **50%**), split evenly across local nodes
+- Xenon semi-sync: source/master OFF at boot; `AFTER_SYNC` where supported; timeout `1e18` (≥3 nodes)
+- Durability: `sync_binlog=1`, `innodb_flush_log_at_trx_commit=1`
+- Layout: `<out>/<name>/patroni.yml`, `my.cnf`, `data/`, plus `start.sh` / `stop.sh`
 
 ### MySQL-Specific
 

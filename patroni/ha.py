@@ -1698,8 +1698,48 @@ class Ha(object):
         self.touch_member()
         logger.info("Leader key released")
 
+    def _demote_mysql(self, mode: str) -> bool:
+        """Demote a former MySQL primary without PostgreSQL rewind/archive paths.
+
+        When the DCS lock is lost, keep mysqld running, force read-only, disable
+        semi-sync source mode, and reconfigure replication to the new leader.
+        Stopping mysqld (PG ``immediate``) is unnecessary and slows recovery.
+        """
+        logger.info('Demoting MySQL self (%s)', mode)
+        try:
+            if hasattr(self.state_handler, 'set_read_only'):
+                self.state_handler.set_read_only()
+        except Exception:
+            logger.exception('Failed to set MySQL read_only during demote')
+
+        try:
+            self.state_handler.demote()
+        except Exception:
+            logger.exception('MySQL.demote() failed')
+
+        self.set_is_leader(False)
+
+        # Attach to the current DCS leader as a replica.
+        try:
+            self.load_cluster_from_dcs()
+            node_to_follow = self._get_node_to_follow(self.cluster) if self.cluster else None
+            if node_to_follow and getattr(node_to_follow, 'conn_url', None):
+                ok = self.state_handler.follow(node_to_follow, role='replica')
+                if not ok:
+                    logger.error('MySQL demote: follow(%s) failed', node_to_follow.name)
+            else:
+                logger.warning('MySQL demote: no leader conn_url to follow yet')
+        except Exception:
+            logger.exception('MySQL demote: failed to start replication after demote')
+
+        try:
+            self.touch_member()
+        except Exception:
+            logger.exception('MySQL demote: touch_member failed')
+        return True
+
     def demote(self, mode: str) -> Optional[bool]:
-        """Demote PostgreSQL running as primary.
+        """Demote the local database that was running as primary.
 
         :param mode: One of offline, graceful, immediate or immediate-nolock.
                      ``offline`` is used when connection to DCS is not available.
@@ -1711,6 +1751,9 @@ class Ha(object):
                      down PostgreSQL as quickly as possible without regard for data durability. May only be called
                      synchronously.
         """
+        if self.state_handler.db_type == 'mysql':
+            return self._demote_mysql(mode)
+
         mode_control = {
             'offline':          dict(stop='fast',      checkpoint=False, release=False, offline=True,  async_req=False),  # noqa: E241,E501
             'graceful':         dict(stop='fast',      checkpoint=True,  release=True,  offline=False, async_req=False),  # noqa: E241,E501

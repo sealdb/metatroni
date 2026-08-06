@@ -1,0 +1,16 @@
+# Reference profile — MySQL 5.7
+family: "5.7"
+semi_sync:
+  rpl_semi_sync_master_enabled: "OFF"
+  rpl_semi_sync_slave_enabled: "ON"
+  rpl_semi_sync_master_wait_no_slave: "ON"
+  rpl_semi_sync_master_wait_point: "AFTER_SYNC"
+  rpl_semi_sync_master_timeout: "1000000000000000000"
+  rpl_semi_sync_master_wait_for_slave_count: "1"
+  plugins: ["semisync_master.so", "semisync_slave.so"]
+notes:
+  - slave_parallel_type=LOGICAL_CLOCK
+  - query_cache OFF
+  - expire_logs_days
+  - innodb_log_file_size
+  - MGR from 5.7.17+
