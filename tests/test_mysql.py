@@ -434,6 +434,69 @@ class TestMySQL(unittest.TestCase):
         self.handler.demote()
         self.assertEqual(self.handler.role, MySQLRole.DEMOTED)
 
+    def test_ha_demote_routes_to_mysql_path(self):
+        """Lost-lock demote must not enter the PostgreSQL rewind/archive path."""
+        from patroni.ha import Ha
+
+        ha = Ha.__new__(Ha)
+        ha.state_handler = Mock(db_type='mysql')
+        ha._demote_mysql = Mock(return_value=True)
+        self.assertTrue(Ha.demote(ha, 'immediate-nolock'))
+        ha._demote_mysql.assert_called_once_with('immediate-nolock')
+
+    def test_ha_demote_mysql_follows_new_leader(self):
+        from patroni.dcs import Member
+        from patroni.ha import Ha
+        from unittest.mock import MagicMock
+
+        leader = Member(0, 'mysql0', 0, {'conn_url': 'mysql://127.0.0.1:3306'})
+        ha = Ha.__new__(Ha)
+        ha.state_handler = Mock(spec=['set_read_only', 'demote', 'follow', 'db_type'])
+        ha.state_handler.db_type = 'mysql'
+        ha.state_handler.follow.return_value = True
+        ha.set_is_leader = Mock()
+        ha.load_cluster_from_dcs = Mock()
+        ha.cluster = Mock()
+        ha.dcs = Mock()
+        ha.dcs.get_cluster.return_value = ha.cluster
+        ha._get_node_to_follow = Mock(return_value=leader)
+        ha.touch_member = Mock()
+        ha.release_leader_key_voluntarily = Mock()
+        ha._async_executor = MagicMock()
+        ha._async_executor.__enter__ = Mock(return_value=None)
+        ha._async_executor.__exit__ = Mock(return_value=False)
+
+        with patch('patroni.ha.time.sleep', Mock()):
+            self.assertTrue(Ha._demote_mysql(ha, 'graceful'))
+        ha.state_handler.set_read_only.assert_called_once()
+        ha.state_handler.demote.assert_called_once()
+        ha.set_is_leader.assert_called_once_with(False)
+        ha.release_leader_key_voluntarily.assert_called_once()
+        ha.state_handler.follow.assert_called_once_with(leader, role='replica')
+        ha.touch_member.assert_called_once()
+
+    def test_ha_demote_mysql_nolock_skips_release(self):
+        from patroni.dcs import Member
+        from patroni.ha import Ha
+
+        leader = Member(0, 'mysql0', 0, {'conn_url': 'mysql://127.0.0.1:3306'})
+        ha = Ha.__new__(Ha)
+        ha.state_handler = Mock(spec=['set_read_only', 'demote', 'follow', 'db_type'])
+        ha.state_handler.db_type = 'mysql'
+        ha.state_handler.follow.return_value = True
+        ha.set_is_leader = Mock()
+        ha.load_cluster_from_dcs = Mock()
+        ha.cluster = Mock()
+        ha.dcs = Mock()
+        ha.dcs.get_cluster.return_value = ha.cluster
+        ha._get_node_to_follow = Mock(return_value=leader)
+        ha.touch_member = Mock()
+        ha.release_leader_key_voluntarily = Mock()
+
+        self.assertTrue(Ha._demote_mysql(ha, 'immediate-nolock'))
+        ha.release_leader_key_voluntarily.assert_not_called()
+        ha.state_handler.follow.assert_called_once_with(leader, role='replica')
+
     @patch.object(MySQL, 'is_running', return_value=True)
     @patch.object(MySQL, '_query')
     def test_follow_none(self, mock_query, _mock_running):

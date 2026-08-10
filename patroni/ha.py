@@ -1701,9 +1701,10 @@ class Ha(object):
     def _demote_mysql(self, mode: str) -> bool:
         """Demote a former MySQL primary without PostgreSQL rewind/archive paths.
 
-        When the DCS lock is lost, keep mysqld running, force read-only, disable
-        semi-sync source mode, and reconfigure replication to the new leader.
-        Stopping mysqld (PG ``immediate``) is unnecessary and slows recovery.
+        Keep mysqld running, force read-only, disable semi-sync source mode, and
+        reconfigure replication to the new leader. For ``graceful`` / ``immediate``
+        also release the DCS leader key (same as PostgreSQL demote) so another
+        node can acquire the lock; without that, switchover loops forever.
         """
         logger.info('Demoting MySQL self (%s)', mode)
         try:
@@ -1719,18 +1720,34 @@ class Ha(object):
 
         self.set_is_leader(False)
 
-        # Attach to the current DCS leader as a replica.
-        try:
-            self.load_cluster_from_dcs()
-            node_to_follow = self._get_node_to_follow(self.cluster) if self.cluster else None
-            if node_to_follow and getattr(node_to_follow, 'conn_url', None):
-                ok = self.state_handler.follow(node_to_follow, role='replica')
-                if not ok:
-                    logger.error('MySQL demote: follow(%s) failed', node_to_follow.name)
-            else:
-                logger.warning('MySQL demote: no leader conn_url to follow yet')
-        except Exception:
-            logger.exception('MySQL demote: failed to start replication after demote')
+        # Mirror PG mode_control['release']: release lock unless we already lost it
+        # (immediate-nolock) or DCS is unavailable (offline).
+        if mode in ('graceful', 'immediate', 'demote-cluster'):
+            try:
+                with self._async_executor:
+                    self.release_leader_key_voluntarily()
+            except Exception:
+                logger.exception('MySQL demote: failed to release leader key')
+            time.sleep(2)  # give a peer time to acquire the lock
+
+        if mode != 'offline':
+            try:
+                # Prefer a fresh DCS read so we see the post-release leader.
+                try:
+                    cluster = self.dcs.get_cluster()
+                    self.cluster = cluster
+                except Exception:
+                    self.load_cluster_from_dcs()
+                    cluster = self.cluster
+                node_to_follow = self._get_node_to_follow(cluster) if cluster else None
+                if node_to_follow and getattr(node_to_follow, 'conn_url', None):
+                    ok = self.state_handler.follow(node_to_follow, role='replica')
+                    if not ok:
+                        logger.error('MySQL demote: follow(%s) failed', node_to_follow.name)
+                else:
+                    logger.warning('MySQL demote: no leader conn_url to follow yet')
+            except Exception:
+                logger.exception('MySQL demote: failed to start replication after demote')
 
         try:
             self.touch_member()

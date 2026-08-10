@@ -298,10 +298,11 @@ def render_helpers(output_dir: str, nodes: Sequence[Dict[str, Any]],
     start_lines.append('mkdir -p "$ROOT/logs"')
     for n in nodes:
         start_lines.append(
-            f'patroni "$ROOT/{n["name"]}/patroni.yml" '
+            f'nohup patroni "$ROOT/{n["name"]}/patroni.yml" '
             f'>>"$ROOT/logs/{n["name"]}.log" 2>&1 &'
         )
         start_lines.append(f'echo $! > "$ROOT/logs/{n["name"]}.pid"')
+        start_lines.append('disown $! 2>/dev/null || true')
         start_lines.append(f'echo "started {n["name"]} pid=$(cat "$ROOT/logs/{n["name"]}.pid")"')
     start_lines.append(
         'echo "Use: patronictl -c $ROOT/{0}/patroni.yml list"'.format(nodes[0]['name']))

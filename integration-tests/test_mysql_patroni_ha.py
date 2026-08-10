@@ -499,6 +499,15 @@ class PatroniMySQLHATest:
                        bool(info0 and (info0.get('role') == 'replica'
                                        or info0.get('replication_state') == 'streaming')),
                        f'got={info0}')
+            # Regression: former primary must not stay as writable "primary" replication_state
+            # (that was the broken demote path that hit PG rewind / get_guc_value).
+            self.check('mysql0 replication_state is not primary after rejoin',
+                       not info0 or info0.get('replication_state') != 'primary',
+                       f'got={info0}')
+            if info0 and info0.get('replication_state'):
+                self.check('mysql0 replication_state is streaming',
+                           info0.get('replication_state') == 'streaming',
+                           f'got={info0}')
 
             # Catch-up of failover write
             deadline = time.time() + self.timeout

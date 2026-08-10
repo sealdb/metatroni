@@ -15,6 +15,7 @@
 - xtrabackup clone E2E + create_replica 失败清理
 - `follow()`/`start()` 对齐 PG；sysid/timeline MySQL 适配
 - **`patroni_mysql_init`**：模板生成 `patroni.yml`/`my.cnf`，单机多节点端口错开，内存按百分比均分
+- **MySQL demote/rejoin**：`Ha._demote_mysql` 跳过 PG rewind；graceful 释放 leader 锁；follow 新主；单测 + switchover 回归
 
 ### MGR majority-loss GTID 选举（2026-07-27）
 | 项 | 说明 |
@@ -56,17 +57,17 @@
 ### 优先级: 中
 1. MGR 与 async GTID 复制模式切换文档
 
-### 工具
-- `patroni_mysql_init`：生成单机多节点 `patroni.yml` + `my.cnf`（见 MYSQL_HA.md）
-
 ## 测试命令
 ```bash
-python3 -m unittest tests.test_mysql tests.test_mysql_init -q
+python3 -m unittest tests.test_mysql tests.test_mysql_init tests.test_mysql_versioning -q
 
 # 生成 3 节点 semi-sync（默认输出到项目 deploy/mysql-ha）
 PYTHONPATH=. python3 -m patroni.mysql.initcmd --force \
   --bin-dir /home/wslu/work/mysql/mysql80-debug/bin \
   --memory-pct 50
+
+# 本地 demote/rejoin 回归（需 etcd + 已生成 deploy/mysql-ha）
+# bash deploy/mysql-ha/_reg_failover.sh
 ```
 
 MYSQL_BASE=/home/wslu/work/mysql/mysql80-debug PYTHONPATH=. \
