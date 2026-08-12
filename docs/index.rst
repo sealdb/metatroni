@@ -63,6 +63,8 @@ Currently supported PostgreSQL versions: 9.3 to 18.
 
 **Note to Kubernetes users**: Patroni can run natively on top of Kubernetes. Take a look at the :ref:`Kubernetes <kubernetes>` chapter of the Patroni documentation.
 
+**Note to MySQL users**: This fork can manage MySQL HA (async GTID, semi-sync, and MGR) via ``database.type: mysql``. See the :ref:`MySQL <mysql>` chapter. Support is still under active development.
+
 
 .. toctree::
    :maxdepth: 2
@@ -81,6 +83,7 @@ Currently supported PostgreSQL versions: 9.3 to 18.
    dcs_failsafe_mode
    kubernetes
    citus
+   mysql
    existing_data
    tools_integration
    security

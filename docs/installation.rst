@@ -64,6 +64,8 @@ jsonlogger
     `python-json-logger` module in order to enable :ref:`logging <log_settings>` in json format
 systemd
     `systemd-python` in order to use sd_notify integration
+mysql
+    `pymysql` in order to use the MySQL backend (``database.type: mysql``)
 all
     all of the above (except psycopg family)
 psycopg3
@@ -78,6 +80,12 @@ For example, the command in order to install Patroni together with psycopg3, dep
 .. code-block:: shell
 
     pip install patroni[psycopg3,etcd3,aws]
+
+To install MySQL support with etcd3:
+
+.. code-block:: shell
+
+    pip install 'patroni[mysql,etcd3]'
 
 Note that external tools to call in the replica creation or custom bootstrap scripts (i.e. WAL-E) should be installed
 independently of Patroni.
