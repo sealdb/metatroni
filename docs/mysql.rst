@@ -229,6 +229,30 @@ REST API endpoints (``/patroni``, ``/primary``, ``/replica``, ``/health``,
 PostgreSQL backend; MySQL status exposes ``binlog`` (and ``gtid_set`` when
 available) instead of ``xlog``.
 
+HAProxy routing
+---------------
+
+``patroni_mysql_init`` writes a layout-local ``haproxy.cfg`` that uses Patroni
+REST health checks (same pattern as the PostgreSQL demo):
+
+- ``*:5000`` → current primary (``HEAD /primary``)
+- ``*:5001`` → healthy replicas (``HEAD /replica``, round-robin)
+- ``*:7000`` → HAProxy stats UI
+
+.. code-block:: shell
+
+    haproxy -f deploy/mysql-ha/haproxy.cfg -db
+    mysql -h 127.0.0.1 -P 5000 -u root
+    mysql -h 127.0.0.1 -P 5001 -u root -e 'SELECT @@read_only'
+
+A static example matching default ports (MySQL ``3306-3308``, API ``8008-8010``)
+is also committed as ``haproxy-mysql.cfg`` at the repository root.
+
+For dynamic membership, adapt ``extras/confd/templates/haproxy.tmpl`` the same
+way: keep ``conn_url`` / ``api_url`` from DCS member keys and check
+``/primary`` or ``/replica``. ProxySQL can use the same REST endpoints as
+mysql_galera_hostgroup / external health scripts if you prefer that stack.
+
 Failover behavior
 =================
 

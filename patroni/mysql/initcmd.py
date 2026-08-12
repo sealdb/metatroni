@@ -285,6 +285,63 @@ def build_patroni_config(
     return cfg
 
 
+def render_haproxy_cfg(nodes: Sequence[Dict[str, Any]],
+                       primary_bind: str = '*:5000',
+                       replica_bind: str = '*:5001',
+                       stats_bind: str = '*:7000') -> str:
+    """HAProxy TCP frontends that route via Patroni REST health checks.
+
+    Port 5000 → current primary (``HEAD /primary``).
+    Port 5001 → healthy replicas (``HEAD /replica``).
+    """
+    lines = [
+        'global',
+        '    maxconn 100',
+        '',
+        'defaults',
+        '    log global',
+        '    mode tcp',
+        '    retries 2',
+        '    timeout client 30m',
+        '    timeout connect 4s',
+        '    timeout server 30m',
+        '    timeout check 5s',
+        '',
+        'listen stats',
+        '    mode http',
+        f'    bind {stats_bind}',
+        '    stats enable',
+        '    stats uri /',
+        '',
+        'listen mysql_primary',
+        f'    bind {primary_bind}',
+        '    option httpchk HEAD /primary',
+        '    http-check expect status 200',
+        '    default-server inter 3s fall 3 rise 2 on-marked-down shutdown-sessions',
+    ]
+    for n in nodes:
+        lines.append(
+            f'    server {n["name"]} {n["host"]}:{n["mysql_port"]} '
+            f'maxconn 100 check port {n["api_port"]}'
+        )
+    lines.extend([
+        '',
+        'listen mysql_replicas',
+        f'    bind {replica_bind}',
+        '    balance roundrobin',
+        '    option httpchk HEAD /replica',
+        '    http-check expect status 200',
+        '    default-server inter 3s fall 3 rise 2 on-marked-down shutdown-sessions',
+    ])
+    for n in nodes:
+        lines.append(
+            f'    server {n["name"]} {n["host"]}:{n["mysql_port"]} '
+            f'maxconn 100 check port {n["api_port"]}'
+        )
+    lines.append('')
+    return '\n'.join(lines)
+
+
 def render_helpers(output_dir: str, nodes: Sequence[Dict[str, Any]],
                    pythonpath_hint: str = '') -> None:
     start_lines = [
@@ -331,17 +388,26 @@ def render_helpers(output_dir: str, nodes: Sequence[Dict[str, Any]],
         f'# Generated MySQL HA layout ({len(nodes)} node(s))\n\n'
         f'Templates: ``templates/mysql/`` (xenon / xenon-mgr aligned).\n\n'
         f'## Layout\n```\n{output_dir}/\n'
-        f'  start.sh / stop.sh\n  logs/\n'
+        f'  start.sh / stop.sh\n  haproxy.cfg\n  logs/\n'
         f'  <node>/patroni.yml\n  <node>/my.cnf\n  <node>/data/\n```\n\n'
         f'## Ports\n{port_lines}\n\n'
         f'## Start\n```bash\n# ensure etcd is running, then:\n'
-        f'./start.sh\npatronictl -c ./{first}/patroni.yml list\n```\n'
+        f'./start.sh\npatronictl -c ./{first}/patroni.yml list\n```\n\n'
+        f'## HAProxy (optional)\n'
+        f'Generated ``haproxy.cfg`` routes:\n'
+        f'- ``*:5000`` → current primary (``HEAD /primary``)\n'
+        f'- ``*:5001`` → healthy replicas (``HEAD /replica``)\n'
+        f'- ``*:7000`` → HAProxy stats\n\n'
+        f'```bash\nhaproxy -f ./haproxy.cfg -db\n'
+        f'mysql -h 127.0.0.1 -P 5000 -u root\n```\n'
     )
 
     with open(os.path.join(output_dir, 'start.sh'), 'w') as f:
         f.write('\n'.join(start_lines) + '\n')
     with open(os.path.join(output_dir, 'stop.sh'), 'w') as f:
         f.write('\n'.join(stop_lines) + '\n')
+    with open(os.path.join(output_dir, 'haproxy.cfg'), 'w') as f:
+        f.write(render_haproxy_cfg(nodes))
     with open(os.path.join(output_dir, 'README.md'), 'w') as f:
         f.write(readme)
     os.chmod(os.path.join(output_dir, 'start.sh'), 0o755)
@@ -564,6 +630,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         print(f'  {n["name"]}: mysql=:{n["mysql_port"]} api=:{n["api_port"]} '
               f'mgr=:{n["mgr_port"]}  {n["patroni_yml"]}')
     print(f'  helpers: {os.path.join(os.path.abspath(args.output_dir), "start.sh")}')
+    print(f'  haproxy: {os.path.join(os.path.abspath(args.output_dir), "haproxy.cfg")} '
+          f'(primary :5000, replicas :5001, stats :7000)')
     return 0
 
 

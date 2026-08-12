@@ -100,6 +100,14 @@ class TestGenerateCluster(unittest.TestCase):
             self.assertTrue(os.path.isfile(c0))
             self.assertTrue(os.path.isdir(os.path.join(tmp, 'mysql0', 'data')))
             self.assertTrue(os.path.isfile(os.path.join(tmp, 'start.sh')))
+            self.assertTrue(os.path.isfile(os.path.join(tmp, 'haproxy.cfg')))
+            with open(os.path.join(tmp, 'haproxy.cfg')) as f:
+                hap = f.read()
+            self.assertIn('listen mysql_primary', hap)
+            self.assertIn('httpchk HEAD /primary', hap)
+            self.assertIn('httpchk HEAD /replica', hap)
+            self.assertIn('server mysql0 127.0.0.1:13306', hap)
+            self.assertIn('check port 18008', hap)
 
             with open(y0) as f:
                 cfg = yaml.safe_load(f)
