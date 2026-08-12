@@ -367,6 +367,99 @@ When the former primary comes back:
 2. The node is demoted and follows the current primary
 3. Replication is re-established from the new primary
 
+## Replication modes (async / semi-sync / MGR)
+
+Patroni MySQL supports three replication modes. Mode is **configuration-selected**,
+not switched online by a single API call. Runtime detection:
+
+| Mode | How Patroni decides | Typical `--mode` |
+|------|---------------------|------------------|
+| **async GTID** | No `group_replication_group_name`; no semi-sync plugins/params (or plugins off) | `async` |
+| **semi-sync** | `rpl_semi_sync_*` parameters present; HA cycle runs quorum → `super_read_only` | `semi-sync` (default) |
+| **MGR** | `mysql.parameters.group_replication_group_name` is set → `is_mgr_configured()`; HA prefers `run_mgr_cycle()` over async `follow()` | `mgr` |
+
+Generate layouts with `patroni_mysql_init`:
+
+```bash
+# async GTID (classic source → replica)
+patroni_mysql_init -o deploy/mysql-async --mode async --nodes 3 --force
+
+# xenon-style semi-sync (AFTER_SYNC, infinite timeout for 3+)
+patroni_mysql_init -o deploy/mysql-ha --mode semi-sync --nodes 3 --force
+
+# Group Replication (requires ≥3 nodes, MySQL 5.7.17+ / 8.0+)
+patroni_mysql_init -o deploy/mysql-mgr --mode mgr --nodes 3 --force
+```
+
+### Mode comparison
+
+| | async | semi-sync | MGR |
+|-|-------|-----------|-----|
+| Consistency | eventual | commit waits for ACK (`AFTER_SYNC`) | group certification |
+| Failover | Patroni DCS lock + promote/`follow` | same + quorum read-only safety | MGR elects primary; Patroni follows; majority-loss uses GTID election |
+| Channels | async slave channel | same + semi-sync plugins | GR + recovery channel (no async slave while ONLINE) |
+| Min nodes | 2 workable | 2 (timeout 10s) / 3+ (timeout ~∞) | 3 |
+
+### Switching modes (planned cutover)
+
+There is **no in-place hot switch**. Treat a mode change as a rebuild or carefully
+orchestrated cutover. Always keep a backup / snapshot before changing mode.
+
+#### A → B within {async, semi-sync}
+
+Semi-sync is async plus plugins and wait settings. Preferred path:
+
+1. `patronictl pause` (optional but safer).
+2. On every node: stop Patroni, set matching `rpl_semi_sync_*` in `patroni.yml`
+   (or regenerate with `--mode semi-sync` / `async` and copy parameters).
+3. Ensure `plugin-load-add` lists the correct pair (`semisync_source/replica` or
+   5.7 `master/slave`) **before** plugin variables in `my.cnf`.
+4. Restart mysqld + Patroni; unpause.
+5. Confirm: `SHOW STATUS LIKE 'Rpl_semi_sync_%'` and `patronictl list`
+   (replicas `streaming`; no stuck `Replica`/`primary`).
+
+Rolling one replica at a time is OK if the primary stays writable and GTIDs match.
+
+#### async / semi-sync → MGR
+
+Do **not** leave an async replication channel up while joining GR (single-primary
+MGR rejects concurrent async slave). Procedure:
+
+1. Drain writes; `patronictl pause`.
+2. On each node: `STOP SLAVE; RESET SLAVE ALL;` (or `STOP/RESET REPLICA`).
+3. Stop Patroni. Regenerate or edit configs with `--mode mgr` (shared
+   `group_replication_group_name`, `group_seeds`, local MGR port = client+10).
+4. Replication user must use `mysql_native_password` (MGR recovery channel
+   cannot use `GET_MASTER_PUBLIC_KEY`).
+5. Start mysqld; bootstrap GR on one node (`group_replication_bootstrap_group=ON`
+   / Patroni `bootstrap_mgr_group`), then start Patroni so others `rejoin_mgr_group`.
+6. Verify `replication_group_members` all `ONLINE`; then `patronictl resume`.
+
+Fresh datadir via `patroni_mysql_init --mode mgr` + clone is often simpler than
+converting an existing async cluster.
+
+#### MGR → async / semi-sync
+
+1. Pause / drain writes.
+2. `STOP GROUP_REPLICATION` on all members; remove or comment
+   `group_replication_*` from configs (or regenerate `--mode async|semi-sync`).
+3. Pick the former MGR primary (or GTID-ahead node) as async primary; others
+   `CHANGE MASTER ... MASTER_AUTO_POSITION=1` / Patroni `follow`.
+4. For semi-sync, enable plugins and wait settings after replicas are streaming.
+5. Resume Patroni HA.
+
+### Pitfalls
+
+- **Dual channel**: async `follow()` while MGR is configured can fight GR;
+  HA skips async follow when `is_mgr_configured()`.
+- **GTID fork**: incomparable `gtid_executed` after split-brain → Patroni pauses
+  (`mgr_pause_on_gtid_fork`); fix data then `patronictl resume` (see below).
+- **Scope / etcd keys**: changing mode usually means a new layout or wipe of
+  `/service/<scope>/` after a clean stop — do not mix old member keys with a
+  new group UUID.
+- **xtrabackup**: physical clone must match MySQL major.minor; after restore
+  Patroni drops donor `auto.cnf` so `server_uuid` is regenerated.
+
 ## Known Limitations
 
 ### Current (Development)

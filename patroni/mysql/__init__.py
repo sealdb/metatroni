@@ -687,10 +687,15 @@ class MySQL(DatabaseHandler):
             logger.debug("Failed to check MGR health: %r", e)
             return False
 
-    def rejoin_mgr_group(self, primary_host: str, primary_port: int) -> bool:
+    def rejoin_mgr_group(self, primary_host: str, primary_port: int,
+                         timeout: float = 60.0) -> bool:
         """Rejoin the MGR group after bootstrap.
 
         Configures group_replication_recovery channel and starts GR as a joiner.
+        Returns True only after local member reaches ONLINE or RECOVERING — a bare
+        ``START GROUP_REPLICATION`` success is not enough (joining a stale/dead
+        ``mgr_primary`` from DCS would otherwise look like success and block the
+        GTID winner from bootstrapping).
         """
         try:
             repl = self.config.replication
@@ -720,8 +725,25 @@ class MySQL(DatabaseHandler):
             self._query("SET GLOBAL group_replication_bootstrap_group = OFF")
             self._query("START GROUP_REPLICATION")
             self.connection_pool.close()
-            logger.info("MGR group rejoin initiated")
-            return True
+
+            deadline = time.time() + max(5.0, float(timeout))
+            while time.time() < deadline:
+                st = self.get_mgr_status()
+                if st.get('state') in ('ONLINE', 'RECOVERING'):
+                    logger.info("MGR group rejoin succeeded (state=%s)", st.get('state'))
+                    return True
+                time.sleep(1)
+
+            logger.error(
+                "MGR rejoin timed out waiting for ONLINE/RECOVERING via %s:%s",
+                primary_host, primary_port
+            )
+            try:
+                self._query("STOP GROUP_REPLICATION")
+            except Exception:
+                pass
+            self.connection_pool.close()
+            return False
         except Exception as e:
             logger.error("Failed to rejoin MGR group: %r", e)
             self.connection_pool.close()
@@ -917,13 +939,18 @@ class MySQL(DatabaseHandler):
         return min(n for n, _ in maximal)
 
     def _find_mgr_primary_member(self, members: Optional[List[Any]]) -> Optional[Any]:
-        """Return a DCS member that already claims MGR/async primary role."""
+        """Return a DCS member that already claims a live MGR primary role.
+
+        Only ``mgr_primary`` counts. Generic Patroni ``primary`` is often left
+        over after majority loss (async/semi-sync style role) and must not
+        block the GTID-elected winner from bootstrapping a new group.
+        """
         for m in members or []:
             if getattr(m, 'name', None) == self.name:
                 continue
             data = getattr(m, 'data', None) or {}
             role = str(data.get('role') or '')
-            if role in (MySQLRole.MGR_PRIMARY, MySQLRole.PRIMARY, 'primary', 'master'):
+            if role in (MySQLRole.MGR_PRIMARY, 'mgr_primary'):
                 if data.get('conn_url') or getattr(m, 'conn_url', None):
                     return m
         return None
@@ -1021,18 +1048,31 @@ class MySQL(DatabaseHandler):
 
         # We are the elected winner.
         if not has_lock:
-            # Wait until we hold the lock (previous holder should yield).
+            # Peers may have already formed a group (or our election used a
+            # partial DCS member list after leases expired). Prefer joining a
+            # live mgr_primary over waiting forever for the lock.
+            rejoined = self._try_rejoin_mgr(members)
+            if rejoined:
+                return rejoined
             return 'elected MGR bootstrap winner; waiting for leader lock'
 
-        # Guard against split-brain: if another member already advertises an
-        # MGR/async primary, rejoin that group instead of bootstrapping again.
+        # Guard against split-brain: if another member already advertises a
+        # live MGR primary, rejoin that group and yield the lock. Stale
+        # Patroni ``primary`` roles are ignored (see ``_find_mgr_primary_member``).
         existing = self._find_mgr_primary_member(members)
         if existing:
+            rejoined = self._try_rejoin_mgr(members)
+            if rejoined:
+                logger.warning(
+                    "MGR primary already advertised as %s; rejoined and yielding lock",
+                    getattr(existing, 'name', existing)
+                )
+                return 'mgr_yield_lock'
             logger.warning(
-                "MGR primary already advertised as %s; yielding lock instead of bootstrap",
+                "Ignoring unreachable MGR primary advertisement from %s "
+                "(rejoin failed); bootstrapping as GTID winner",
                 getattr(existing, 'name', existing)
             )
-            return 'mgr_yield_lock'
 
         logger.warning("MGR majority lost — bootstrapping group as GTID winner")
         if self.bootstrap_mgr_group():

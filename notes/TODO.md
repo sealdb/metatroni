@@ -55,7 +55,22 @@
 ## 待办
 
 ### 优先级: 中
-1. MGR 与 async GTID 复制模式切换文档
+（暂无）
+
+### 近期验证（2026-08-10）
+| 测试 | 结果 |
+|------|------|
+| `test_mysql_xtrabackup` | 13/13 |
+| `test_mysql_mgr_election` | 20/20 |
+| `test_mysql_mgr_e2e` | **31/31** |
+| `test_mysql_mgr_patroni_ha` | **24/24** |
+
+MGR majority-loss 修复要点：
+1. 只认 DCS `mgr_primary`（忽略 stale `primary`）
+2. `rejoin_mgr_group` 等到 ONLINE/RECOVERING 才算成功
+3. 自认 winner 但无锁时，若已有活着的 `mgr_primary` 则先 rejoin
+
+文档：`notes/MYSQL_HA.md` 已补充 **Replication modes (async / semi-sync / MGR)** 切换说明。
 
 ## 测试命令
 ```bash

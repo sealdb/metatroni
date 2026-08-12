@@ -367,13 +367,77 @@ class TestMySQL(unittest.TestCase):
         mock_boot.assert_called_once()
         self.assertEqual(self.handler.role, MySQLRole.MGR_PRIMARY)
 
-    @patch.object(MySQL, 'get_executed_gtid', return_value='u:1-10')
-    @patch.object(MySQL, 'select_mgr_bootstrap_winner', return_value='mysql1')
-    def test_mgr_majority_loss_lock_holder_yields(self, _win, _gtid):
+    @patch.object(MySQL, 'bootstrap_mgr_group', return_value=True)
+    @patch.object(MySQL, 'get_executed_gtid', return_value='u:1-20')
+    @patch.object(MySQL, 'select_mgr_bootstrap_winner', return_value='mysql0')
+    def test_mgr_majority_loss_winner_ignores_stale_primary_role(self, _win, _gtid, mock_boot):
+        """Stale Patroni role=primary must not block GTID-winner bootstrap."""
         self.handler.config._parameters['group_replication_group_name'] = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
+        stale = Member(0, 'mysql1', 0, {
+            'role': 'primary',
+            'conn_url': 'mysql://127.0.0.1:3307',
+            'gtid_executed': 'u:1-10',
+        })
+        with patch.object(MySQL, 'get_mgr_status', return_value={}), \
+                patch.object(MySQL, 'rejoin_mgr_group') as mock_rejoin:
+            msg = self.handler.run_mgr_cycle(True, 3, [stale])
+        self.assertEqual(msg, 'bootstrapped MGR group after majority loss')
+        mock_boot.assert_called_once()
+        mock_rejoin.assert_not_called()
+
+    @patch.object(MySQL, 'bootstrap_mgr_group', return_value=True)
+    @patch.object(MySQL, 'rejoin_mgr_group', return_value=True)
+    @patch.object(MySQL, 'get_executed_gtid', return_value='u:1-20')
+    @patch.object(MySQL, 'select_mgr_bootstrap_winner', return_value='mysql0')
+    def test_mgr_majority_loss_winner_rejoins_live_mgr_primary(self, _win, _gtid,
+                                                              mock_rejoin, mock_boot):
+        self.handler.config._parameters['group_replication_group_name'] = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
+        live = Member(0, 'mysql1', 0, {
+            'role': 'mgr_primary',
+            'conn_url': 'mysql://127.0.0.1:3307',
+            'gtid_executed': 'u:1-20',
+        })
         with patch.object(MySQL, 'get_mgr_status', return_value={}):
-            msg = self.handler.run_mgr_cycle(True, 3, [])
+            msg = self.handler.run_mgr_cycle(True, 3, [live])
         self.assertEqual(msg, 'mgr_yield_lock')
+        mock_rejoin.assert_called_once_with('127.0.0.1', 3307)
+        mock_boot.assert_not_called()
+
+    @patch.object(MySQL, 'bootstrap_mgr_group', return_value=True)
+    @patch.object(MySQL, 'rejoin_mgr_group', return_value=False)
+    @patch.object(MySQL, 'get_executed_gtid', return_value='u:1-20')
+    @patch.object(MySQL, 'select_mgr_bootstrap_winner', return_value='mysql0')
+    def test_mgr_majority_loss_winner_bootstraps_when_rejoin_fails(self, _win, _gtid,
+                                                                   mock_rejoin, mock_boot):
+        """Stale DCS mgr_primary (peer GR dead) must not block winner bootstrap."""
+        self.handler.config._parameters['group_replication_group_name'] = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
+        stale = Member(0, 'mysql1', 0, {
+            'role': 'mgr_primary',
+            'conn_url': 'mysql://127.0.0.1:3307',
+            'gtid_executed': 'u:1-10',
+        })
+        with patch.object(MySQL, 'get_mgr_status', return_value={}):
+            msg = self.handler.run_mgr_cycle(True, 3, [stale])
+        self.assertEqual(msg, 'bootstrapped MGR group after majority loss')
+        mock_rejoin.assert_called_once()
+        mock_boot.assert_called_once()
+
+    @patch.object(MySQL, 'rejoin_mgr_group', return_value=True)
+    @patch.object(MySQL, 'get_executed_gtid', return_value='u:1-20')
+    @patch.object(MySQL, 'select_mgr_bootstrap_winner', return_value='mysql0')
+    def test_mgr_majority_loss_winner_without_lock_rejoins_live_primary(self, _win, _gtid,
+                                                                        mock_rejoin):
+        """Partial DCS view may elect self; still rejoin if mgr_primary exists."""
+        self.handler.config._parameters['group_replication_group_name'] = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
+        live = Member(0, 'mysql2', 0, {
+            'role': 'mgr_primary',
+            'conn_url': 'mysql://127.0.0.1:3308',
+            'gtid_executed': 'u:1-30',
+        })
+        with patch.object(MySQL, 'get_mgr_status', return_value={}):
+            msg = self.handler.run_mgr_cycle(False, 3, [live])
+        self.assertEqual(msg, 'rejoining MGR group after majority loss')
+        mock_rejoin.assert_called_once_with('127.0.0.1', 3308)
 
     @patch.object(MySQL, 'rejoin_mgr_group', return_value=True)
     @patch.object(MySQL, 'get_executed_gtid', return_value='u:1-10')
