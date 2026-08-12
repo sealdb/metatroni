@@ -340,3 +340,18 @@ How can I monitor my Patroni cluster?
     * ``/patroni``: exposes the status of the cluster in a JSON format. The information shown here is very similar to what is shown by the ``/metrics`` endpoint.
 
     You can use those endpoints to implement monitoring checks.
+
+MySQL backend
+-------------
+
+Where is the MySQL HA documentation?
+    See the :ref:`MySQL <mysql>` chapter:
+
+    * :ref:`mysql_architecture` — components and DCS model
+    * :ref:`mysql_mechanisms` — failover / demote / semi-sync / MGR sequences
+    * :ref:`mysql_ops` — install, deploy, HAProxy, FAQ
+
+Does MySQL support the same standby cluster feature as PostgreSQL?
+    No. Cross-site standby cluster depends on PostgreSQL WAL archiving and is
+    not supported for MySQL. Use async / semi-sync / MGR within a single
+    Patroni scope, or operate independent clusters with a manual cutover plan.

@@ -1,20 +1,22 @@
 # MySQL High-Availability with Patroni
 
-> **Canonical docs:** [`docs/mysql.rst`](../docs/mysql.rst) (Sphinx: *MySQL high-availability support*).
+> **Canonical docs (Sphinx):**
 >
-> This file is kept as a short pointer for local engineering notes. Prefer editing
-> `docs/mysql.rst` for operator-facing content.
-
-## Quick links
-
-| Topic | Where |
-|-------|--------|
-| Config / setup / modes / MGR | `docs/mysql.rst` |
-| Progress / test commands | [`TODO.md`](TODO.md) |
-| Templates / version matrix | `templates/mysql/` |
-| Init CLI | `patroni_mysql_init` (`patroni.mysql.initcmd`) |
+> | Page | Content |
+> |------|---------|
+> | [`docs/mysql.rst`](../docs/mysql.rst) | Overview + quick start |
+> | [`docs/mysql_architecture.rst`](../docs/mysql_architecture.rst) | Architecture / DCS model |
+> | [`docs/mysql_mechanisms.rst`](../docs/mysql_mechanisms.rst) | Mechanisms, sequences, flowcharts |
+> | [`docs/mysql_ops.rst`](../docs/mysql_ops.rst) | Ops manual + FAQ |
+>
+> Prefer editing those files for operator-facing content.
 
 ## Status
 
 Development — MySQL backend is under active development.
 Not yet recommended for production use.
+
+## Internal
+
+- Progress / regression: [`TODO.md`](TODO.md)
+- Templates: `templates/mysql/`

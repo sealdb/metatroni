@@ -60,6 +60,7 @@
 ### 已完成（运维/CI）
 - CI：`Tests` workflow 增加 `mysql` job；unit/`tox`/`pyright` 安装 `pymysql`；push 触发含 `dev_*`
 - Docs：正式章节 `docs/mysql.rst`（`index` / `installation` 已挂上）；`notes/MYSQL_HA.md` 改为指向正式文档
+- Docs：拆分为 architecture / mechanisms（流程图+时序）/ ops（部署+FAQ）三章
 - Ops：`patroni_mysql_init` 生成 `haproxy.cfg`；仓库根目录 `haproxy-mysql.cfg` 示例；文档补充路由说明
 
 ### 近期验证（2026-08-12）
