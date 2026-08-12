@@ -27,7 +27,8 @@ With ``database.type: mysql``, each node runs Patroni + ``mysqld``. Patroni:
 - Holds / races for a **leader lease** in the DCS (etcd, Consul, ZooKeeper, …)
 - Monitors MySQL health and publishes status (including GTID) to the DCS
 - Manages **async GTID**, **semi-sync**, or **Group Replication (MGR)**
-- Clones replicas via ``mysqldump`` or ``xtrabackup``
+- Clones replicas via ``xtrabackup`` (preferred) or ``mysqldump``
+- Supports a **standby cluster** (clone + GTID cascade; not WAL archive)
 - Exposes the usual REST API and ``patronictl`` surface
 
 Quick start

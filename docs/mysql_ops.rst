@@ -178,6 +178,34 @@ Pause autofailover
     # … maintenance …
     patronictl -c patroni.yml resume
 
+Standby cluster (cross-site cascade)
+------------------------------------
+
+MySQL standby sites use **full clone + GTID cascade**, not WAL archive /
+``restore_command``. Prefer physical clone:
+
+.. code-block:: yaml
+
+    bootstrap:
+      dcs:
+        standby_cluster:
+          host: primary-site.example
+          port: 3306
+          create_replica_methods:
+            - xtrabackup
+            - mysqldump   # fallback when xtrabackup binary is missing
+
+Or force logical clone only: ``create_replica_methods: [mysqldump]``.
+
+- **standby leader** holds the DCS lock, replicates from the remote primary,
+  stays ``super_read_only``.
+- Local members cascade from the standby leader.
+- Promote: ``patronictl promote-cluster`` (removes ``standby_cluster``).
+- Demote back: ``patronictl demote-cluster --host … --port …``.
+
+Use a **separate DCS scope** from the primary site. Member names must be unique
+across sites connected by replication.
+
 HAProxy
 =======
 
@@ -344,7 +372,8 @@ Switchover loops forever
 Known limitations (ops view)
 ============================
 
-- Standby cluster (cross-site WAL archive pattern) **not supported**
+- MySQL standby cluster uses **clone + GTID cascade** (not WAL archive /
+  ``restore_command``). Prefer ``create_replica_methods: [xtrabackup, mysqldump]``.
 - No ``pg_rewind`` equivalent
 - Mode changes are rebuild/cutover, not hot switch
 - Still under active development — validate with your workload and the

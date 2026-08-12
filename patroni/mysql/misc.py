@@ -41,6 +41,7 @@ class MySQLRole(str, Enum):
 
     PRIMARY = 'primary'
     REPLICA = 'replica'
+    STANDBY_LEADER = 'standby_leader'  # DCS lock holder in a standby cluster
     DEMOTED = 'demoted'
     UNINITIALIZED = 'uninitialized'
     PROMOTED = 'promoted'
@@ -52,6 +53,36 @@ class MySQLRole(str, Enum):
 
     def __str__(self) -> str:
         return self.__repr__()
+
+
+class CreateReplicaMethod(str, Enum):
+    """Identifiers for ``mysql.create_replica_methods`` / standby clone.
+
+    Prefer these over bare strings so rename/add is a single edit.
+    Values match YAML / DCS configuration.
+    """
+
+    XTRABACKUP = 'xtrabackup'
+    MYSQLDUMP = 'mysqldump'
+    CLONE_PLUGIN = 'clone_plugin'  # reserved; not implemented in Phase 1
+
+    def __repr__(self) -> str:
+        return self.value
+
+    def __str__(self) -> str:
+        return self.__repr__()
+
+    @classmethod
+    def known(cls) -> frozenset:
+        """Set of valid method name strings (YAML / DCS values)."""
+        return frozenset(m.value for m in cls)
+
+
+# Default order: physical first, logical fallback.
+DEFAULT_CREATE_REPLICA_METHODS: Tuple[str, ...] = (
+    CreateReplicaMethod.XTRABACKUP,
+    CreateReplicaMethod.MYSQLDUMP,
+)
 
 
 class MGRMemberState(str, Enum):

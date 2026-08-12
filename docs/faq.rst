@@ -352,6 +352,12 @@ Where is the MySQL HA documentation?
     * :ref:`mysql_ops` — install, deploy, HAProxy, FAQ
 
 Does MySQL support the same standby cluster feature as PostgreSQL?
-    No. Cross-site standby cluster depends on PostgreSQL WAL archiving and is
-    not supported for MySQL. Use async / semi-sync / MGR within a single
-    Patroni scope, or operate independent clusters with a manual cutover plan.
+    Yes, with a MySQL-native implementation. Configure DCS ``standby_cluster``
+    with ``host`` / ``port`` of the remote primary. The standby leader is
+    **bootstrapped with a full physical/logical clone** (default
+    ``xtrabackup``, then ``mysqldump``) because remote binlogs alone may not
+    cover the full dataset; then it streams via GTID cascade
+    (``CHANGE MASTER … MASTER_AUTO_POSITION=1``) and stays ``super_read_only``.
+    Local members cascade from the standby leader. Promote with
+    ``patronictl promote-cluster`` (removes ``standby_cluster``). PostgreSQL
+    ``restore_command`` / replication-slot standby modes are not used.

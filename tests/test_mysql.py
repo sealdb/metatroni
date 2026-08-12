@@ -20,7 +20,10 @@ from patroni.dcs import Leader, Member
 from patroni.mysql import MySQL
 from patroni.mysql.config import ConfigHandler
 from patroni.mysql.connection import ConnectionPool
-from patroni.mysql.misc import MySQLState, MySQLRole, mysql_version_to_int
+from patroni.mysql.misc import (
+    MySQLState, MySQLRole, CreateReplicaMethod, DEFAULT_CREATE_REPLICA_METHODS,
+    mysql_version_to_int,
+)
 from patroni.mysql.postmaster import MySQLProcess
 
 
@@ -462,10 +465,148 @@ class TestMySQL(unittest.TestCase):
         self.assertEqual(data['gtid_executed'], 'u:1-20')
 
     def test_bootstrap_methods(self):
-        self.assertTrue(self.handler.can_create_replica_without_replication_connection(['mysqldump']))
-        self.assertTrue(self.handler.can_create_replica_without_replication_connection(['xtrabackup']))
+        self.assertTrue(self.handler.can_create_replica_without_replication_connection(
+            [CreateReplicaMethod.MYSQLDUMP]))
+        self.assertTrue(self.handler.can_create_replica_without_replication_connection(
+            [CreateReplicaMethod.XTRABACKUP]))
+        self.assertTrue(self.handler.can_create_replica_without_replication_connection(
+            [CreateReplicaMethod.CLONE_PLUGIN]))
         self.assertTrue(self.handler.can_create_replica_without_replication_connection())
-        self.assertFalse(self.handler.can_create_replica_without_replication_connection([]))
+        # Empty / None → default path (xtrabackup then mysqldump) is available
+        self.assertTrue(self.handler.can_create_replica_without_replication_connection([]))
+        self.assertFalse(self.handler.can_create_replica_without_replication_connection(['unknown']))
+
+    def test_create_replica_method_enum(self):
+        known = CreateReplicaMethod.known()
+        self.assertEqual(known, frozenset({
+            'xtrabackup', 'mysqldump', 'clone_plugin',
+        }))
+        self.assertEqual(
+            list(DEFAULT_CREATE_REPLICA_METHODS),
+            [CreateReplicaMethod.XTRABACKUP, CreateReplicaMethod.MYSQLDUMP])
+        # str Enum compares equal to YAML/DCS string values
+        self.assertEqual(CreateReplicaMethod.XTRABACKUP, 'xtrabackup')
+        self.assertEqual(
+            list(self.handler.config.create_replica_methods),
+            list(DEFAULT_CREATE_REPLICA_METHODS))
+
+    def test_resolve_create_replica_methods(self):
+        from patroni.dcs import RemoteMember
+        bs = self.handler.bootstrap
+        default = list(DEFAULT_CREATE_REPLICA_METHODS)
+
+        with patch.object(self.handler.config, 'xtrabackup_available', return_value=True):
+            self.assertEqual(bs._resolve_create_replica_methods(None), default)
+
+        with patch.object(self.handler.config, 'xtrabackup_available', return_value=False):
+            self.assertEqual(
+                bs._resolve_create_replica_methods(None),
+                [CreateReplicaMethod.MYSQLDUMP])
+            # Explicit xtrabackup-only must not invent mysqldump
+            remote = RemoteMember('r', {
+                'conn_kwargs': {'host': '127.0.0.1', 'port': 3306, 'db_type': 'mysql'},
+                'create_replica_methods': [CreateReplicaMethod.XTRABACKUP],
+            })
+            self.assertEqual(bs._resolve_create_replica_methods(remote), [])
+
+        with patch.object(self.handler.config, 'xtrabackup_available', return_value=True):
+            remote = RemoteMember('r', {
+                'conn_kwargs': {'host': '127.0.0.1', 'port': 3306, 'db_type': 'mysql'},
+                'create_replica_methods': [CreateReplicaMethod.MYSQLDUMP],
+            })
+            self.assertEqual(
+                bs._resolve_create_replica_methods(remote),
+                [CreateReplicaMethod.MYSQLDUMP])
+            remote2 = RemoteMember('r2', {
+                'conn_kwargs': {'host': '127.0.0.1', 'port': 3306, 'db_type': 'mysql'},
+                'create_replica_methods': default,
+            })
+            self.assertEqual(bs._resolve_create_replica_methods(remote2), default)
+
+    @patch.object(MySQL, 'set_read_only')
+    @patch.object(MySQL, '_query')
+    @patch.object(MySQL, '_query_one_dict', return_value=None)
+    @patch.object(MySQL, 'is_running', return_value=True)
+    def test_follow_standby_leader_role(self, _run, _status, mock_query, _ro):
+        from patroni.dcs import RemoteMember
+        remote = RemoteMember('remote', {
+            'conn_kwargs': {'host': '10.0.0.1', 'port': 3306, 'db_type': 'mysql'},
+        })
+        self.assertTrue(remote.conn_url.startswith('mysql://'))
+        ok = self.handler.follow(remote, role=MySQLRole.STANDBY_LEADER)
+        self.assertTrue(ok)
+        self.assertEqual(self.handler.role, MySQLRole.STANDBY_LEADER)
+
+    @patch.object(MySQL, 'is_running', return_value=True)
+    @patch.object(MySQL, '_query')
+    def test_follow_none_keeps_standby_leader(self, mock_query, _run):
+        self.handler.set_role(MySQLRole.STANDBY_LEADER)
+        self.assertTrue(self.handler.follow(None, role=MySQLRole.STANDBY_LEADER))
+        self.assertEqual(self.handler.role, MySQLRole.STANDBY_LEADER)
+        self.handler.set_role(MySQLRole.REPLICA)
+        self.assertTrue(self.handler.follow(None, role=MySQLRole.REPLICA))
+        self.assertEqual(self.handler.role, MySQLRole.REPLICA)
+        self.assertTrue(self.handler.follow(None, role=None))
+        self.assertEqual(self.handler.role, MySQLRole.PRIMARY)
+
+    def test_create_replica_dispatches_methods(self):
+        from patroni.dcs import RemoteMember
+        bs = self.handler.bootstrap
+        remote = RemoteMember('r', {
+            'conn_kwargs': {'host': '127.0.0.1', 'port': 3306, 'db_type': 'mysql'},
+            'create_replica_methods': [
+                CreateReplicaMethod.XTRABACKUP, CreateReplicaMethod.MYSQLDUMP],
+        })
+        with patch.object(bs, '_resolve_create_replica_methods',
+                          return_value=[CreateReplicaMethod.XTRABACKUP,
+                                        CreateReplicaMethod.MYSQLDUMP]), \
+                patch.object(bs, '_create_replica_via_xtrabackup', return_value=False) as xb, \
+                patch.object(bs, '_create_replica_via_mysqldump', return_value=True) as dump:
+            self.assertTrue(bs.create_replica(remote))
+            xb.assert_called_once()
+            dump.assert_called_once()
+
+        with patch.object(bs, '_resolve_create_replica_methods',
+                          return_value=[CreateReplicaMethod.MYSQLDUMP]), \
+                patch.object(bs, '_create_replica_via_mysqldump', return_value=True) as dump, \
+                patch.object(bs, '_create_replica_via_xtrabackup') as xb:
+            self.assertTrue(bs.create_replica(remote))
+            dump.assert_called_once()
+            xb.assert_not_called()
+
+    def test_mysql_api_status_standby_leader_role(self):
+        """REST /patroni must report standby_leader, not plain replica."""
+        from patroni.api import RestApiHandler
+        from patroni import global_config
+
+        self.handler.set_role(MySQLRole.STANDBY_LEADER)
+        self.handler.set_state(MySQLState.RUNNING)
+        handler = Mock(spec=RestApiHandler)
+        handler.server = Mock()
+
+        with patch.object(MySQL, 'is_running', return_value=True), \
+                patch.object(MySQL, 'is_primary', return_value=False), \
+                patch.object(MySQL, '_query_one_dict', return_value={'File': 'bin.0001', 'Position': 100}), \
+                patch.object(MySQL, 'get_executed_gtid', return_value='uuid:1-10'), \
+                patch.object(MySQL, 'replication_state', return_value='streaming'), \
+                patch.object(MySQL, 'server_version', 80035), \
+                patch.object(global_config.__class__, 'is_standby_cluster',
+                             PropertyMock(return_value=True)):
+            status = RestApiHandler._get_mysql_status(handler, self.handler, retry=None)
+        self.assertEqual(status['role'], MySQLRole.STANDBY_LEADER)
+        self.assertEqual(status['state'], MySQLState.RUNNING)
+        self.assertEqual(status['replication_state'], 'streaming')
+
+        with patch.object(MySQL, 'is_running', return_value=True), \
+                patch.object(MySQL, 'is_primary', return_value=False), \
+                patch.object(MySQL, '_query_one_dict', return_value=None), \
+                patch.object(MySQL, 'get_executed_gtid', return_value=''), \
+                patch.object(MySQL, 'replication_state', return_value='streaming'), \
+                patch.object(MySQL, 'server_version', 80035), \
+                patch.object(global_config.__class__, 'is_standby_cluster',
+                             PropertyMock(return_value=False)):
+            status = RestApiHandler._get_mysql_status(handler, self.handler, retry=None)
+        self.assertEqual(status['role'], 'replica')
 
     def test_controldata(self):
         data = self.handler.controldata()

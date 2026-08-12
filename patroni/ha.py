@@ -586,7 +586,12 @@ class Ha(object):
             logger.info('bootstrapped %s', msg)
             cluster = self.dcs.get_cluster()
             node_to_follow = self._get_node_to_follow(cluster)
-            return self.state_handler.follow(node_to_follow) is not False
+            # Standby leader clone follows the remote with standby_leader role
+            # so MySQL stays super_read_only from the first CHANGE MASTER.
+            role = None
+            if self.is_standby_cluster() and isinstance(node_to_follow, RemoteMember):
+                role = PostgresqlRole.STANDBY_LEADER
+            return self.state_handler.follow(node_to_follow, role) is not False
         else:
             logger.error('failed to bootstrap %s', msg)
             self.state_handler.remove_data_directory()
@@ -1702,9 +1707,9 @@ class Ha(object):
         """Demote a former MySQL primary without PostgreSQL rewind/archive paths.
 
         Keep mysqld running, force read-only, disable semi-sync source mode, and
-        reconfigure replication to the new leader. For ``graceful`` / ``immediate``
-        also release the DCS leader key (same as PostgreSQL demote) so another
-        node can acquire the lock; without that, switchover loops forever.
+        reconfigure replication. For ``graceful`` / ``immediate`` also release
+        the DCS leader key. For ``demote-cluster`` keep the lock and attach to
+        the remote primary as a standby leader (MySQL cascade / standby cluster).
         """
         logger.info('Demoting MySQL self (%s)', mode)
         try:
@@ -1718,11 +1723,26 @@ class Ha(object):
         except Exception:
             logger.exception('MySQL.demote() failed')
 
+        # Convert writable primary → standby leader following the remote site.
+        if mode == 'demote-cluster':
+            try:
+                remote = self.get_remote_member()
+                ok = self.state_handler.follow(remote, role='standby_leader')
+                if not ok:
+                    logger.error('MySQL demote-cluster: follow(remote) failed')
+            except Exception:
+                logger.exception('MySQL demote-cluster: failed to follow remote')
+            try:
+                self.touch_member()
+            except Exception:
+                logger.exception('MySQL demote-cluster: touch_member failed')
+            return True
+
         self.set_is_leader(False)
 
         # Mirror PG mode_control['release']: release lock unless we already lost it
         # (immediate-nolock) or DCS is unavailable (offline).
-        if mode in ('graceful', 'immediate', 'demote-cluster'):
+        if mode in ('graceful', 'immediate'):
             try:
                 with self._async_executor:
                     self.release_leader_key_voluntarily()
@@ -2021,6 +2041,7 @@ class Ha(object):
                 else:
                     # MySQL primary: MGR + semi-sync quorum must run while we hold the lock.
                     # (Previously these lived only on the non-lock path and never executed.)
+                    # Standby clusters never take this branch.
                     if self.state_handler.db_type == 'mysql':
                         cluster_nodes = self.cluster and len(self.cluster.members) or 1
                         members = self.cluster.members if self.cluster else []
@@ -2051,8 +2072,9 @@ class Ha(object):
         else:
             logger.debug('does not have lock')
 
-        # MySQL replica / unlocked: MGR auto-follow + GTID election wait/rejoin
-        if self.state_handler.db_type == 'mysql':
+        # MySQL replica / unlocked: MGR auto-follow + GTID election wait/rejoin.
+        # Skip entirely in standby clusters (cascade async GTID only).
+        if self.state_handler.db_type == 'mysql' and not self.is_standby_cluster():
             cluster_nodes = self.cluster and len(self.cluster.members) or 1
             members = self.cluster.members if self.cluster else []
             mgr_action = self.state_handler.run_mgr_cycle(False, cluster_nodes, members)
@@ -2700,6 +2722,13 @@ class Ha(object):
             conn_kwargs = member.conn_kwargs() if member else \
                 {k: cluster_params[k] for k in ('host', 'port') if k in cluster_params}
             if conn_kwargs:
+                conn_kwargs = dict(conn_kwargs)
+                # MySQL conn_url must use mysql:// (Member.conn_url reads db_type).
+                if getattr(self.state_handler, 'db_type', None) == 'mysql':
+                    conn_kwargs['db_type'] = 'mysql'
+                    host = conn_kwargs.get('host')
+                    if host and ',' in str(host):
+                        conn_kwargs['host'] = str(host).split(',')[0].strip()
                 data['conn_kwargs'] = conn_kwargs
 
         name = member.name if member else 'remote_member:{}'.format(uuid.uuid1())

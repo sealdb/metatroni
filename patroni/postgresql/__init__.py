@@ -80,6 +80,11 @@ class Postgresql(object):
     def needs_crash_recovery(self) -> bool:
         return True
 
+    @property
+    def requires_sysid_match(self) -> bool:
+        """PostgreSQL system identifier is cluster-wide and must match DCS."""
+        return True
+
     def before_promote(self) -> None:
         pass
 

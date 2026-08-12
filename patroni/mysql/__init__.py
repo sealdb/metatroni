@@ -21,7 +21,7 @@ from ..utils import parse_int, polling_loop, Retry, RetryFailedError
 from .bootstrap import Bootstrap
 from .config import ConfigHandler
 from .connection import ConnectionPool, HAS_MYSQL, MySQLdbError
-from .misc import MySQLState, MySQLRole, mysql_version_to_int
+from .misc import MySQLState, MySQLRole, CreateReplicaMethod, mysql_version_to_int
 from .postmaster import MySQLProcess
 
 logger = logging.getLogger(__name__)
@@ -397,7 +397,8 @@ class MySQL(DatabaseHandler):
                 self._query("RESET SLAVE ALL")
             except Exception:
                 pass
-            if role != MySQLRole.REPLICA:
+            if role not in (MySQLRole.REPLICA, MySQLRole.STANDBY_LEADER,
+                            'replica', 'standby_leader'):
                 self.set_role(MySQLRole.PRIMARY)
             return True
 
@@ -406,6 +407,9 @@ class MySQL(DatabaseHandler):
             return False
 
         host, port = self._parse_conn_url(conn_url)
+        # Multi-host standby_cluster.host (PG style): take the first address.
+        if host and ',' in host:
+            host = host.split(',')[0].strip()
         repl = self.config.replication
         user = repl.get('username', 'replicator')
         password = repl.get('password', '')
@@ -424,6 +428,8 @@ class MySQL(DatabaseHandler):
                         self.set_read_only()
                     except Exception:
                         pass
+                    if role in (MySQLRole.STANDBY_LEADER, 'standby_leader'):
+                        self.set_role(MySQLRole.STANDBY_LEADER)
                     return True
         except Exception:
             pass
@@ -443,6 +449,10 @@ class MySQL(DatabaseHandler):
             self._query("START SLAVE")
             logger.info("Started replication from %s:%s", host, port)
             self.set_read_only()
+            if role in (MySQLRole.STANDBY_LEADER, 'standby_leader'):
+                self.set_role(MySQLRole.STANDBY_LEADER)
+            # Semi-sync as replica is fine for cascade; never enable source mode
+            # while we are (standby) replica.
             self._enable_semi_sync()
             # Refresh heartbeat connection so subsequent reads do not see a
             # pre-follow REPEATABLE READ snapshot.
@@ -1232,9 +1242,11 @@ class MySQL(DatabaseHandler):
 
     def can_create_replica_without_replication_connection(
             self, create_replica_methods: Optional[List[str]] = None) -> bool:
-        if create_replica_methods is None:
+        # Empty / None → default physical-then-logical path is always available
+        # (mysqldump at minimum).
+        if not create_replica_methods:
             return True
-        return any(m in ('mysqldump', 'xtrabackup', 'clone_plugin')
+        return any(m in CreateReplicaMethod.known()
                   for m in create_replica_methods)
 
     def remove_data_directory(self) -> None:

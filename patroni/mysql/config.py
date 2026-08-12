@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 from ..dcs import Leader, Member, RemoteMember
 from ..utils import parse_int, split_host_port, uri
+from .misc import DEFAULT_CREATE_REPLICA_METHODS
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +79,18 @@ class ConfigHandler:
 
     @property
     def create_replica_methods(self) -> List[str]:
-        return self._config.get('create_replica_methods', ['mysqldump'])
+        """Ordered clone methods: prefer xtrabackup, then mysqldump.
+
+        Operators may set ``mysql.create_replica_methods: [mysqldump]`` to force
+        logical clone, or ``[xtrabackup, mysqldump]`` (default) for physical
+        first with logical fallback.
+        """
+        return self._config.get('create_replica_methods', list(DEFAULT_CREATE_REPLICA_METHODS))
+
+    def xtrabackup_available(self) -> bool:
+        """True if a usable ``xtrabackup`` binary exists on this host."""
+        path = self.get_xtrabackup_path()
+        return bool(path and os.path.isfile(path) and os.access(path, os.X_OK))
 
     @property
     def synchronous_standby_names(self) -> str:

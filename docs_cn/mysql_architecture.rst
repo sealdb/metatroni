@@ -16,7 +16,8 @@ Patroni 是围绕 PostgreSQL 构建的。MySQL 支持通过 ``DatabaseHandler`` 
 - 复用 DCS leader 选举和 HA 控制循环
 - 使用 GTID 驱动 MySQL（不进行 timeline / ``sysid`` 匹配）
 - 支持三种按运维选择的模式：异步 GTID、xenon 风格的半同步、MGR
-- 避免仅限 PostgreSQL 的路径（``pg_rewind``、WAL 归档 standby cluster）
+- 优先复用共享 HA 抽象；避免仅限 PostgreSQL 的路径（``pg_rewind``）。
+  MySQL standby cluster 使用全量克隆 + GTID 级联，而非 WAL ``restore_command``。
 
 集群布局
 ==============

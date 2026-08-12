@@ -176,6 +176,32 @@ Switchover / failover
     # … maintenance …
     patronictl -c patroni.yml resume
 
+Standby cluster（跨站点级联）
+------------------------------------
+
+MySQL 备站使用 **全量克隆 + GTID 级联**，不是 WAL 归档 /
+``restore_command``。推荐优先物理克隆：
+
+.. code-block:: yaml
+
+    bootstrap:
+      dcs:
+        standby_cluster:
+          host: primary-site.example
+          port: 3306
+          create_replica_methods:
+            - xtrabackup
+            - mysqldump   # xtrabackup 不可用时回退
+
+或强制仅逻辑克隆：``create_replica_methods: [mysqldump]``。
+
+- **standby leader** 持有 DCS 锁，从远程主复制，保持 ``super_read_only``。
+- 本站其他节点跟随 standby leader 级联。
+- 提升：``patronictl promote-cluster``（去掉 ``standby_cluster``）。
+- 再降级：``patronictl demote-cluster --host … --port …``。
+
+与主站使用 **不同的 DCS scope**。跨站点复制时成员名必须全局唯一。
+
 HAProxy
 =======
 
@@ -339,7 +365,8 @@ switchover 无限循环
 已知限制（运维视角）
 ============================
 
-- **不支持** standby cluster（跨站点 WAL 归档模式）
+- MySQL standby cluster 使用 **全量克隆 + GTID 级联**（不是 WAL 归档 /
+  ``restore_command``）。推荐 ``create_replica_methods: [xtrabackup, mysqldump]``。
 - 没有与 ``pg_rewind`` 等价的功能
 - 模式变更属于重建/切换，而非在线热切换
 - 仍处于积极开发阶段 — 上生产前请结合你的工作负载与

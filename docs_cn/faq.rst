@@ -352,5 +352,12 @@ MySQL HA 文档在哪里？
     * :ref:`mysql_ops`— 安装、部署、HAProxy、FAQ
 
 MySQL 是否支持与 PostgreSQL 相同的 standby cluster 功能？
-    不支持。跨站点 standby cluster 依赖 PostgreSQL 的 WAL 归档，MySQL 不支持该功能。
+    支持，但实现方式不同。在 DCS 中配置 ``standby_cluster.host`` /
+    ``port`` 指向远程主。备站 **必须先做全量克隆**（默认优先
+    ``xtrabackup``，不可用再 ``mysqldump``），因为远程 binlog 往往无法覆盖
+    全库历史；然后再用 GTID 级联复制
+    （``CHANGE MASTER … MASTER_AUTO_POSITION=1``），并保持
+    ``super_read_only``。本站其他节点跟随 standby leader。用
+    ``patronictl promote-cluster`` 去掉 ``standby_cluster`` 提升为独立主。
+    不使用 PostgreSQL 的 ``restore_command`` / replication slot 备站模式。
     请在单个 Patroni scope 内使用 async / semi-sync / MGR，或使用手动切换方案运维独立的集群。

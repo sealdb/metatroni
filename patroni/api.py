@@ -1494,7 +1494,10 @@ class RestApiHandler(BaseHTTPRequestHandler):
         :param retry: Retry object for database queries.
         :returns: a dictionary with MySQL status information.
         """
-        state = mysql_handler.state
+        # Bootstrap.clone may start mysqld without going through MySQL.start(),
+        # so refresh state from the pidfile before answering the API.
+        if mysql_handler.is_running():
+            state = mysql_handler.state
         try:
             is_primary = mysql_handler.is_primary()
 
@@ -1527,9 +1530,15 @@ class RestApiHandler(BaseHTTPRequestHandler):
                     sbm = slave_row.get('Seconds_Behind_Master')
                     binlog_data['seconds_behind_master'] = int(sbm) if sbm is not None else None
 
+            role = 'primary' if is_primary else 'replica'
+            # Match PostgreSQL: in a standby cluster the lock-holder is
+            # ``standby_leader`` (still a replica at the SQL layer).
+            if role == 'replica' and global_config.is_standby_cluster:
+                role = mysql_handler.role
+
             result = {
                 'state': state,
-                'role': 'primary' if is_primary else 'replica',
+                'role': role,
                 'server_version': mysql_handler.server_version,
                 'binlog': binlog_data
             }

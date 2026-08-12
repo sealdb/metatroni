@@ -21,6 +21,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 import yaml
 
 from .config import ConfigHandler
+from .misc import DEFAULT_CREATE_REPLICA_METHODS
 from .versioning import (
     build_mysqld_parameters,
     resolve_mysql_version,
@@ -462,7 +463,7 @@ def generate_cluster(args: argparse.Namespace) -> List[Dict[str, Any]]:
 
     create_methods = [m.strip() for m in args.create_replica_methods.split(',') if m.strip()]
     if not create_methods:
-        create_methods = ['mysqldump']
+        create_methods = list(DEFAULT_CREATE_REPLICA_METHODS)
 
     for node in nodes:
         os.makedirs(node['data_dir'], exist_ok=True)
@@ -594,8 +595,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
                    help='Per-node buffer pool absolute size (e.g. 2G); overrides --memory-pct')
     p.add_argument('--superuser-password', default='', help='root password (default: empty)')
     p.add_argument('--replication-password', default='rep-pass', help='replicator password')
-    p.add_argument('--create-replica-methods', default='mysqldump',
-                   help='Comma list: mysqldump,xtrabackup,...')
+    p.add_argument('--create-replica-methods',
+                   default=','.join(DEFAULT_CREATE_REPLICA_METHODS),
+                   help='Comma list; default prefers xtrabackup then mysqldump')
     p.add_argument('--mgr-group-name', default=None, help='Fixed MGR UUID (default: random)')
     p.add_argument('--set', action='append', default=[],
                    help='Extra mysqld parameter key=value (repeatable)')

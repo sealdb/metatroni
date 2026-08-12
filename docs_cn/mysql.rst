@@ -25,7 +25,8 @@ MySQL 高可用支持
 - 在 DCS（etcd、Consul、ZooKeeper……）中持有/竞争 **leader lease**
 - 监控 MySQL 健康状态，并将状态（包括 GTID）发布到 DCS
 - 管理 **异步 GTID**、**semi-sync** 或 **Group Replication (MGR)**
-- 通过 ``mysqldump`` 或 ``xtrabackup`` 克隆 replica
+- 通过 ``xtrabackup``（优先）或 ``mysqldump`` 克隆 replica
+- 支持 **standby cluster**（全量克隆 + GTID 级联；非 WAL 归档）
 - 提供常用的 REST API 和 ``patronictl`` 接口
 
 快速开始

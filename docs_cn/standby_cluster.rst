@@ -28,6 +28,23 @@ standby cluster 与其复制的 primary cluster 之间没有其他关系，特�
                 create_replica_methods:
                 - basebackup
 
+**MySQL** 使用相同的 DCS ``standby_cluster`` 键（``host``、``port``、可选
+``create_replica_methods``），但 bootstrap 是对远程主的 **全量克隆**（默认
+``xtrabackup`` 再 ``mysqldump``），随后通过 GTID 流式复制
+（``MASTER_AUTO_POSITION=1``）。MySQL 不要设置 PostgreSQL 专用的
+``restore_command`` / ``primary_slot_name``。示例：
+
+.. code:: YAML
+
+    bootstrap:
+        dcs:
+            standby_cluster:
+                host: primary-site.example
+                port: 3306
+                create_replica_methods:
+                - xtrabackup
+                - mysqldump
+
 请注意，这些选项只在集群 bootstrap 期间应用一次，之后唯一的修改方式是通过 DCS。
 
 Patroni 期望在远程 primary 的 PGDATA 中找到 `postgresql.conf` 或 `postgresql.conf.backup`，如果在 basebackup 之后找不到，将无法启动。如果远程 primary 将 `postgresql.conf` 保存在其他位置，则需要你自行将其复制到 PGDATA。

@@ -5,6 +5,7 @@ import subprocess
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from ..dcs import Leader, Member, RemoteMember
+from .misc import CreateReplicaMethod, DEFAULT_CREATE_REPLICA_METHODS
 
 logger = logging.getLogger(__name__)
 
@@ -117,10 +118,14 @@ class Bootstrap:
         return self.create_replica(clone_member)
 
     def create_replica(self, clone_member: Any) -> bool:
-        """Create a replica using the configured clone method.
+        """Create a replica using the configured clone method(s).
 
-        Checks ``create_replica_methods`` config; falls back to mysqldump
-        if no methods are configured.
+        Method resolution order:
+
+        1. ``RemoteMember.create_replica_methods`` (from DCS ``standby_cluster``)
+        2. ``mysql.create_replica_methods`` (default ``[xtrabackup, mysqldump]``)
+        3. Skip ``xtrabackup`` when the binary is missing (unless it is the only
+           configured method — then fail rather than silently dumping)
         """
         conn_url = None
         if isinstance(clone_member, (Leader, Member, RemoteMember)):
@@ -129,17 +134,15 @@ class Bootstrap:
             logger.error("No connection URL for clone source")
             return False
 
-        # Determine which method(s) to use
-        replica_methods = getattr(self._config_handler, 'create_replica_methods', None)
-        if replica_methods is None:
-            replica_methods = ['mysqldump']
+        replica_methods = self._resolve_create_replica_methods(clone_member)
+        logger.info("create_replica methods for %s: %s", conn_url, replica_methods)
 
         for method in replica_methods:
             logger.info("Creating replica from %s using method=%s", conn_url, method)
-            if method == 'mysqldump':
+            if method == CreateReplicaMethod.MYSQLDUMP:
                 if self._create_replica_via_mysqldump(conn_url):
                     return True
-            elif method == 'xtrabackup':
+            elif method == CreateReplicaMethod.XTRABACKUP:
                 if self._create_replica_via_xtrabackup(conn_url):
                     return True
             else:
@@ -147,6 +150,41 @@ class Bootstrap:
             logger.error("Method %s failed, trying next if available", method)
 
         return False
+
+    def _resolve_create_replica_methods(self, clone_member: Any) -> List[str]:
+        """Prefer xtrabackup; fall back to mysqldump when unavailable or after failure."""
+        methods: Optional[List[str]] = None
+        if isinstance(clone_member, RemoteMember):
+            remote_methods = getattr(clone_member, 'create_replica_methods', None)
+            if remote_methods:
+                methods = list(remote_methods)
+        if not methods:
+            methods = list(getattr(self._config_handler, 'create_replica_methods', None)
+                           or DEFAULT_CREATE_REPLICA_METHODS)
+
+        xtrabackup_ok = self._config_handler.xtrabackup_available()
+        resolved: List[str] = []
+        for method in methods:
+            if method == CreateReplicaMethod.XTRABACKUP and not xtrabackup_ok:
+                logger.warning(
+                    "xtrabackup binary not available (%s); skipping method",
+                    self._config_handler.get_xtrabackup_path()
+                )
+                continue
+            if method not in resolved:
+                resolved.append(method)
+
+        # Default ``[xtrabackup, mysqldump]``: after skipping xtrabackup, mysqldump
+        # remains. Explicit ``[xtrabackup]`` alone must not invent mysqldump.
+        if not resolved:
+            if methods and all(m == CreateReplicaMethod.XTRABACKUP for m in methods):
+                logger.error(
+                    "xtrabackup is required but unavailable; not falling back to mysqldump"
+                )
+                return []
+            logger.warning("Falling back to mysqldump because no usable clone method remains")
+            resolved = [CreateReplicaMethod.MYSQLDUMP]
+        return resolved
 
     @staticmethod
     def _rmtree_quiet(path: Optional[str]) -> None:

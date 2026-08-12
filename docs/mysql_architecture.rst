@@ -20,7 +20,9 @@ Goals:
 - Reuse DCS leader election and the HA control loop
 - Drive MySQL with GTID (no timeline / ``sysid`` matching)
 - Support three ops-selected modes: async GTID, xenon-style semi-sync, MGR
-- Avoid PostgreSQL-only paths (``pg_rewind``, WAL archive standby cluster)
+- Prefer shared HA loop abstractions; avoid PostgreSQL-only paths
+  (``pg_rewind``). MySQL standby clusters use clone + GTID cascade instead of
+  WAL ``restore_command``.
 
 Cluster layout
 ==============

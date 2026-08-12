@@ -1236,6 +1236,45 @@ class TestHa(PostgresInit):
         with patch.object(Leader, 'conn_url', PropertyMock(return_value='')):
             self.assertEqual(self.ha.run_cycle(), 'continue following the old known standby leader')
 
+    def test_get_remote_member_mysql_conn_url(self):
+        self.ha.cluster = get_standby_cluster_initialized_with_only_leader()
+        self.ha.cluster.config.data['standby_cluster'] = {
+            'host': '10.0.0.1,10.0.0.2',
+            'port': 3306,
+            'create_replica_methods': ['xtrabackup', 'mysqldump'],
+        }
+        global_config.update(self.ha.cluster)
+        self.p.db_type = 'mysql'
+        remote = self.ha.get_remote_member()
+        self.assertEqual(remote.data['conn_kwargs']['db_type'], 'mysql')
+        self.assertEqual(remote.data['conn_kwargs']['host'], '10.0.0.1')
+        self.assertTrue(remote.conn_url.startswith('mysql://'))
+        self.assertIn('10.0.0.1', remote.conn_url)
+        self.assertEqual(remote.create_replica_methods, ['xtrabackup', 'mysqldump'])
+
+    @patch.object(Ha, 'touch_member', Mock(return_value=True))
+    def test_demote_mysql_cluster(self):
+        self.p.db_type = 'mysql'
+        self.p.set_read_only = Mock()
+        self.p.demote = Mock(return_value=True)
+        self.p.follow = Mock(return_value=True)
+        self.ha.cluster = get_standby_cluster_initialized_with_only_leader()
+        self.ha.cluster.config.data['standby_cluster'] = {
+            'host': '127.0.0.1', 'port': 3306,
+        }
+        global_config.update(self.ha.cluster)
+        with patch.object(self.ha, 'release_leader_key_voluntarily') as release:
+            self.assertTrue(self.ha._demote_mysql('demote-cluster'))
+            release.assert_not_called()
+        self.p.follow.assert_called()
+        _, kwargs = self.p.follow.call_args
+        # follow(remote, role='standby_leader') — role may be positional
+        call_args = self.p.follow.call_args
+        role = call_args.kwargs.get('role')
+        if role is None and len(call_args.args) > 1:
+            role = call_args.args[1]
+        self.assertEqual(role, 'standby_leader')
+
     @patch.object(Cluster, 'is_unlocked', Mock(return_value=True))
     def test_process_unhealthy_standby_cluster_as_standby_leader(self):
         self.p.is_primary = false

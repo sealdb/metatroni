@@ -45,6 +45,23 @@ in a patroni configuration:
                 create_replica_methods:
                 - basebackup
 
+**MySQL** uses the same DCS ``standby_cluster`` keys (``host``, ``port``,
+optional ``create_replica_methods``), but bootstrap is a **full clone** of the
+remote primary (default ``xtrabackup`` then ``mysqldump``) followed by GTID
+streaming (``MASTER_AUTO_POSITION=1``). Do not set PostgreSQL-only keys such as
+``restore_command`` or ``primary_slot_name`` for MySQL. Example:
+
+.. code:: YAML
+
+    bootstrap:
+        dcs:
+            standby_cluster:
+                host: primary-site.example
+                port: 3306
+                create_replica_methods:
+                - xtrabackup
+                - mysqldump
+
 Note, that these options will be applied only once during cluster bootstrap,
 and the only way to change them afterwards is through DCS.
 
