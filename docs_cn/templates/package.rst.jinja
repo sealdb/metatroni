@@ -1,0 +1,58 @@
+{%- macro automodule(modname, options) -%}
+.. automodule:: {{ modname }}
+{%- for option in options %}
+   :{{ option }}:
+{%- endfor %}
+{%- endmacro %}
+
+{%- macro toctree(docnames) -%}
+.. toctree::
+   :maxdepth: {{ maxdepth }}
+{% for docname in docnames %}
+   {{ docname }}
+{%- endfor %}
+{%- endmacro %}
+
+{%- if is_namespace %}
+{{- [pkgname, "命名空间"] | join(" ") | e | heading }}
+{% else %}
+{{- [pkgname, "包"] | join(" ") | e | heading }}
+{% endif %}
+
+{%- if is_namespace %}
+.. py:module:: {{ pkgname }}
+{% endif %}
+
+{%- if modulefirst and not is_namespace %}
+{{ automodule(pkgname, automodule_options) }}
+{% endif %}
+
+{%- if subpackages %}
+子包
+----
+
+{{ toctree(subpackages) }}
+{% endif %}
+
+{%- if submodules %}
+子模块
+------
+
+{% if separatemodules %}
+{{ toctree(submodules) }}
+{% else %}
+{%- for submodule in submodules %}
+{% if show_headings %}
+{{- [submodule, "模块"] | join(" ") | e | heading(2) }}
+{% endif %}
+{{ automodule(submodule, automodule_options) }}
+{% endfor %}
+{%- endif %}
+{%- endif %}
+
+{%- if not modulefirst and not is_namespace %}
+模块内容
+--------
+
+{{ automodule(pkgname, automodule_options) }}
+{% endif %}

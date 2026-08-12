@@ -60,7 +60,7 @@ Read next
      - System design / code map
    * - :ref:`mysql_mechanisms`
      - Failover, demote, semi-sync, MGR, clone
-     - “How does it work?”
+     - How does it work?
    * - :ref:`mysql_ops`
      - Install, day-2, FAQ
      - Deploy / troubleshoot
