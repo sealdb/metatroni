@@ -62,6 +62,19 @@
 - Docs：正式章节 `docs/mysql.rst`（`index` / `installation` 已挂上）；`notes/MYSQL_HA.md` 改为指向正式文档
 - Ops：`patroni_mysql_init` 生成 `haproxy.cfg`；仓库根目录 `haproxy-mysql.cfg` 示例；文档补充路由说明
 
+### 近期验证（2026-08-12）
+| 测试 | 结果 |
+|------|------|
+| unit `test_mysql*` | **85/85** |
+| `test_mysql_patroni_ha` | **13/13** |
+| `test_mysql_semi_sync` | **16/16** |
+| `test_mysql_xtrabackup` | **13/13** |
+| `test_mysql_mgr_election` | **20/20** |
+| `test_mysql_mgr_e2e` | **31/31** |
+| `test_mysql_mgr_patroni_ha` | **24/24** |
+
+（此前 2026-08-10 仅覆盖 xtrabackup + MGR 四套；本次补齐 async Patroni HA 与 semi-sync。）
+
 ### 近期验证（2026-08-10）
 | 测试 | 结果 |
 |------|------|
@@ -75,7 +88,7 @@ MGR majority-loss 修复要点：
 2. `rejoin_mgr_group` 等到 ONLINE/RECOVERING 才算成功
 3. 自认 winner 但无锁时，若已有活着的 `mgr_primary` 则先 rejoin
 
-文档：`notes/MYSQL_HA.md` 已补充 **Replication modes (async / semi-sync / MGR)** 切换说明。
+文档：模式切换说明已迁入 `docs/mysql.rst`。
 
 ## 测试命令
 ```bash
