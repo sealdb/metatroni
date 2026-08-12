@@ -39,6 +39,11 @@ def install_requirements(what):
         if not extras or what == 'all' or what in extras:
             requirements.append(r.requirement)
 
+    # pymysql is only listed under EXTRAS_REQUIRE['mysql'], not requirements.txt.
+    # Unit tests mock it, but install it for import/coverage parity with the mysql extra.
+    if what in ('all', 'mysql'):
+        requirements.extend(EXTRAS_REQUIRE.get('mysql') or [])
+
     return subprocess.call([sys.executable, '-m', 'pip', 'install'] + requirements)
 
 
@@ -132,6 +137,10 @@ def install_postgres():
 
 def main():
     what = os.environ.get('DCS', sys.argv[1] if len(sys.argv) > 1 else 'all')
+
+    # MySQL unit job: same Python deps as unit tests (plus pymysql), no PG/DCS packages.
+    if what == 'mysql':
+        return install_requirements('all')
 
     if what != 'all':
         if sys.platform.startswith('linux'):

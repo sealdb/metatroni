@@ -57,6 +57,9 @@
 ### 优先级: 中
 （暂无）
 
+### 已完成（运维/CI）
+- CI：`Tests` workflow 增加 `mysql` job；unit/`tox`/`pyright` 安装 `pymysql`；push 触发含 `dev_*`
+
 ### 近期验证（2026-08-10）
 | 测试 | 结果 |
 |------|------|

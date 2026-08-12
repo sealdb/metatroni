@@ -14,6 +14,13 @@ def main():
         version = '.'.join(map(str, sys.version_info[:2]))
         shutil.move('.coverage', os.path.join(tempfile.gettempdir(), '.coverage.' + version))
         return flake8 | test
+    elif what == 'mysql':
+        # Focused MySQL backend unit suite (no flake8 / full PG matrix).
+        return subprocess.call([
+            sys.executable, '-m', 'unittest',
+            'tests.test_mysql', 'tests.test_mysql_init', 'tests.test_mysql_versioning',
+            '-q',
+        ])
     elif what == 'combine':
         tmp = tempfile.gettempdir()
         for name in os.listdir(tmp):

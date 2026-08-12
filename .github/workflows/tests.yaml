@@ -6,6 +6,7 @@ on:
     branches:
     - master
     - 'REL_[0-9]+_[0-9]+'
+    - 'dev_*'
 
 env:
   CODACY_PROJECT_TOKEN: ${{ secrets.CODACY_PROJECT_TOKEN }}
@@ -111,6 +112,22 @@ jobs:
       with:
         flags: unit-${{ matrix.os }}
 
+  mysql:
+    name: MySQL unit tests
+    runs-on: ubuntu-22.04
+    env:
+      DCS: mysql
+    steps:
+    - uses: actions/checkout@v5
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - name: Install dependencies
+      run: python .github/workflows/install_deps.py mysql
+    - name: Run MySQL unit tests
+      run: python .github/workflows/run_tests.py mysql
+
   behave:
     runs-on: ${{ fromJson('{"ubuntu":"ubuntu-22.04","windows":"windows-latest","macos":"macos-14"}')[matrix.os] }}
     env:
@@ -192,7 +209,7 @@ jobs:
         python-version: 3.14
 
     - name: Install dependencies
-      run: python -m pip install -r requirements.txt psycopg2-binary psycopg
+      run: python -m pip install -r requirements.txt psycopg2-binary psycopg pymysql
 
     - uses: jakebailey/pyright-action@v2
       with:
