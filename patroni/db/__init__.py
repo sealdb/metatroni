@@ -5,6 +5,7 @@ This module defines the abstract base class that all database backends
 """
 
 import abc
+
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from ..dcs import Leader, Member, RemoteMember
@@ -311,12 +312,12 @@ class DatabaseHandler(abc.ABC):
         return []
 
 
-def get_db_handler(config: Dict[str, Any], dcs_mpp: Any = None) -> 'DatabaseHandler':
+def get_db_handler(config: Any, dcs_mpp: Any = None) -> Any:
     """Factory function to get the appropriate database handler.
 
-    :param config: The database configuration section.
+    :param config: The database configuration section (or full :class:`Config`).
     :param dcs_mpp: Optional MPP handler.
-    :returns: A DatabaseHandler implementation instance.
+    :returns: A DatabaseHandler implementation instance (``Postgresql`` or ``MySQL``).
     """
     from ..config import Config
     if isinstance(config, Config):

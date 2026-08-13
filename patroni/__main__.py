@@ -31,7 +31,7 @@ class Patroni(AbstractPatroniDaemon, Tags):
     :ivar version: Patroni version.
     :ivar dcs: DCS object.
     :ivar watchdog: watchdog handler, if configured to use watchdog.
-    :ivar postgresql: managed Postgres instance.
+    :ivar postgresql: managed database instance (PostgreSQL or MySQL).
     :ivar api: REST API server instance of this node.
     :ivar request: wrapper for performing HTTP requests.
     :ivar ha: HA handler.
@@ -40,6 +40,8 @@ class Patroni(AbstractPatroniDaemon, Tags):
         * ``schedule``: timestamp when restart should occur;
         * ``postmaster_start_time``: timestamp when Postgres was last started.
     """
+
+    postgresql: Any  # Postgresql or MySQL DatabaseHandler
 
     def __init__(self, config: 'Config', patroni_logger: 'PatroniLogger') -> None:
         """Create a :class:`Patroni` instance with the given *config*.
@@ -55,8 +57,8 @@ class Patroni(AbstractPatroniDaemon, Tags):
         """
         from patroni import thread_pool
         from patroni.api import RestApiServer
-        from patroni.dcs import get_dcs
         from patroni.db import get_db_handler
+        from patroni.dcs import get_dcs
         from patroni.ha import Ha
         from patroni.postgresql import Postgresql
         from patroni.request import PatroniRequest

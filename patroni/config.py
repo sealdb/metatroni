@@ -765,10 +765,11 @@ class Config(object):
 
         # Same for MySQL backend: inject top-level identity fields into the
         # engine section so MySQL(config['mysql']) receives name/scope.
-        db_type = (config.get('database') or {}).get('type', 'postgresql')
-        if db_type == 'mysql' and 'mysql' in config:
-            mysql_config = config['mysql']
-            if isinstance(mysql_config, dict):
+        database: Dict[str, Any] = config.get('database') or {}
+        db_type = database.get('type', 'postgresql')
+        if db_type == 'mysql':
+            mysql_config = cast(Dict[str, Any], config.get('mysql') or {})
+            if mysql_config:
                 mysql_config.update({p: config[p] for p in ('name', 'scope') if p in config})
                 if 'name' not in config and 'name' in mysql_config:
                     config['name'] = mysql_config['name']

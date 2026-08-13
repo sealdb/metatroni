@@ -6,6 +6,7 @@ import os
 import sys
 import tempfile
 import unittest
+
 from unittest import mock
 
 # Mock pymysql before importing patroni.mysql (same pattern as test_mysql.py)
@@ -20,16 +21,10 @@ mock_pymysql.err = mock_err
 sys.modules['pymysql'] = mock_pymysql
 sys.modules['pymysql.err'] = mock_err
 
-import yaml
+import yaml  # noqa: E402
 
-from patroni.mysql.initcmd import (
-    SEMI_SYNC_TIMEOUT_INFINITE_MS,
-    compute_buffer_pool_bytes,
-    format_size_mysql,
-    generate_cluster,
-    main,
-    parse_size,
-)
+from patroni.mysql.initcmd import compute_buffer_pool_bytes, format_size_mysql, \
+    generate_cluster, main, parse_size, SEMI_SYNC_TIMEOUT_INFINITE_MS  # noqa: E402
 
 
 class TestSizeHelpers(unittest.TestCase):
@@ -58,7 +53,6 @@ class TestSizeHelpers(unittest.TestCase):
 class TestGenerateCluster(unittest.TestCase):
 
     def _args(self, **kwargs):
-        from patroni.mysql.initcmd import build_arg_parser
         defaults = {
             'output_dir': None,
             'nodes': 3,

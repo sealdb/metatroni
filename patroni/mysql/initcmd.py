@@ -16,17 +16,14 @@ import os
 import sys
 import textwrap
 import uuid
+
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import yaml
 
 from .config import ConfigHandler
 from .misc import DEFAULT_CREATE_REPLICA_METHODS
-from .versioning import (
-    build_mysqld_parameters,
-    resolve_mysql_version,
-    version_summary,
-)
+from .versioning import build_mysqld_parameters, resolve_mysql_version, version_summary
 
 # Xenon-compatible "infinite" semi-sync timeout (ms): never degrade to async.
 SEMI_SYNC_TIMEOUT_INFINITE_MS = 10**18
@@ -170,21 +167,21 @@ def base_mysql_parameters(repo_root: Optional[str] = None) -> Dict[str, str]:
     return build_base_parameters(parse_mysql_version('8.0.35'))
 
 
-def semi_sync_parameters(nodes: int,
-                        repo_root: Optional[str] = None) -> Dict[str, str]:
+def semi_sync_parameters(nodes: int, repo_root: Optional[str] = None) -> Dict[str, str]:
     from .versioning import apply_semi_sync_params, parse_mysql_version
     return apply_semi_sync_params(
         parse_mysql_version('8.0.35'), nodes,
         SEMI_SYNC_TIMEOUT_INFINITE_MS if nodes >= 3 else SEMI_SYNC_TIMEOUT_TWO_NODE_MS,
-        max(1, (nodes - 1) // 2))
+        max(1, (nodes - 1) // 2),
+    )
 
 
-def mgr_parameters(group_name: str, local_host: str, mysql_port: int,
-                  seeds: str, nodes: int,
-                  repo_root: Optional[str] = None) -> Dict[str, str]:
+def mgr_parameters(group_name: str, local_host: str, mysql_port: int, seeds: str,
+                   nodes: int, repo_root: Optional[str] = None) -> Dict[str, str]:
     from .versioning import apply_mgr_params, parse_mysql_version
     return apply_mgr_params(
-        parse_mysql_version('8.0.35'), group_name, local_host, mysql_port, seeds, nodes)
+        parse_mysql_version('8.0.35'), group_name, local_host, mysql_port, seeds, nodes,
+    )
 
 
 def build_node_spec(
@@ -396,20 +393,20 @@ def render_helpers(output_dir: str, nodes: Sequence[Dict[str, Any]],
         f'./start.sh\npatronictl -c ./{first}/patroni.yml list\n```\n\n'
         f'## HAProxy (optional)\n'
         f'Generated ``haproxy.cfg`` routes:\n'
-        f'- ``*:5000`` → current primary (``HEAD /primary``)\n'
-        f'- ``*:5001`` → healthy replicas (``HEAD /replica``)\n'
-        f'- ``*:7000`` → HAProxy stats\n\n'
+        f'- ``*:5000`` -> current primary (``HEAD /primary``)\n'
+        f'- ``*:5001`` -> healthy replicas (``HEAD /replica``)\n'
+        f'- ``*:7000`` -> HAProxy stats\n\n'
         f'```bash\nhaproxy -f ./haproxy.cfg -db\n'
         f'mysql -h 127.0.0.1 -P 5000 -u root\n```\n'
     )
 
-    with open(os.path.join(output_dir, 'start.sh'), 'w') as f:
+    with open(os.path.join(output_dir, 'start.sh'), 'w', encoding='utf-8') as f:
         f.write('\n'.join(start_lines) + '\n')
-    with open(os.path.join(output_dir, 'stop.sh'), 'w') as f:
+    with open(os.path.join(output_dir, 'stop.sh'), 'w', encoding='utf-8') as f:
         f.write('\n'.join(stop_lines) + '\n')
-    with open(os.path.join(output_dir, 'haproxy.cfg'), 'w') as f:
+    with open(os.path.join(output_dir, 'haproxy.cfg'), 'w', encoding='utf-8') as f:
         f.write(render_haproxy_cfg(nodes))
-    with open(os.path.join(output_dir, 'README.md'), 'w') as f:
+    with open(os.path.join(output_dir, 'README.md'), 'w', encoding='utf-8') as f:
         f.write(readme)
     os.chmod(os.path.join(output_dir, 'start.sh'), 0o755)
     os.chmod(os.path.join(output_dir, 'stop.sh'), 0o755)

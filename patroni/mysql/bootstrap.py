@@ -5,6 +5,7 @@ import subprocess
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from ..dcs import Leader, Member, RemoteMember
+from .config import ConfigHandler
 from .misc import CreateReplicaMethod, DEFAULT_CREATE_REPLICA_METHODS
 
 logger = logging.getLogger(__name__)
@@ -12,9 +13,9 @@ logger = logging.getLogger(__name__)
 
 class Bootstrap:
 
-    def __init__(self, config_handler: 'ConfigHandler',  # noqa: F821
+    def __init__(self, config_handler: ConfigHandler,
                  postmaster: Callable[[], Any],
-                 query_func: Callable):
+                 query_func: Callable[..., Any]):
         self._config_handler = config_handler
         self._postmaster = postmaster
         self._query = query_func

@@ -175,8 +175,28 @@ latex_elements = {
     # 'pointsize': '10pt',
 
     # Additional stuff for the LaTeX preamble.
-    #
-    # 'preamble': '',
+    # MySQL HA docs use box-drawing / arrow glyphs in text diagrams; map them
+    # for pdflatex (stock TeX Live, no extra packages beyond CI install).
+    'preamble': r'''
+\DeclareUnicodeCharacter{2192}{\ensuremath{\rightarrow}}
+\DeclareUnicodeCharacter{2194}{\ensuremath{\leftrightarrow}}
+\DeclareUnicodeCharacter{2265}{\ensuremath{\geq}}
+\DeclareUnicodeCharacter{2248}{\ensuremath{\approx}}
+\DeclareUnicodeCharacter{25BA}{\ensuremath{\blacktriangleright}}
+\DeclareUnicodeCharacter{25BC}{\ensuremath{\blacktriangledown}}
+\DeclareUnicodeCharacter{25C4}{\ensuremath{\blacktriangleleft}}
+\DeclareUnicodeCharacter{2500}{-}
+\DeclareUnicodeCharacter{2502}{|}
+\DeclareUnicodeCharacter{250C}{+}
+\DeclareUnicodeCharacter{2510}{+}
+\DeclareUnicodeCharacter{2514}{+}
+\DeclareUnicodeCharacter{2518}{+}
+\DeclareUnicodeCharacter{251C}{+}
+\DeclareUnicodeCharacter{2524}{+}
+\DeclareUnicodeCharacter{252C}{+}
+\DeclareUnicodeCharacter{2534}{+}
+\DeclareUnicodeCharacter{253C}{+}
+''',
 
     # Latex figure (float) alignment
     #

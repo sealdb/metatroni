@@ -6,6 +6,7 @@ import os
 import sys
 import tempfile
 import unittest
+
 from unittest import mock
 
 mock_pymysql = type(sys)('pymysql')
@@ -18,19 +19,10 @@ mock_pymysql.err = mock_err
 sys.modules['pymysql'] = mock_pymysql
 sys.modules['pymysql.err'] = mock_err
 
-from patroni.mysql.initcmd import (  # noqa: E402
-    SEMI_SYNC_TIMEOUT_INFINITE_MS,
-    align_down,
-    format_size_mysql,
-    generate_cluster,
-    main,
-)
-from patroni.mysql.versioning import (  # noqa: E402
-    build_mysqld_parameters,
-    parse_mysql_version,
-    resolve_mysql_version,
-    semi_sync_plugin_names,
-)
+from patroni.mysql.initcmd import align_down, format_size_mysql, \
+    generate_cluster, main, SEMI_SYNC_TIMEOUT_INFINITE_MS  # noqa: E402
+from patroni.mysql.versioning import build_mysqld_parameters, parse_mysql_version, \
+    resolve_mysql_version, semi_sync_plugin_names  # noqa: E402
 
 
 class TestParseVersion(unittest.TestCase):

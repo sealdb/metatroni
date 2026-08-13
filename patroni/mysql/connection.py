@@ -1,8 +1,7 @@
 import logging
-import time
 
 from threading import Lock
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple
 
 from ..exceptions import PostgresConnectionException
 
@@ -10,7 +9,8 @@ logger = logging.getLogger(__name__)
 
 try:
     import pymysql
-    from pymysql.err import Error as MySQLdbError, OperationalError, DatabaseError
+
+    from pymysql.err import DatabaseError, Error as MySQLdbError, OperationalError
     HAS_MYSQL = True
 except ImportError:
     HAS_MYSQL = False

@@ -17,12 +17,12 @@ import urllib3
 
 from urllib3.exceptions import ProtocolError, ReadTimeoutError
 
+from .. import parse_version
 from ..collections import EMPTY_DICT
 from ..exceptions import DCSError, PatroniException
 from ..postgresql.mpp import AbstractMPP
 from ..utils import deep_compare, enable_keepalive, iter_response_objects, \
     parse_bool, RetryFailedError, USER_AGENT, WHITESPACE_RE
-from .. import parse_version
 from . import catch_return_false_exception, Cluster, ClusterConfig, \
     Failover, Leader, Member, Status, SyncState, TimelineHistory
 from .etcd import AbstractEtcd, AbstractEtcdClientWithFailover, catch_etcd_errors, \

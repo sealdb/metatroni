@@ -1,10 +1,9 @@
 import logging
 import os
-import signal
 import subprocess
 import time
 
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 import psutil
 

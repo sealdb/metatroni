@@ -51,8 +51,18 @@ class _MemberStatus(Tags, NamedTuple('_MemberStatus',
         :param json: RestApiHandler.get_postgresql_status() result
         :returns: _MemberStatus object
         """
-        # Support both PostgreSQL (wal/xlog) and MySQL (binlog) response formats
-        wal: Dict[str, Any] = json.get('wal') or json.get('xlog') or json.get('binlog', {})
+        # Support both PostgreSQL (wal/xlog) and MySQL (binlog) response formats.
+        # Missing all three must raise (same as upstream ``json['xlog']``) so the
+        # node is treated as unreachable rather than falsely healthy.
+        wal: Dict[str, Any]
+        if 'wal' in json and json['wal'] is not None:
+            wal = json['wal']
+        elif 'xlog' in json and json['xlog'] is not None:
+            wal = json['xlog']
+        elif 'binlog' in json and json['binlog'] is not None:
+            wal = json['binlog']
+        else:
+            raise KeyError('wal')
         # abuse difference in primary/replica response format
         pg_primary = json.get('role') in (PostgresqlRole.MASTER, PostgresqlRole.PRIMARY)
         in_recovery = not (bool(wal.get('location'))
@@ -291,8 +301,8 @@ class Ha(object):
         operator resumes the cluster (``patronictl resume``) after repairing
         the fork.
         """
-        fork = getattr(self.state_handler, '_mgr_gtid_fork', None) or {}
-        members = fork.get('members') if isinstance(fork, dict) else fork
+        fork: Dict[str, Any] = getattr(self.state_handler, '_mgr_gtid_fork', None) or {}
+        members: Any = fork.get('members')
         logger.error(
             "CRITICAL: MGR GTID fork detected by %s; members=%s",
             self.state_handler.name, members
@@ -1438,10 +1448,11 @@ class Ha(object):
 
                 peer_gtid = ''
                 if use_gtid and my_gtid:
-                    binlog = st.data.get('binlog') or {}
-                    peer_gtid = (binlog.get('gtid_set') or binlog.get('gtid_executed')
-                                 or st.data.get('gtid_executed')
-                                 or (st.member.data or {}).get('gtid_executed') or '')
+                    binlog: Dict[str, Any] = st.data.get('binlog') or {}
+                    peer_gtid = str(
+                        binlog.get('gtid_set') or binlog.get('gtid_executed')
+                        or st.data.get('gtid_executed')
+                        or (st.member.data or {}).get('gtid_executed') or '')
 
                 if peer_gtid:
                     rel = self.state_handler.gtid_relation(my_gtid, peer_gtid)

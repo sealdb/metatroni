@@ -5,7 +5,6 @@ import shutil
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from ..dcs import Leader, Member, RemoteMember
-from ..utils import parse_int, split_host_port, uri
 from .misc import DEFAULT_CREATE_REPLICA_METHODS
 
 logger = logging.getLogger(__name__)

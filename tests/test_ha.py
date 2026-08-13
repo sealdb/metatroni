@@ -1267,12 +1267,11 @@ class TestHa(PostgresInit):
             self.assertTrue(self.ha._demote_mysql('demote-cluster'))
             release.assert_not_called()
         self.p.follow.assert_called()
-        _, kwargs = self.p.follow.call_args
-        # follow(remote, role='standby_leader') — role may be positional
-        call_args = self.p.follow.call_args
-        role = call_args.kwargs.get('role')
-        if role is None and len(call_args.args) > 1:
-            role = call_args.args[1]
+        # Python 3.7: mock Call has no .args/.kwargs (added in 3.8)
+        args, kwargs = self.p.follow.call_args
+        role = kwargs.get('role')
+        if role is None and len(args) > 1:
+            role = args[1]
         self.assertEqual(role, 'standby_leader')
 
     @patch.object(Cluster, 'is_unlocked', Mock(return_value=True))

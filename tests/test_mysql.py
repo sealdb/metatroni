@@ -16,15 +16,12 @@ mock_pymysql.err = mock_err
 sys.modules['pymysql'] = mock_pymysql
 sys.modules['pymysql.err'] = mock_err
 
-from patroni.dcs import Leader, Member
-from patroni.mysql import MySQL
-from patroni.mysql.config import ConfigHandler
-from patroni.mysql.connection import ConnectionPool
-from patroni.mysql.misc import (
-    MySQLState, MySQLRole, CreateReplicaMethod, DEFAULT_CREATE_REPLICA_METHODS,
-    mysql_version_to_int,
-)
-from patroni.mysql.postmaster import MySQLProcess
+from patroni.dcs import Member  # noqa: E402
+from patroni.mysql import MySQL  # noqa: E402
+from patroni.mysql.config import ConfigHandler  # noqa: E402
+from patroni.mysql.connection import ConnectionPool  # noqa: E402
+from patroni.mysql.misc import CreateReplicaMethod, DEFAULT_CREATE_REPLICA_METHODS, \
+    mysql_version_to_int, MySQLRole, MySQLState  # noqa: E402
 
 
 def get_mysql_config(name='mysql0'):
@@ -392,9 +389,10 @@ class TestMySQL(unittest.TestCase):
     @patch.object(MySQL, 'rejoin_mgr_group', return_value=True)
     @patch.object(MySQL, 'get_executed_gtid', return_value='u:1-20')
     @patch.object(MySQL, 'select_mgr_bootstrap_winner', return_value='mysql0')
-    def test_mgr_majority_loss_winner_rejoins_live_mgr_primary(self, _win, _gtid,
-                                                              mock_rejoin, mock_boot):
-        self.handler.config._parameters['group_replication_group_name'] = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
+    def test_mgr_majority_loss_winner_rejoins_live_mgr_primary(
+            self, _win, _gtid, mock_rejoin, mock_boot):
+        self.handler.config._parameters['group_replication_group_name'] = (
+            'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee')
         live = Member(0, 'mysql1', 0, {
             'role': 'mgr_primary',
             'conn_url': 'mysql://127.0.0.1:3307',
@@ -576,8 +574,8 @@ class TestMySQL(unittest.TestCase):
 
     def test_mysql_api_status_standby_leader_role(self):
         """REST /patroni must report standby_leader, not plain replica."""
-        from patroni.api import RestApiHandler
         from patroni import global_config
+        from patroni.api import RestApiHandler
 
         self.handler.set_role(MySQLRole.STANDBY_LEADER)
         self.handler.set_state(MySQLState.RUNNING)
@@ -650,9 +648,10 @@ class TestMySQL(unittest.TestCase):
         ha._demote_mysql.assert_called_once_with('immediate-nolock')
 
     def test_ha_demote_mysql_follows_new_leader(self):
+        from unittest.mock import MagicMock
+
         from patroni.dcs import Member
         from patroni.ha import Ha
-        from unittest.mock import MagicMock
 
         leader = Member(0, 'mysql0', 0, {'conn_url': 'mysql://127.0.0.1:3306'})
         ha = Ha.__new__(Ha)
@@ -834,7 +833,9 @@ class TestBootstrap(unittest.TestCase):
     def test_ensure_replication_user(self):
         self.handler.bootstrap._query = Mock()
         self.assertTrue(self.handler.bootstrap.ensure_replication_user())
-        sqls = [c.args[0] for c in self.handler.bootstrap._query.call_args_list]
+        # Python 3.7: mock Call has no .args/.kwargs (added in 3.8)
+        calls = [c[0] for c in self.handler.bootstrap._query.call_args_list]
+        sqls = [args[0] for args in calls]
         self.assertTrue(any(s == 'SET sql_log_bin=0' for s in sqls))
         self.assertTrue(any(s == 'SET sql_log_bin=1' for s in sqls))
         self.assertTrue(any('CREATE USER IF NOT EXISTS' in s for s in sqls))
@@ -843,9 +844,8 @@ class TestBootstrap(unittest.TestCase):
         self.assertTrue(any('BACKUP_ADMIN' in s for s in sqls))
         self.assertTrue(any(s == 'FLUSH PRIVILEGES' for s in sqls))
         # host pattern must be a single '%' (parameter), not literal '%%'
-        create_call = next(c for c in self.handler.bootstrap._query.call_args_list
-                           if 'CREATE USER' in c.args[0])
-        self.assertEqual(create_call.args[2], '%')
+        create_args = next(args for args in calls if 'CREATE USER' in args[0])
+        self.assertEqual(create_args[2], '%')
 
     def test_can_create_replica(self):
         self.assertTrue(self.handler.bootstrap.initialize() or True)

@@ -653,19 +653,12 @@ class RestApiHandler(BaseHTTPRequestHandler):
         metrics.append("patroni_primary{0} {1}".format(labels, int(postgres['role'] == PostgresqlRole.PRIMARY)))
 
         def _xlog_or_binlog(*keys: str) -> int:
-            obj = postgres.get('xlog') or postgres.get('binlog') or {}
+            obj: Dict[str, Any] = postgres.get('xlog') or postgres.get('binlog') or {}
             for k in keys:
                 v = obj.get(k)
                 if v:
                     return int(v)
             return 0
-
-        def _xlog_or_binlog_raw(*keys: str) -> Any:
-            obj = postgres.get('xlog') or postgres.get('binlog') or {}
-            for k in keys:
-                if k in obj:
-                    return obj[k]
-            return None
 
         metrics.append("# HELP patroni_xlog_location Current location of the"
                        " transaction log, 0 if this node is not the leader.")
@@ -675,8 +668,8 @@ class RestApiHandler(BaseHTTPRequestHandler):
         if not db_is_mysql:
             metrics.append("# HELP patroni_standby_leader Value is 1 if this node is the standby_leader, 0 otherwise.")
             metrics.append("# TYPE patroni_standby_leader gauge")
-            metrics.append("patroni_standby_leader{0} {1}".format(labels,
-                            int(postgres['role'] == PostgresqlRole.STANDBY_LEADER)))
+            metrics.append("patroni_standby_leader{0} {1}".format(
+                labels, int(postgres['role'] == PostgresqlRole.STANDBY_LEADER)))
 
         metrics.append("# HELP patroni_replica Value is 1 if this node is a replica, 0 otherwise.")
         metrics.append("# TYPE patroni_replica gauge")
@@ -1418,11 +1411,16 @@ class RestApiHandler(BaseHTTPRequestHandler):
             if db_is_mysql:
                 result = self._get_mysql_status(postgresql, retry)
             else:
-                replication_state = ("pg_catalog.pg_{0}_{1}_diff(wr.latest_end_lsn, '0/0')::bigint, wr.status"
-                                     if postgresql.major_version >= 90600 else "NULL, NULL") + ", " +\
-                    ("pg_catalog.current_setting('restore_command')" if postgresql.major_version >= 120000 else "NULL") +\
-                    ", " + ("pg_catalog.pg_wal_lsn_diff(wr.written_lsn, '0/0')::bigint"
-                            if postgresql.major_version >= 130000 else "NULL")
+                replication_state = (
+                    "pg_catalog.pg_{0}_{1}_diff(wr.latest_end_lsn, '0/0')::bigint, wr.status"
+                    if postgresql.major_version >= 90600 else "NULL, NULL"
+                ) + ", " + (
+                    "pg_catalog.current_setting('restore_command')"
+                    if postgresql.major_version >= 120000 else "NULL"
+                ) + ", " + (
+                    "pg_catalog.pg_wal_lsn_diff(wr.written_lsn, '0/0')::bigint"
+                    if postgresql.major_version >= 130000 else "NULL"
+                )
                 stmt = ("SELECT " + postgresql.POSTMASTER_START_TIME + ", " + postgresql.TL_LSN + ","
                         " pg_catalog.pg_last_xact_replay_timestamp(), " + replication_state + ","
                         " (SELECT pg_catalog.array_to_json(pg_catalog.array_agg(pg_catalog.row_to_json(ri))) "
@@ -1496,6 +1494,7 @@ class RestApiHandler(BaseHTTPRequestHandler):
         """
         # Bootstrap.clone may start mysqld without going through MySQL.start(),
         # so refresh state from the pidfile before answering the API.
+        state: Any = mysql_handler.state
         if mysql_handler.is_running():
             state = mysql_handler.state
         try:
@@ -1513,7 +1512,7 @@ class RestApiHandler(BaseHTTPRequestHandler):
             # Prefer @@gtid_executed — available on primary and replica alike.
             gtid_set = mysql_handler.get_executed_gtid() or gtid_set
 
-            binlog_data = {'location': binlog_pos}
+            binlog_data: Dict[str, Any] = {'location': binlog_pos}
             if gtid_set:
                 binlog_data['gtid_set'] = gtid_set
             if is_primary:

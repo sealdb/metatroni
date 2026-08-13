@@ -13,15 +13,14 @@ import time
 from threading import Lock
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-from ..collections import CaseInsensitiveDict, EMPTY_DICT
+from ..collections import CaseInsensitiveDict
 from ..db import DatabaseHandler
 from ..dcs import Cluster, Leader, Member, RemoteMember
 from ..exceptions import PostgresConnectionException
-from ..utils import parse_int, polling_loop, Retry, RetryFailedError
 from .bootstrap import Bootstrap
 from .config import ConfigHandler
-from .connection import ConnectionPool, HAS_MYSQL, MySQLdbError
-from .misc import MySQLState, MySQLRole, CreateReplicaMethod, mysql_version_to_int
+from .connection import ConnectionPool, MySQLdbError
+from .misc import CreateReplicaMethod, MySQLRole, MySQLState
 from .postmaster import MySQLProcess
 
 logger = logging.getLogger(__name__)
@@ -276,7 +275,7 @@ class MySQL(DatabaseHandler):
         return True
 
     def stop(self, mode: str = 'fast', block_callbacks: bool = True,
-              check_executor: bool = True, **kwargs: Any) -> bool:
+             check_executor: bool = True, **kwargs: Any) -> bool:
         if not self.is_running():
             return True
 
@@ -636,9 +635,10 @@ class MySQL(DatabaseHandler):
     def compare_gtid(self, other_gtid: str) -> int:
         """Compare this node's GTID against another.
 
-        :returns: 1 if local GTID is a strict superset of other,
-                 -1 if other is a strict superset of local,
-                  0 if equal or incomparable.
+        :returns:
+            ``1`` if local GTID is a strict superset of *other*,
+            ``-1`` if *other* is a strict superset of local,
+            ``0`` if equal or incomparable.
         """
         local = self.get_executed_gtid()
         rel = self.gtid_relation(local, other_gtid)
@@ -985,6 +985,7 @@ class MySQL(DatabaseHandler):
         """Elect a bootstrapper from DCS GTIDs after MGR majority loss.
 
         Strategy:
+
         1. Every node publishes ``gtid_executed`` via ``enrich_dcs_data``.
         2. All nodes compute the same winner (max GTID, name tie-break).
         3. Winner bootstraps only while holding the DCS lock.
@@ -1247,7 +1248,7 @@ class MySQL(DatabaseHandler):
         if not create_replica_methods:
             return True
         return any(m in CreateReplicaMethod.known()
-                  for m in create_replica_methods)
+                   for m in create_replica_methods)
 
     def remove_data_directory(self) -> None:
         if os.path.exists(self._data_dir):
