@@ -1,28 +1,28 @@
 .. _mysql_architecture:
 
-===========================
+================
 MySQL 架构与模型
-===========================
+================
 
 本页介绍 MySQL 后端的结构设计：进程布局、代码模块、DCS 数据，以及它与 PostgreSQL 路径的不同之处。
 
 设计目标
-============
+========
 
-Patroni 是围绕 PostgreSQL 构建的。MySQL 支持通过 ``DatabaseHandler`` 抽象进行分层，因此共享的 HA 循环（``patroni.ha.Ha``）、DCS、REST API 和 ``patronictl`` 保持通用，而引擎特定的工作位于 ``patroni.mysql`` 之下。
+Patroni 是围绕 PostgreSQL 构建的。MySQL 支持通过 ``DatabaseHandler`` 抽象进行分层，因此共享的 HA 循环（``patroni.ha.Ha``\）、DCS、REST API 和 ``patronictl`` 保持通用，而引擎特定的工作位于 ``patroni.mysql`` 之下。
 
 目标：
 
 - 复用 DCS leader 选举和 HA 控制循环
 - 使用 GTID 驱动 MySQL（不进行 timeline / ``sysid`` 匹配）
 - 支持三种按运维选择的模式：异步 GTID、xenon 风格的半同步、MGR
-- 优先复用共享 HA 抽象；避免仅限 PostgreSQL 的路径（``pg_rewind``）。
-  MySQL standby cluster 使用全量克隆 + GTID 级联，而非 WAL ``restore_command``。
+- 优先复用共享 HA 抽象；避免仅限 PostgreSQL 的路径（``pg_rewind``\）。
+  MySQL standby cluster 使用全量克隆 + GTID 级联，而非 WAL ``restore_command``\。
 
 集群布局
-==============
+========
 
-每个物理（或本地）节点运行 **一个 Patroni 进程** 和 **一个 mysqld**。Patroni 负责进程生命周期、配置文件、复制拓扑和 DCS 心跳。客户端应通过代理与 MySQL 通信，该代理会检查 Patroni 的 REST API 的健康状态（参见 :ref:`mysql_ops`）。
+每个物理（或本地）节点运行 **一个 Patroni 进程** 和 **一个 mysqld**\。Patroni 负责进程生命周期、配置文件、复制拓扑和 DCS 心跳。客户端应通过代理与 MySQL 通信，该代理会检查 Patroni 的 REST API 的健康状态（参见 :ref:`mysql_ops`）。
 
 ::
 
@@ -49,7 +49,7 @@ Patroni 是围绕 PostgreSQL 构建的。MySQL 支持通过 ``DatabaseHandler`` 
       :5001  -> HEAD /replica  -> read replicas
 
 复制数据路径（异步 / 半同步）
------------------------------------------
+-----------------------------
 
 ::
 
@@ -59,7 +59,7 @@ Patroni 是围绕 PostgreSQL 构建的。MySQL 支持通过 ``DatabaseHandler`` 
       Patroni (lock)                 Patroni (follow)
 
 MGR 数据路径
--------------
+------------
 
 ::
 
@@ -74,7 +74,7 @@ MGR 数据路径
           bootstrap / ops)           majority loss)
 
 组件映射
-=============
+========
 
 .. list-table::
    :header-rows: 1
@@ -97,7 +97,7 @@ MGR 数据路径
      - ``pymysql`` 连接池
    * -  引导
      - ``patroni.mysql.bootstrap``
-     - ``initialize``、克隆（dump / xtrabackup）
+     - ``initialize``\、克隆（dump / xtrabackup）
    * -  进程
      - ``patroni.mysql.postmaster``
      - ``mysqld`` 启动/停止
@@ -115,7 +115,7 @@ MGR 数据路径
      - ``/patroni`` 暴露 ``binlog`` 和 GTID
 
 能力标志（与 PostgreSQL 对比）
-================================
+==============================
 
 MySQL handler 会宣告引擎能力，以便 HA 循环跳过仅限 PostgreSQL 的行为：
 
@@ -131,7 +131,7 @@ MySQL handler 会宣告引擎能力，以便 HA 循环跳过仅限 PostgreSQL �
      - 无 timeline 历史文件
    * -  ``needs_rewind``
      - False
-     - 不需要 ``pg_rewind``；通过 GTID follow 重新加入
+     - 不需要 ``pg_rewind``\；通过 GTID follow 重新加入
    * -  ``needs_crash_recovery``
      - False
      - ``mysqld`` 在启动时自行恢复
@@ -143,11 +143,11 @@ MySQL handler 会宣告引擎能力，以便 HA 循环跳过仅限 PostgreSQL �
      - 在 HA / API 中选择 MySQL 分支
 
 DCS 数据模型（MySQL 特定）
-===============================
+==========================
 
-``/service/<scope>/`` 下的标准 Patroni 键仍然适用（``leader``、``members/<name>``、``config``、``initialize``、``failover``、``pause`` 等）。
+``/service/<scope>/`` 下的标准 Patroni 键仍然适用（``leader``\、``members/<name>``\、``config``\、``initialize``\、``failover``\、``pause`` 等）。
 
-成员载荷扩充（``enrich_dcs_data``）会添加：
+成员载荷扩充（``enrich_dcs_data``\）会添加：
 
 .. list-table::
    :header-rows: 1
@@ -164,27 +164,27 @@ DCS 数据模型（MySQL 特定）
    * -  ``role``
      - ``primary``/ ``replica``/ ``mgr_primary``/ ……
 
-REST 的 ``GET /patroni`` 包含一个 ``binlog`` 对象（文件、位置，以及可用时的 ``gtid_set``），而不是 PostgreSQL 的 ``xlog``。
+REST 的 ``GET /patroni`` 包含一个 ``binlog`` 对象（文件、位置，以及可用时的 ``gtid_set``\），而不是 PostgreSQL 的 ``xlog``\。
 
 角色
-=====
+====
 
 异步 / 半同步
------------------
+-------------
 
-- **primary**—— 持有 DCS 锁，可写（除非半同步 quorum 强制为只读）
-- **replica**—— 使用 ``MASTER_AUTO_POSITION=1`` 跟随 primary
+- **primary**\—— 持有 DCS 锁，可写（除非半同步 quorum 强制为只读）
+- **replica**\—— 使用 ``MASTER_AUTO_POSITION=1`` 跟随 primary
 
 MGR
 ---
 
-- **mgr_primary**—— Group Replication PRIMARY，通常持有 DCS 锁
-- **mgr_secondary**—— GR SECONDARY，``super_read_only``
-- 在失去多数派时，DCS 中的角色可能会短暂地表现为异步 ``primary``；在决定是否
+- **mgr_primary**\—— Group Replication PRIMARY，通常持有 DCS 锁
+- **mgr_secondary**\—— GR SECONDARY，``super_read_only``
+- 在失去多数派时，DCS 中的角色可能会短暂地表现为异步 ``primary``\；在决定是否
   bootstrap 新组时，选举逻辑 **只信任** 活跃的 ``mgr_primary`` 宣告
 
 模式选择（配置方式，而非运行时 API）
-===============================================
+====================================
 
 .. list-table::
    :header-rows: 1
@@ -206,8 +206,8 @@ MGR
 不存在热「切换模式」API。请将模式切换视为重建；参见 :ref:`mysql_ops`。
 
 信任边界
-================
+========
 
 - **DCS** 是 *谁可以成为 Patroni leader* 的权威来源
 - **MySQL 复制 / MGR** 是 *数据时效性* 的权威来源
-- 对于 MGR 失去多数派的情况，Patroni 会将两者结合：GTID 比较决定谁可以 bootstrap，但 bootstrap 只有在持有 DCS 锁（或重新加入已宣告的活跃 ``mgr_primary``）时才会继续
+- 对于 MGR 失去多数派的情况，Patroni 会将两者结合：GTID 比较决定谁可以 bootstrap，但 bootstrap 只有在持有 DCS 锁（或重新加入已宣告的活跃 ``mgr_primary``\）时才会继续

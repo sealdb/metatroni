@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Dynamic Configuration Settings</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="_static/epub.css" />
+    <link rel="stylesheet" type="text/css" href="_static/github_style.css" />
+    <link rel="stylesheet" type="text/css" href="_static/custom.css" /> 
+  </head><body>
+
+    <div class="document">
+      <div class="documentwrapper">
+          <div class="body" role="main">
+            
+  <section id="dynamic-configuration-settings">
+<span id="dynamic-configuration"></span><h1>Dynamic Configuration Settings</h1>
+<p>Dynamic configuration is stored in the DCS (Distributed Configuration Store) and applied on all cluster nodes.</p>
+<p>In order to change the dynamic configuration you can use either <a class="reference internal" href="patronictl.xhtml#patronictl-edit-config"><span class="std std-ref">patronictl edit-config</span></a> tool or Patroni <a class="reference internal" href="rest_api.xhtml#rest-api"><span class="std std-ref">REST API</span></a>.</p>
+<ul class="simple">
+<li><p><strong>loop_wait</strong>: the number of seconds the loop will sleep. Default value: 10, minimum possible value: 1</p></li>
+<li><p><strong>ttl</strong>: the TTL to acquire the leader lock (in seconds). Think of it as the length of time before initiation of the automatic failover process. Default value: 30, minimum possible value: 20</p></li>
+<li><p><strong>retry_timeout</strong>: timeout for DCS and PostgreSQL operation retries (in seconds). DCS or network issues shorter than this will not cause Patroni to demote the leader. Default value: 10, minimum possible value: 3</p></li>
+</ul>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>when changing values of <strong>loop_wait</strong>, <strong>retry_timeout</strong>, or <strong>ttl</strong> you have to follow the rule:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">loop_wait</span> <span class="o">+</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">retry_timeout</span> <span class="o">&lt;=</span> <span class="n">ttl</span>
+</pre></div>
+</div>
+</div>
+<ul class="simple">
+<li><p><strong>maximum_lag_on_failover</strong>: the maximum bytes a follower may lag to be able to participate in leader election.</p></li>
+<li><p><strong>maximum_lag_on_syncnode</strong>: the maximum bytes a synchronous follower may lag before it is considered as an unhealthy candidate and swapped by healthy asynchronous follower. Patroni utilize the max replica lsn if there is more than one follower, otherwise it will use leader’s current wal lsn. Default is -1, Patroni will not take action to swap synchronous unhealthy follower when the value is set to 0 or below. Please set the value high enough so Patroni won’t swap synchrounous follower frequently during high transaction volume.</p></li>
+<li><p><strong>max_timelines_history</strong>: maximum number of timeline history items kept in DCS.  Default value: 0. When set to 0, it keeps the full history in DCS.</p></li>
+<li><p><strong>primary_start_timeout</strong>: the amount of time a primary is allowed to recover from failures before failover is triggered (in seconds). Default is 300 seconds. When set to 0 failover is done immediately after a crash is detected if possible. When using asynchronous replication a failover can cause lost transactions. Worst case failover time for primary failure is: loop_wait + primary_start_timeout + loop_wait, unless primary_start_timeout is zero, in which case it’s just loop_wait. Set the value according to your durability/availability tradeoff.</p></li>
+<li><p><strong>primary_stop_timeout</strong>: The number of seconds Patroni is allowed to wait when stopping Postgres and effective only when synchronous_mode is enabled. When set to &gt; 0 and the synchronous_mode is enabled, Patroni sends SIGKILL to the postmaster if the stop operation is running for more than the value set by primary_stop_timeout. Set the value according to your durability/availability tradeoff. If the parameter is not set or set &lt;= 0, primary_stop_timeout does not apply.</p></li>
+<li><p><strong>synchronous_mode</strong>: turns on synchronous replication mode. Possible values: <code class="docutils literal notranslate"><span class="pre">off</span></code>, <code class="docutils literal notranslate"><span class="pre">on</span></code>, <code class="docutils literal notranslate"><span class="pre">quorum</span></code>. In this mode the leader takes care of management of <code class="docutils literal notranslate"><span class="pre">synchronous_standby_names</span></code>, and only the last known leader, or one of synchronous replicas, are allowed to participate in leader race. Synchronous mode makes sure that successfully committed transactions will not be lost at failover, at the cost of losing availability for writes when Patroni cannot ensure transaction durability. See <a class="reference internal" href="replication_modes.xhtml#replication-modes"><span class="std std-ref">replication modes documentation</span></a> for details.</p></li>
+<li><p><strong>synchronous_mode_strict</strong>: prevents disabling synchronous replication if no synchronous replicas are available, blocking all client writes to the primary. See <a class="reference internal" href="replication_modes.xhtml#replication-modes"><span class="std std-ref">replication modes documentation</span></a> for details.</p></li>
+<li><p><strong>synchronous_node_count</strong>: if <code class="docutils literal notranslate"><span class="pre">synchronous_mode</span></code> is enabled, this parameter is used by Patroni to manage the precise number of synchronous standby instances and adjusts the state in DCS and the <code class="docutils literal notranslate"><span class="pre">synchronous_standby_names</span></code> parameter in PostgreSQL as members join and leave. If the parameter is set to a value higher than the number of eligible nodes, it will be automatically adjusted. Defaults to <code class="docutils literal notranslate"><span class="pre">1</span></code>.</p></li>
+<li><p><strong>failsafe_mode</strong>: Enables <a class="reference internal" href="dcs_failsafe_mode.xhtml#dcs-failsafe-mode"><span class="std std-ref">DCS Failsafe Mode</span></a>. Defaults to <cite>false</cite>.</p></li>
+<li><p><strong>postgresql</strong>:</p>
+<ul>
+<li><p><strong>use_pg_rewind</strong>: whether or not to use pg_rewind. Defaults to <cite>false</cite>. Note that either the cluster must be initialized with <code class="docutils literal notranslate"><span class="pre">data</span> <span class="pre">page</span> <span class="pre">checksums</span></code> (<code class="docutils literal notranslate"><span class="pre">--data-checksums</span></code> option for <code class="docutils literal notranslate"><span class="pre">initdb</span></code>) and/or <code class="docutils literal notranslate"><span class="pre">wal_log_hints</span></code> must be set to <code class="docutils literal notranslate"><span class="pre">on</span></code>, or <code class="docutils literal notranslate"><span class="pre">pg_rewind</span></code> will not work.</p></li>
+<li><p><strong>use_slots</strong>: whether or not to use replication slots. Defaults to <cite>true</cite> on PostgreSQL 9.4+.</p></li>
+<li><p><strong>recovery_conf</strong>: additional configuration settings written to recovery.conf when configuring follower. There is no recovery.conf anymore in PostgreSQL 12, but you may continue using this section, because Patroni handles it transparently.</p></li>
+<li><p><strong>parameters</strong>: configuration parameters (GUCs) for Postgres in format <code class="docutils literal notranslate"><span class="pre">{max_connections:</span> <span class="pre">100,</span> <span class="pre">wal_level:</span> <span class="pre">&quot;replica&quot;,</span> <span class="pre">max_wal_senders:</span> <span class="pre">10,</span> <span class="pre">wal_log_hints:</span> <span class="pre">&quot;on&quot;}</span></code>. Many of these are required for replication to work.</p></li>
+<li><p><strong>pg_hba</strong>: list of lines that Patroni will use to generate <code class="docutils literal notranslate"><span class="pre">pg_hba.conf</span></code>. Patroni ignores this parameter if <code class="docutils literal notranslate"><span class="pre">hba_file</span></code> PostgreSQL parameter is set to a non-default value.</p>
+<ul>
+<li><p><strong>- host all all 0.0.0.0/0 md5</strong></p></li>
+<li><p><strong>- host replication replicator 127.0.0.1/32 md5</strong>: A line like this is required for replication.</p></li>
+</ul>
+</li>
+<li><p><strong>pg_ident</strong>: list of lines that Patroni will use to generate <code class="docutils literal notranslate"><span class="pre">pg_ident.conf</span></code>. Patroni ignores this parameter if <code class="docutils literal notranslate"><span class="pre">ident_file</span></code> PostgreSQL parameter is set to a non-default value.</p>
+<ul>
+<li><p><strong>- mapname1 systemname1 pguser1</strong></p></li>
+<li><p><strong>- mapname1 systemname2 pguser2</strong></p></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><p><strong>standby_cluster</strong>: if this section is defined, we want to bootstrap a standby cluster.</p>
+<ul>
+<li><p><strong>host</strong>: an address of remote node</p></li>
+<li><p><strong>port</strong>: a port of remote node</p></li>
+<li><p><strong>primary_slot_name</strong>: which slot on the remote node to use for replication. This parameter is optional, the default value is derived from the instance name (see function <cite>slot_name_from_member_name</cite>).</p></li>
+<li><p><strong>create_replica_methods</strong>: an ordered list of methods that can be used to bootstrap standby leader from the remote primary, can be different from the list defined in <a class="reference internal" href="yaml_configuration.xhtml#postgresql-settings"><span class="std std-ref">PostgreSQL</span></a></p></li>
+<li><p><strong>restore_command</strong>: command to restore WAL records from the remote primary to nodes in a standby cluster, can be different from the list defined in <a class="reference internal" href="yaml_configuration.xhtml#postgresql-settings"><span class="std std-ref">PostgreSQL</span></a></p></li>
+<li><p><strong>archive_cleanup_command</strong>: cleanup command for standby leader</p></li>
+<li><p><strong>recovery_min_apply_delay</strong>: how long to wait before actually apply WAL records on a standby leader</p></li>
+</ul>
+</li>
+<li><p><strong>member_slots_ttl</strong>: retention time of physical replication slots for replicas when they are shut down. Default value: <cite>30min</cite>. Set it to <cite>0</cite> if you want to keep the old behavior (when the member key expires from DCS, the slot is immediately removed). The feature works only starting from PostgreSQL 11.</p></li>
+<li><p><strong>slots</strong>: define permanent replication slots. These slots will be preserved during switchover/failover. Permanent slots that don’t exist will be created by Patroni. With PostgreSQL 11 onwards permanent physical slots are created on all nodes and their position is advanced every <strong>loop_wait</strong> seconds. For PostgreSQL versions older than 11 permanent physical replication slots are maintained only on the current primary. The logical slots are copied from the primary to a standby with restart, and after that their position advanced every <strong>loop_wait</strong> seconds (if necessary). Copying logical slot files performed via <code class="docutils literal notranslate"><span class="pre">libpq</span></code> connection and using either rewind or superuser credentials (see <strong>postgresql.authentication</strong> section). There is always a chance that the logical slot position on the replica is a bit behind the former primary, therefore application should be prepared that some messages could be received the second time after the failover. The easiest way of doing so - tracking <code class="docutils literal notranslate"><span class="pre">confirmed_flush_lsn</span></code>. Enabling permanent replication slots requires <strong>postgresql.use_slots</strong> to be set to <code class="docutils literal notranslate"><span class="pre">true</span></code>. If there are permanent logical replication slots defined Patroni will automatically enable the <code class="docutils literal notranslate"><span class="pre">hot_standby_feedback</span></code>. Since the failover of logical replication slots is unsafe on PostgreSQL 9.6 and older and PostgreSQL version 10 is missing some important functions, the feature only works with PostgreSQL 11+.</p>
+<ul>
+<li><p><strong>my_slot_name</strong>: the name of the permanent replication slot. If the permanent slot name matches with the name of the current node it will not be created on this node. If you add a permanent physical replication slot which name matches the name of a Patroni member, Patroni will ensure that the slot that was created is not removed even if the corresponding member becomes unresponsive, situation which would normally result in the slot’s removal by Patroni. Although this can be useful in some situations, such as when you want replication slots used by members to persist during temporary failures or when importing existing members to a new Patroni cluster (see <a class="reference internal" href="existing_data.xhtml#existing-data"><span class="std std-ref">Convert a Standalone to a Patroni Cluster</span></a> for details), caution should be exercised by the operator that these clashes in names are not persisted in the DCS, when the slot is no longer required, due to its effect on normal functioning of Patroni.</p>
+<ul>
+<li><p><strong>type</strong>: slot type. Could be <code class="docutils literal notranslate"><span class="pre">physical</span></code> or <code class="docutils literal notranslate"><span class="pre">logical</span></code>. If the slot is logical, you have to additionally define <code class="docutils literal notranslate"><span class="pre">database</span></code> and <code class="docutils literal notranslate"><span class="pre">plugin</span></code>. If the slot is physical, you can optionally define <code class="docutils literal notranslate"><span class="pre">cluster_type</span></code>.</p></li>
+<li><p><strong>database</strong>: the database name where logical slots should be created.</p></li>
+<li><p><strong>plugin</strong>: the plugin name for the logical slot.</p></li>
+<li><p><strong>cluster_type</strong>: the type of cluster (<code class="docutils literal notranslate"><span class="pre">primary</span></code> or <code class="docutils literal notranslate"><span class="pre">standby</span></code>) the slot should only be created on, otherwise it will not be created or an already existing slot will be dropped.</p></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><p><strong>ignore_slots</strong>: list of sets of replication slot properties for which Patroni should ignore matching slots. This configuration/feature/etc. is useful when some replication slots are managed outside of Patroni. Any subset of matching properties will cause a slot to be ignored.</p>
+<ul>
+<li><p><strong>name</strong>: the name of the replication slot.</p></li>
+<li><p><strong>type</strong>: slot type. Can be <code class="docutils literal notranslate"><span class="pre">physical</span></code> or <code class="docutils literal notranslate"><span class="pre">logical</span></code>. If the slot is logical, you may additionally define <code class="docutils literal notranslate"><span class="pre">database</span></code> and/or <code class="docutils literal notranslate"><span class="pre">plugin</span></code>.</p></li>
+<li><p><strong>database</strong>: the database name (when matching a <code class="docutils literal notranslate"><span class="pre">logical</span></code> slot).</p></li>
+<li><p><strong>plugin</strong>: the logical decoding plugin (when matching a <code class="docutils literal notranslate"><span class="pre">logical</span></code> slot).</p></li>
+</ul>
+</li>
+</ul>
+<p>Note: <strong>slots</strong> is a hashmap while <strong>ignore_slots</strong> is an array. For example:</p>
+<div class="highlight-YAML notranslate"><div class="highlight"><pre><span></span><span class="nt">slots</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">permanent_logical_slot_name</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">logical</span>
+<span class="w">    </span><span class="nt">database</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my_db</span>
+<span class="w">    </span><span class="nt">plugin</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">test_decoding</span>
+<span class="w">  </span><span class="nt">permanent_physical_slot_name</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">physical</span>
+<span class="w">  </span><span class="l l-Scalar l-Scalar-Plain">...</span>
+<span class="nt">ignore_slots</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ignored_logical_slot_name</span>
+<span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">logical</span>
+<span class="w">    </span><span class="nt">database</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my_db</span>
+<span class="w">    </span><span class="nt">plugin</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">test_decoding</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ignored_physical_slot_name</span>
+<span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">physical</span>
+<span class="w">  </span><span class="l l-Scalar l-Scalar-Plain">...</span>
+</pre></div>
+</div>
+<p>Note: When running PostgreSQL v11 or newer Patroni maintains physical replication slots on all nodes that could potentially become a leader, so that replica nodes keep WAL segments reserved if they are potentially required by other nodes. In case the node is absent and its member key in DCS gets expired, the corresponding replication slot is dropped after <code class="docutils literal notranslate"><span class="pre">member_slots_ttl</span></code> (default value is <cite>30min</cite>). You can increase or decrease retention based on your needs. Alternatively, if your cluster topology is static (fixed number of nodes that never change their names) you can configure permanent physical replication slots with names corresponding to the names of the nodes to avoid slots removal and recycling of WAL files while replica is temporarily down:</p>
+<div class="highlight-YAML notranslate"><div class="highlight"><pre><span></span><span class="nt">slots</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">node_name1</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">physical</span>
+<span class="w">  </span><span class="nt">node_name2</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">physical</span>
+<span class="w">  </span><span class="nt">node_name3</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">physical</span>
+<span class="w">  </span><span class="l l-Scalar l-Scalar-Plain">...</span>
+</pre></div>
+</div>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>Permanent replication slots are synchronized only from the <code class="docutils literal notranslate"><span class="pre">primary</span></code>/<code class="docutils literal notranslate"><span class="pre">standby_leader</span></code> to replica nodes. That means, applications are supposed to be using them only from the leader node. Using them on replica nodes will cause indefinite growth of <code class="docutils literal notranslate"><span class="pre">pg_wal</span></code> on all other nodes in the cluster.
+An exception to that rule are physical slots that match the Patroni member names (created and maintained by Patroni). Those will be synchronized among all nodes as they are used for replication among them.</p>
+</div>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>Setting <code class="docutils literal notranslate"><span class="pre">nostream</span></code> tag on standby disables copying and synchronization of permanent logical replication slots on the node itself and all its cascading replicas if any.</p>
+</div>
+</section>
+
+
+            <div class="clearer"></div>
+          </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+  </body>
+</html>

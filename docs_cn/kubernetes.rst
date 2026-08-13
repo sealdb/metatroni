@@ -1,7 +1,7 @@
 .. _kubernetes:
 
 在 Kubernetes 中使用 Patroni
-=============================
+============================
 
 Patroni 可以使用 Kubernetes 对象来存储集群状态并管理 leader key。这使它能够在没有一致性存储的情况下在 Kubernetes 环境中运行 Postgres，也就是说，无需额外部署 Etcd。Patroni 可以用来存储 leader key 和配置 key 的 Kubernetes 对象有两种不同类型，它们通过 `kubernetes.use_endpoints` 或 `PATRONI_KUBERNETES_USE_ENDPOINTS` 环境变量进行配置。
 
@@ -20,20 +20,20 @@ Patroni 可以使用 Kubernetes 对象来存储集群状态并管理 leader key�
 请注意，在某些情况下，例如在 OpenShift 上运行时，除了使用 ConfigMaps 之外别无选择。
 
 配置
--------------
+----
 
 Patroni Kubernetes 的 :ref:`settings <kubernetes_settings>` 和 :ref:`environment variables <kubernetes_environment>` 在文档的通用章节中已有介绍。
 
 .. _kubernetes_role_values:
 
 自定义 role label
-^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^
 
-默认情况下，Patroni 会根据节点的角色，在它运行的 pod 上设置相应的标签，例如 ``role=primary``。标签的 key 和 value 可以通过 `kubernetes.role_label`、`kubernetes.leader_label_value`、`kubernetes.follower_label_value` 和 `kubernetes.standby_leader_label_value` 进行自定义。
+默认情况下，Patroni 会根据节点的角色，在它运行的 pod 上设置相应的标签，例如 ``role=primary``\。标签的 key 和 value 可以通过 `kubernetes.role_label`、`kubernetes.leader_label_value`、`kubernetes.follower_label_value` 和 `kubernetes.standby_leader_label_value` 进行自定义。
 
 请注意，如果你要从默认 role labels 迁移到自定义 labels，可以按照以下迁移步骤减少停机时间：
 
-1. 使用 `kubernetes.tmp_role_label` （如 ``tmp_role``）为 pod 添加一个使用原始角色值的临时标签。pod 重启后，它们将获得 Patroni 设置的以下标签：
+1. 使用 `kubernetes.tmp_role_label` （如 ``tmp_role``\）为 pod 添加一个使用原始角色值的临时标签。pod 重启后，它们将获得 Patroni 设置的以下标签：
 
   .. code:: YAML
 
@@ -76,7 +76,7 @@ Patroni Kubernetes 的 :ref:`settings <kubernetes_settings>` 和 :ref:`environme
       role: primary
 
 示例
---------
+----
 
 - Patroni 仓库中的 `kubernetes <https://github.com/patroni/patroni/tree/master/kubernetes>`__ 文件夹包含 Docker 镜像示例，以及用于测试 Patroni Kubernetes 部署的 Kubernetes manifest。请注意，在当前状态下，由于权限问题，它无法使用 PersistentVolumes。
 

@@ -1,7 +1,7 @@
 .. _citus:
 
 Citus 支持
-=============
+==========
 
 Patroni 让部署 `Multi-Node Citus`__ 集群变得极其简单。
 
@@ -15,7 +15,7 @@ TL;DR
 1. 所有节点上都必须安装 PostgreSQL 的 `Citus <https://github.com/citusdata/citus>`__ 数据库扩展。支持的最低 Citus
    版本是 10.0，但为了充分享受透明的 switchover 和
    worker 重启带来的好处，我们建议至少使用 Citus 11.2。
-2. 所有 Citus 节点的集群名称（``scope``）必须相同！
+2. 所有 Citus 节点的集群名称（``scope``\）必须相同！
 3. coordinator 和所有 worker
    节点上的超级用户凭据必须相同，并且 ``pg_hba.conf`` 应允许所有节点之间的超级用户访问。
 4. 应允许从 worker
@@ -33,15 +33,15 @@ TL;DR
 之后，你只需启动 Patroni，其余工作都由它来完成：
 
 0. 如果 ``bootstrap.dcs.synchronous_mode`` 没有被显式设置为其他值，Patroni 会将其设为 :ref:`quorum <quorum_mode>`。
-1. ``citus`` 扩展会被自动添加到 ``shared_preload_libraries``。
+1. ``citus`` 扩展会被自动添加到 ``shared_preload_libraries``\。
 2. 如果全局
-   :ref:`dynamic configuration <dynamic_configuration>` 中没有显式设置 ``max_prepared_transactions``，Patroni 会
-   自动将其设置为 ``2*max_connections``。
+   :ref:`dynamic configuration <dynamic_configuration>` 中没有显式设置 ``max_prepared_transactions``\，Patroni 会
+   自动将其设置为 ``2*max_connections``\。
 3. ``citus.local_hostname`` GUC 的值会从 ``localhost`` 调整为
    Patroni 用于连接本地 PostgreSQL
    实例的值。该值有时应与 ``localhost`` 不同，
-   因为 PostgreSQL 可能并没有监听 ``localhost``。
-4. 会自动创建 ``citus.database`` 指定的数据库，随后执行 ``CREATE EXTENSION citus``。
+   因为 PostgreSQL 可能并没有监听 ``localhost``\。
+4. 会自动创建 ``citus.database`` 指定的数据库，随后执行 ``CREATE EXTENSION citus``\。
 5. 当前超级用户的 :ref:`credentials <postgresql_settings>` 会被添加到 ``pg_dist_authinfo``
    表中，以允许跨节点通信。如果之后你决定修改超级用户的 username/password/sslcert/sslkey，别忘了更新它们！
 6. coordinator 的 primary 节点会自动发现 worker 的 primary
@@ -66,7 +66,7 @@ coordinator 和 worker 集群本质上是不同的 PostgreSQL/Patroni
    它们属于哪个 Citus group。
 2. 所有 ``patronictl`` 命令都新增了一个名为
    ``--group`` 的选项。对于某些命令，group 的默认值可能会
-   取自 ``patroni.yaml``。例如，:ref:`patronictl_pause` 默认会对
+   取自 ``patroni.yaml``\。例如，:ref:`patronictl_pause` 默认会对
    ``citus`` 配置段中设置的 ``group`` 启用维护模式；但例如 :ref:`patronictl_switchover` 或
    :ref:`patronictl_remove` 则必须显式指定 group。
 
@@ -178,7 +178,7 @@ worker 集群上 :ref:`patronictl_switchover` 的示例::
     # From this moment the application traffic on the coordinator to the worker group 2 is unblocked.
 
 Secondary 节点
----------------
+--------------
 
 从 Patroni v4.0.0 开始，没有 ``noloadbalance`` :ref:`tag <tags_settings>` 的 Citus secondary 节点也会注册到 ``pg_dist_node`` 中。
 不过，要使用 secondary 节点执行只读查询，应用程序需要修改 `citus.use_secondary_nodes <https://docs.citusdata.com/en/latest/develop/api_guc.html#citus-use-secondary-nodes-enum>`__ GUC。
@@ -222,7 +222,7 @@ citus group 包含在 Patroni 创建的所有 K8s 对象中::
     batman-1-config
     ...
 
-也就是说，命名模式为：``${scope}-${citus.group}-${type}``。
+也就是说，命名模式为：``${scope}-${citus.group}-${type}``\。
 
 Patroni 通过 `label selector`__ 发现所有 Kubernetes 对象，
 因此所有运行 Patroni 和 Citus 的 Pod 以及 Endpoints/ConfigMaps 都必须具有
@@ -343,7 +343,7 @@ __ https://github.com/patroni/patroni/tree/master/kubernetes
 2. citus_k8s.yaml
 
 Citus 升级与 PostgreSQL 大版本升级
---------------------------------------------
+----------------------------------
 
 首先，请阅读 `documentation`__ 中关于升级 Citus 版本的内容。
 流程中有一个小的差异：执行升级时，你必须使用 :ref:`patronictl_restart` 而不是 ``systemctl restart`` 来重启

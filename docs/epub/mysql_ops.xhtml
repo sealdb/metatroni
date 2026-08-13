@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>MySQL operations and FAQ</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="_static/epub.css" />
+    <link rel="stylesheet" type="text/css" href="_static/github_style.css" />
+    <link rel="stylesheet" type="text/css" href="_static/custom.css" /> 
+  </head><body>
+
+    <div class="document">
+      <div class="documentwrapper">
+          <div class="body" role="main">
+            
+  <section id="mysql-operations-and-faq">
+<span id="mysql-ops"></span><h1>MySQL operations and FAQ</h1>
+<p>Operator guide: install, deploy, day-2 management, standby promote/demote
+cutovers, mode changes, HAProxy, and common failures.</p>
+<nav class="contents local" id="contents">
+<ul class="simple">
+<li><p><a class="reference internal" href="#prerequisites" id="id1">Prerequisites</a></p></li>
+<li><p><a class="reference internal" href="#install" id="id2">Install</a></p>
+<ul>
+<li><p><a class="reference internal" href="#useful-flags" id="id3">Useful flags</a></p></li>
+</ul>
+</li>
+<li><p><a class="reference internal" href="#deploy-checklist" id="id4">Deploy checklist</a></p>
+<ul>
+<li><p><a class="reference internal" href="#multi-host-production-sketch" id="id5">Multi-host production sketch</a></p></li>
+</ul>
+</li>
+<li><p><a class="reference internal" href="#configuration-reference-short" id="id6">Configuration reference (short)</a></p></li>
+<li><p><a class="reference internal" href="#day-2-operations" id="id7">Day-2 operations</a></p>
+<ul>
+<li><p><a class="reference internal" href="#status" id="id8">Status</a></p></li>
+<li><p><a class="reference internal" href="#switchover-failover" id="id9">Switchover / failover</a></p></li>
+<li><p><a class="reference internal" href="#restart-reload-rebuild-replica" id="id10">Restart / reload / rebuild replica</a></p></li>
+<li><p><a class="reference internal" href="#pause-autofailover" id="id11">Pause autofailover</a></p></li>
+<li><p><a class="reference internal" href="#standby-cluster-cross-site-cascade" id="id12">Standby cluster (cross-site cascade)</a></p></li>
+</ul>
+</li>
+<li><p><a class="reference internal" href="#haproxy" id="id13">HAProxy</a></p></li>
+<li><p><a class="reference internal" href="#replication-mode-cutovers" id="id14">Replication mode cutovers</a></p>
+<ul>
+<li><p><a class="reference internal" href="#async-semi-sync" id="id15">async ↔ semi-sync</a></p></li>
+<li><p><a class="reference internal" href="#async-semi-sync-mgr" id="id16">async / semi-sync → MGR</a></p></li>
+<li><p><a class="reference internal" href="#mgr-async-semi-sync" id="id17">MGR → async / semi-sync</a></p></li>
+</ul>
+</li>
+<li><p><a class="reference internal" href="#monitoring-hooks" id="id18">Monitoring hooks</a></p></li>
+<li><p><a class="reference internal" href="#integration-tests-dev" id="id19">Integration tests (dev)</a></p></li>
+<li><p><a class="reference internal" href="#faq-troubleshooting" id="id20">FAQ / troubleshooting</a></p>
+<ul>
+<li><p><a class="reference internal" href="#patronictl-list-empty-no-leader" id="id21"><code class="docutils literal notranslate"><span class="pre">patronictl</span> <span class="pre">list</span></code> empty / no leader</a></p></li>
+<li><p><a class="reference internal" href="#replica-never-becomes-streaming" id="id22">Replica never becomes <code class="docutils literal notranslate"><span class="pre">streaming</span></code></a></p></li>
+<li><p><a class="reference internal" href="#semi-sync-primary-stuck-read-only" id="id23">Semi-sync primary stuck read-only</a></p></li>
+<li><p><a class="reference internal" href="#mgr-group-will-not-form" id="id24">MGR group will not form</a></p></li>
+<li><p><a class="reference internal" href="#majority-lost-cluster-paused-mgr-gtid-fork" id="id25">Majority lost; cluster paused / <code class="docutils literal notranslate"><span class="pre">mgr_gtid_fork</span></code></a></p></li>
+<li><p><a class="reference internal" href="#old-primary-does-not-rejoin-after-failover" id="id26">Old primary does not rejoin after failover</a></p></li>
+<li><p><a class="reference internal" href="#xtrabackup-clone-fails" id="id27">xtrabackup clone fails</a></p></li>
+<li><p><a class="reference internal" href="#port-conflicts-x-plugin" id="id28">Port conflicts / X Plugin</a></p></li>
+<li><p><a class="reference internal" href="#switchover-loops-forever" id="id29">Switchover loops forever</a></p></li>
+<li><p><a class="reference internal" href="#standby-promote-demote-problems" id="id30">Standby promote / demote problems</a></p></li>
+</ul>
+</li>
+<li><p><a class="reference internal" href="#known-limitations-ops-view" id="id31">Known limitations (ops view)</a></p></li>
+</ul>
+</nav>
+<section id="prerequisites">
+<h2><a class="toc-backref" href="#id1" role="doc-backlink">Prerequisites</a></h2>
+<ul class="simple">
+<li><p>Python 3.8+</p></li>
+<li><p>MySQL 8.0+ recommended (8.0.26+ for <code class="docutils literal notranslate"><span class="pre">source</span></code>/<code class="docutils literal notranslate"><span class="pre">replica</span></code> naming); 5.7 supported
+via versioning templates</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">'patroni[mysql,etcd3]'</span></code> (or another DCS extra)</p></li>
+<li><p>DCS reachable from every node (etcd <strong>3.x</strong> → use <code class="docutils literal notranslate"><span class="pre">etcd3:</span></code> in YAML)</p></li>
+<li><p>Optional: Percona XtraBackup matching MySQL major.minor</p></li>
+<li><p>Optional: HAProxy for primary/replica routing</p></li>
+</ul>
+</section>
+<section id="install">
+<h2><a class="toc-backref" href="#id2" role="doc-backlink">Install</a></h2>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span><span class="s1">&#39;patroni[mysql,etcd3]&#39;</span>
+
+<span class="c1"># verify</span>
+python<span class="w"> </span>-c<span class="w"> </span><span class="s1">&#39;import pymysql; import patroni; print(patroni.__version__)&#39;</span>
+mysqld<span class="w"> </span>--version
+</pre></div>
+</div>
+<p>Generate a local multi-node layout (single host, staggered ports):</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>patroni_mysql_init<span class="w"> </span>-o<span class="w"> </span>deploy/mysql-ha<span class="w"> </span>--force<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--bin-dir<span class="w"> </span>/usr/local/mysql/bin<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--memory-pct<span class="w"> </span><span class="m">50</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--mode<span class="w"> </span>semi-sync<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--nodes<span class="w"> </span><span class="m">3</span>
+</pre></div>
+</div>
+<p>Outputs per node: <code class="docutils literal notranslate"><span class="pre">patroni.yml</span></code>, <code class="docutils literal notranslate"><span class="pre">my.cnf</span></code>, <code class="docutils literal notranslate"><span class="pre">data/</span></code>, plus cluster helpers
+<code class="docutils literal notranslate"><span class="pre">start.sh</span></code>, <code class="docutils literal notranslate"><span class="pre">stop.sh</span></code>, <code class="docutils literal notranslate"><span class="pre">haproxy.cfg</span></code>, <code class="docutils literal notranslate"><span class="pre">README.md</span></code>,
+<code class="docutils literal notranslate"><span class="pre">cluster-summary.yaml</span></code>.</p>
+<section id="useful-flags">
+<h3><a class="toc-backref" href="#id3" role="doc-backlink">Useful flags</a></h3>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 28.0%" />
+<col style="width: 28.0%" />
+<col style="width: 44.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Flag</p></th>
+<th class="head"><p>Example</p></th>
+<th class="head"><p>Meaning</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--mode</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">async|semi-sync|mgr</span></code></p></td>
+<td><p>Replication template</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--nodes</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">3</span></code></p></td>
+<td><p>Local instance count (MGR requires ≥3)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--mysql-version</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">8.0.35</span></code></p></td>
+<td><p>Skip auto-detect / pin family</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--innodb-buffer-pool-size</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">2G</span></code></p></td>
+<td><p>Per-node absolute BP (overrides pct)</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">--create-replica-methods</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">xtrabackup,mysqldump</span></code></p></td>
+<td><p>Clone order</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">--etcd</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">127.0.0.1:2379</span></code></p></td>
+<td><p>DCS endpoints</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+</section>
+<section id="deploy-checklist">
+<h2><a class="toc-backref" href="#id4" role="doc-backlink">Deploy checklist</a></h2>
+<ol class="arabic simple">
+<li><p>Start DCS (etcd/Consul/ZK). Prefer odd-sized DCS clusters.</p></li>
+<li><p>Ensure unique <code class="docutils literal notranslate"><span class="pre">server_id</span></code> / ports / <code class="docutils literal notranslate"><span class="pre">connect_address</span></code> per node.</p></li>
+<li><p>Start Patroni on the first node → initializes datadir if empty.</p></li>
+<li><p>Confirm REST <code class="docutils literal notranslate"><span class="pre">/primary</span></code> and <code class="docutils literal notranslate"><span class="pre">patronictl</span> <span class="pre">list</span></code>.</p></li>
+<li><p>Start remaining nodes → clone + replicate (or MGR join).</p></li>
+<li><p>(Optional) Start HAProxy with the generated <code class="docutils literal notranslate"><span class="pre">haproxy.cfg</span></code>.</p></li>
+<li><p>Smoke-test writes through <code class="docutils literal notranslate"><span class="pre">:5000</span></code> and reads through <code class="docutils literal notranslate"><span class="pre">:5001</span></code>.</p></li>
+</ol>
+<section id="multi-host-production-sketch">
+<h3><a class="toc-backref" href="#id5" role="doc-backlink">Multi-host production sketch</a></h3>
+<p>On each host, use a real <code class="docutils literal notranslate"><span class="pre">connect_address</span></code>, unique <code class="docutils literal notranslate"><span class="pre">server_id</span></code>, shared
+<code class="docutils literal notranslate"><span class="pre">scope</span></code> / <code class="docutils literal notranslate"><span class="pre">group_replication_group_name</span></code> (MGR), and the same replication
+password. Do <strong>not</strong> share <code class="docutils literal notranslate"><span class="pre">data_dir</span></code>. Prefer generating once with
+<code class="docutils literal notranslate"><span class="pre">patroni_mysql_init</span></code> then editing hostnames, or maintaining Ansible/Helm from
+<code class="docutils literal notranslate"><span class="pre">templates/mysql/</span></code>.</p>
+</section>
+</section>
+<section id="configuration-reference-short">
+<h2><a class="toc-backref" href="#id6" role="doc-backlink">Configuration reference (short)</a></h2>
+<p>Required selector:</p>
+<div class="highlight-YAML notranslate"><div class="highlight"><pre><span></span><span class="nt">database</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">mysql</span>
+</pre></div>
+</div>
+<p>Minimal <code class="docutils literal notranslate"><span class="pre">mysql</span></code> block:</p>
+<div class="highlight-YAML notranslate"><div class="highlight"><pre><span></span><span class="nt">mysql</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">mysql-node-1</span>
+<span class="w">  </span><span class="nt">scope</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">mysql-cluster</span>
+<span class="w">  </span><span class="nt">listen</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.0.0.0:3306</span>
+<span class="w">  </span><span class="nt">connect_address</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">10.0.0.1:3306</span>
+<span class="w">  </span><span class="nt">data_dir</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/var/lib/mysql</span>
+<span class="w">  </span><span class="nt">bin_dir</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/usr/local/mysql/bin</span>
+<span class="w">  </span><span class="nt">port</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3306</span>
+<span class="w">  </span><span class="nt">server_id</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+<span class="w">  </span><span class="nt">authentication</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">superuser</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">username</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">root</span>
+<span class="w">      </span><span class="nt">password</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;s3cret&quot;</span>
+<span class="w">    </span><span class="nt">replication</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">username</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">replicator</span>
+<span class="w">      </span><span class="nt">password</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;rep-pass&quot;</span>
+<span class="w">  </span><span class="nt">parameters</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">server_id</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;1&quot;</span>
+<span class="w">    </span><span class="nt">gtid_mode</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;ON&quot;</span>
+<span class="w">    </span><span class="nt">enforce_gtid_consistency</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;ON&quot;</span>
+<span class="w">    </span><span class="nt">log-bin</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;mysql-bin&quot;</span>
+<span class="w">    </span><span class="nt">log_slave_updates</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;ON&quot;</span>
+<span class="w">    </span><span class="nt">mysqlx</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;OFF&quot;</span>
+</pre></div>
+</div>
+<p>See <a class="reference internal" href="mysql.xhtml#mysql"><span class="std std-ref">MySQL high-availability support</span></a> and <code class="docutils literal notranslate"><span class="pre">templates/mysql/VERSIONS.md</span></code> for version-specific names
+(<code class="docutils literal notranslate"><span class="pre">source</span></code>/<code class="docutils literal notranslate"><span class="pre">replica</span></code> vs <code class="docutils literal notranslate"><span class="pre">master</span></code>/<code class="docutils literal notranslate"><span class="pre">slave</span></code>, binlog expiry, redo capacity).</p>
+</section>
+<section id="day-2-operations">
+<h2><a class="toc-backref" href="#id7" role="doc-backlink">Day-2 operations</a></h2>
+<section id="status">
+<h3><a class="toc-backref" href="#id8" role="doc-backlink">Status</a></h3>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>patronictl<span class="w"> </span>-c<span class="w"> </span>/path/to/patroni.yml<span class="w"> </span>list
+curl<span class="w"> </span>-s<span class="w"> </span>http://127.0.0.1:8008/patroni<span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>.
+curl<span class="w"> </span>-s<span class="w"> </span>http://127.0.0.1:8008/cluster<span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>.
+</pre></div>
+</div>
+</section>
+<section id="switchover-failover">
+<h3><a class="toc-backref" href="#id9" role="doc-backlink">Switchover / failover</a></h3>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span><span class="c1"># planned</span>
+patronictl<span class="w"> </span>-c<span class="w"> </span>patroni.yml<span class="w"> </span>switchover<span class="w"> </span>--master<span class="w"> </span>mysql0<span class="w"> </span>--candidate<span class="w"> </span>mysql1
+
+<span class="c1"># unplanned / force candidate</span>
+patronictl<span class="w"> </span>-c<span class="w"> </span>patroni.yml<span class="w"> </span>failover<span class="w"> </span>--master<span class="w"> </span>mysql0<span class="w"> </span>--candidate<span class="w"> </span>mysql1
+</pre></div>
+</div>
+</section>
+<section id="restart-reload-rebuild-replica">
+<h3><a class="toc-backref" href="#id10" role="doc-backlink">Restart / reload / rebuild replica</a></h3>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>patronictl<span class="w"> </span>-c<span class="w"> </span>patroni.yml<span class="w"> </span>restart<span class="w"> </span>mysql1
+patronictl<span class="w"> </span>-c<span class="w"> </span>patroni.yml<span class="w"> </span>reload<span class="w"> </span>mysql1
+patronictl<span class="w"> </span>-c<span class="w"> </span>patroni.yml<span class="w"> </span>reinitialize<span class="w"> </span>mysql1<span class="w">   </span><span class="c1"># wipe + reclone</span>
+</pre></div>
+</div>
+</section>
+<section id="pause-autofailover">
+<h3><a class="toc-backref" href="#id11" role="doc-backlink">Pause autofailover</a></h3>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>patronictl<span class="w"> </span>-c<span class="w"> </span>patroni.yml<span class="w"> </span>pause
+<span class="c1"># … maintenance …</span>
+patronictl<span class="w"> </span>-c<span class="w"> </span>patroni.yml<span class="w"> </span>resume
+</pre></div>
+</div>
+</section>
+<section id="standby-cluster-cross-site-cascade">
+<h3><a class="toc-backref" href="#id12" role="doc-backlink">Standby cluster (cross-site cascade)</a></h3>
+<p>MySQL standby sites use <strong>full clone + GTID cascade</strong>, not WAL archive /
+<code class="docutils literal notranslate"><span class="pre">restore_command</span></code>. Prefer physical clone:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">bootstrap</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">dcs</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">standby_cluster</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">host</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">primary-site.example</span><span class="w">   </span><span class="c1"># or VIP / first writable endpoint</span>
+<span class="w">      </span><span class="nt">port</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3306</span>
+<span class="w">      </span><span class="nt">create_replica_methods</span><span class="p">:</span>
+<span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">xtrabackup</span>
+<span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">mysqldump</span><span class="w">   </span><span class="c1"># fallback when xtrabackup binary is missing</span>
+</pre></div>
+</div>
+<p>Or force logical clone only: <code class="docutils literal notranslate"><span class="pre">create_replica_methods:</span> <span class="pre">[mysqldump]</span></code>.</p>
+<section id="topology-rules">
+<h4>Topology rules</h4>
+<ul class="simple">
+<li><p>Use a <strong>separate DCS scope</strong> (and usually a separate etcd/Consul cluster) for
+the standby site. Do <strong>not</strong> share <code class="docutils literal notranslate"><span class="pre">scope</span></code> / namespace with the primary site.</p></li>
+<li><p>Member <code class="docutils literal notranslate"><span class="pre">name</span></code> values must be unique across both sites.</p></li>
+<li><p><strong>standby leader</strong> holds the standby-site DCS lock, replicates from the
+remote primary, stays <code class="docutils literal notranslate"><span class="pre">super_read_only</span></code>.</p></li>
+<li><p>Local members cascade from the standby leader (same site).</p></li>
+<li><p>Within each site, <code class="docutils literal notranslate"><span class="pre">switchover</span></code> / <code class="docutils literal notranslate"><span class="pre">failover</span></code> still work; they do <strong>not</strong>
+move the writable role across sites. Cross-site cutover uses
+<code class="docutils literal notranslate"><span class="pre">promote-cluster</span></code> / <code class="docutils literal notranslate"><span class="pre">demote-cluster</span></code> below.</p></li>
+</ul>
+</section>
+<section id="day-0-bootstrap-the-standby-site">
+<h4>Day-0: bootstrap the standby site</h4>
+<ol class="arabic">
+<li><p>Primary site is healthy and accepting replication (<code class="docutils literal notranslate"><span class="pre">replicator</span></code> user,
+GTID on, binlogs retained long enough for the clone window).</p></li>
+<li><p>Generate / write standby-site Patroni YAML with <code class="docutils literal notranslate"><span class="pre">standby_cluster.host</span></code> /
+<code class="docutils literal notranslate"><span class="pre">port</span></code> pointing at the primary-site writable endpoint (or a stable VIP).</p></li>
+<li><p>Start the first standby-site node. It clones (xtrabackup preferred), then
+becomes <code class="docutils literal notranslate"><span class="pre">standby_leader</span></code> and streams with <code class="docutils literal notranslate"><span class="pre">MASTER_AUTO_POSITION=1</span></code>.</p></li>
+<li><p>Start remaining standby-site nodes; they clone from the local standby
+leader and cascade.</p></li>
+<li><p>Verify:</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span><span class="c1"># on standby site</span>
+patronictl<span class="w"> </span>-c<span class="w"> </span>standby0.yml<span class="w"> </span>list
+curl<span class="w"> </span>-s<span class="w"> </span>http://127.0.0.1:&lt;api&gt;/patroni<span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span><span class="s1">&#39;{role,state,replication_state}&#39;</span>
+<span class="c1"># expect role=standby_leader on the lock holder; replica elsewhere</span>
+mysql<span class="w"> </span>-h127.0.0.1<span class="w"> </span>-P&lt;stb_port&gt;<span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;SELECT @@super_read_only; SHOW SLAVE STATUS\\G&quot;</span>
+</pre></div>
+</div>
+</li>
+</ol>
+</section>
+<section id="health-checks-before-any-cutover">
+<h4>Health checks before any cutover</h4>
+<ul class="simple">
+<li><p>Primary site: <code class="docutils literal notranslate"><span class="pre">patronictl</span> <span class="pre">list</span></code> shows one <code class="docutils literal notranslate"><span class="pre">primary</span></code>, replicas streaming.</p></li>
+<li><p>Standby site: one <code class="docutils literal notranslate"><span class="pre">Standby</span> <span class="pre">Leader</span></code>, others <code class="docutils literal notranslate"><span class="pre">Replica</span></code>, no growing lag.</p></li>
+<li><p>Compare a user table / GTID progress after a test insert on the primary.</p></li>
+<li><p>Application / LB: know which VIP points at which site; prepare DNS/LB change.</p></li>
+<li><p>Agree STONITH: who fences the old writable site if promote is forced.</p></li>
+</ul>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>Promoting the standby while the primary site is still accepting writes
+creates a <strong>split-brain</strong>. Always fence (STONITH) or pause/stop writes on
+the old primary site before <code class="docutils literal notranslate"><span class="pre">promote-cluster</span></code>, unless that site is already
+confirmed down.</p>
+</div>
+</section>
+<section id="planned-promote-standby-site-becomes-writable">
+<h4>Planned promote (standby site becomes writable)</h4>
+<p>Use when you intentionally move the writable role to the standby site
+(maintenance window or controlled DR drill).</p>
+<ol class="arabic">
+<li><p><strong>Freeze writes on the primary site</strong> (preferred order):</p>
+<ul class="simple">
+<li><p>Stop application writers, or</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">patronictl</span> <span class="pre">-c</span> <span class="pre">primary0.yml</span> <span class="pre">pause</span></code> and set the primary <code class="docutils literal notranslate"><span class="pre">super_read_only</span></code>
+/ take the primary VIP offline, or</p></li>
+<li><p>Stop Patroni + mysqld on the primary site after a final flush.</p></li>
+</ul>
+</li>
+<li><p><strong>Wait for standby catch-up</strong> (Seconds_Behind_Master ≈ 0 / GTID caught up).</p></li>
+<li><p><strong>Promote the standby cluster</strong> (run against a standby-site config):</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>patronictl<span class="w"> </span>-c<span class="w"> </span>standby0.yml<span class="w"> </span>promote-cluster<span class="w"> </span>--force
+<span class="c1"># removes DCS standby_cluster; standby_leader STOP SLAVE → writable primary</span>
+</pre></div>
+</div>
+</li>
+<li><p>Confirm standby site:</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>patronictl<span class="w"> </span>-c<span class="w"> </span>standby0.yml<span class="w"> </span>list<span class="w">   </span><span class="c1"># Leader = former standby_leader</span>
+mysql<span class="w"> </span>...<span class="w"> </span>-e<span class="w"> </span><span class="s2">&quot;SELECT @@read_only, @@super_read_only&quot;</span><span class="w">   </span><span class="c1"># both 0/OFF</span>
+curl<span class="w"> </span>-s<span class="w"> </span>http://127.0.0.1:&lt;stb_api&gt;/primary<span class="w">   </span><span class="c1"># expect HTTP 200</span>
+</pre></div>
+</div>
+</li>
+<li><p>Point application / LB / DNS at the <strong>new</strong> primary site.</p></li>
+<li><p>Do <strong>not</strong> start the old site as a second writable primary. Either leave it
+down, or demote it (next section) so it follows the new primary.</p></li>
+</ol>
+</section>
+<section id="demote-a-former-primary-site-into-a-standby">
+<h4>Demote a former primary site into a standby</h4>
+<p>After a successful promote, convert the old primary site so it cascades from
+the new primary (roles reversed).</p>
+<ol class="arabic">
+<li><p>Ensure the <strong>new</strong> primary site is healthy and writable.</p></li>
+<li><p>On the <strong>old</strong> site (still has its own DCS scope), demote:</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>patronictl<span class="w"> </span>-c<span class="w"> </span>old_primary0.yml<span class="w"> </span>demote-cluster<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--host<span class="w"> </span>&lt;new-primary-vip-or-host&gt;<span class="w"> </span>--port<span class="w"> </span><span class="m">3306</span><span class="w"> </span>--force
+<span class="c1"># writes standby_cluster into DCS; former primary follows remote as</span>
+<span class="c1"># standby_leader (super_read_only)</span>
+</pre></div>
+</div>
+</li>
+<li><p>Verify old site shows <code class="docutils literal notranslate"><span class="pre">Standby</span> <span class="pre">Leader</span></code> / <code class="docutils literal notranslate"><span class="pre">Replica</span></code> and streams from the
+new primary. If GTID history diverged while both were writable, <strong>rebuild</strong>
+the old site from a fresh clone instead of demote (no <code class="docutils literal notranslate"><span class="pre">pg_rewind</span></code> for MySQL).</p></li>
+</ol>
+</section>
+<section id="planned-cross-site-switchover-drill-checklist">
+<h4>Planned cross-site switchover (drill checklist)</h4>
+<p>Typical two-site flip (Site A writable → Site B writable → optionally A as
+standby):</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 8.0%" />
+<col style="width: 42.0%" />
+<col style="width: 50.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>#</p></th>
+<th class="head"><p>Action</p></th>
+<th class="head"><p>Verify</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>1</p></td>
+<td><p>Announce maintenance; snapshot / backup both sites</p></td>
+<td><p>Backup OK</p></td>
+</tr>
+<tr class="row-odd"><td><p>2</p></td>
+<td><p>Stop writers on Site A (app + optional pause)</p></td>
+<td><p>No new commits on A</p></td>
+</tr>
+<tr class="row-even"><td><p>3</p></td>
+<td><p>Wait Site B catch-up</p></td>
+<td><p>Lag ≈ 0; test row visible on B</p></td>
+</tr>
+<tr class="row-odd"><td><p>4</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">promote-cluster</span></code> on Site B</p></td>
+<td><p>B <code class="docutils literal notranslate"><span class="pre">/primary</span></code> = 200; <code class="docutils literal notranslate"><span class="pre">super_read_only</span></code> OFF</p></td>
+</tr>
+<tr class="row-even"><td><p>5</p></td>
+<td><p>Cut LB/DNS to Site B</p></td>
+<td><p>App writes succeed on B</p></td>
+</tr>
+<tr class="row-odd"><td><p>6</p></td>
+<td><p>Fence or stop Site A writers if still up</p></td>
+<td><p>No dual-primary</p></td>
+</tr>
+<tr class="row-even"><td><p>7</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">demote-cluster</span> <span class="pre">--host</span> <span class="pre">&lt;B&gt;</span> <span class="pre">--port</span> <span class="pre">…</span></code> on Site A <strong>or</strong> rebuild A</p></td>
+<td><p>A is standby_leader/replica streaming from B</p></td>
+</tr>
+<tr class="row-odd"><td><p>8</p></td>
+<td><p>Resume monitoring; document new “primary site”</p></td>
+<td><p>Both <code class="docutils literal notranslate"><span class="pre">patronictl</span> <span class="pre">list</span></code> clean</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="disaster-promote-primary-site-unavailable">
+<h4>Disaster promote (primary site unavailable)</h4>
+<ol class="arabic simple">
+<li><p>Confirm Site A is down or unreachable (network / DC failure). Prefer
+fencing power/storage if there is any doubt.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">patronictl</span> <span class="pre">-c</span> <span class="pre">standby0.yml</span> <span class="pre">promote-cluster</span> <span class="pre">--force</span></code> on Site B.</p></li>
+<li><p>Retarget LB/DNS to Site B.</p></li>
+<li><p>When Site A returns: <strong>do not</strong> start it as primary. Either
+<code class="docutils literal notranslate"><span class="pre">demote-cluster</span></code> toward B (if GTID still continuous) or wipe and reclone
+as a new standby site.</p></li>
+</ol>
+</section>
+<section id="rollback-after-a-bad-promote">
+<h4>Rollback after a bad promote</h4>
+<p>If you promoted B by mistake while A was still writable:</p>
+<ol class="arabic simple">
+<li><p>Stop writers on <strong>both</strong> sites immediately.</p></li>
+<li><p>Decide the source of truth (usually the site with the wanted commits).</p></li>
+<li><p>Rebuild the other site from a full clone; do not rely on automatic rewind.</p></li>
+<li><p>Re-establish <code class="docutils literal notranslate"><span class="pre">standby_cluster</span></code> only on the secondary site.</p></li>
+</ol>
+</section>
+<section id="commands-cheat-sheet">
+<h4>Commands cheat-sheet</h4>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span><span class="c1"># Standby site status</span>
+patronictl<span class="w"> </span>-c<span class="w"> </span>standby0.yml<span class="w"> </span>list
+curl<span class="w"> </span>-s<span class="w"> </span>http://127.0.0.1:&lt;api&gt;/standby-leader<span class="w">   </span><span class="c1"># 200 on standby leader</span>
+curl<span class="w"> </span>-s<span class="w"> </span>http://127.0.0.1:&lt;api&gt;/leader<span class="w">           </span><span class="c1"># 200 for lock holder (standby or real)</span>
+
+<span class="c1"># Promote standby cluster → standalone primary</span>
+patronictl<span class="w"> </span>-c<span class="w"> </span>standby0.yml<span class="w"> </span>promote-cluster<span class="w"> </span><span class="o">[</span>--force<span class="o">]</span>
+
+<span class="c1"># Demote standalone cluster → standby of remote</span>
+patronictl<span class="w"> </span>-c<span class="w"> </span>siteA0.yml<span class="w"> </span>demote-cluster<span class="w"> </span>--host<span class="w"> </span>&lt;remote&gt;<span class="w"> </span>--port<span class="w"> </span><span class="m">3306</span><span class="w"> </span><span class="o">[</span>--force<span class="o">]</span>
+
+<span class="c1"># Inspect DCS dynamic config (standby_cluster present or not)</span>
+patronictl<span class="w"> </span>-c<span class="w"> </span>standby0.yml<span class="w"> </span>show-config
+</pre></div>
+</div>
+<p>MySQL-specific notes for <code class="docutils literal notranslate"><span class="pre">demote-cluster</span></code>: pass <code class="docutils literal notranslate"><span class="pre">--host</span></code> / <code class="docutils literal notranslate"><span class="pre">--port</span></code> of
+the remote primary. <code class="docutils literal notranslate"><span class="pre">--restore-command</span></code> / <code class="docutils literal notranslate"><span class="pre">--primary-slot-name</span></code> are
+PostgreSQL-oriented and unused for MySQL GTID cascade.</p>
+</section>
+</section>
+</section>
+<section id="haproxy">
+<h2><a class="toc-backref" href="#id13" role="doc-backlink">HAProxy</a></h2>
+<p>Generated <code class="docutils literal notranslate"><span class="pre">haproxy.cfg</span></code> (and root example <code class="docutils literal notranslate"><span class="pre">haproxy-mysql.cfg</span></code>):</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 18.0%" />
+<col style="width: 18.0%" />
+<col style="width: 64.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Listen</p></th>
+<th class="head"><p>Port</p></th>
+<th class="head"><p>Health check</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>primary</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">*:5000</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">HEAD</span> <span class="pre">/primary</span></code> → 200</p></td>
+</tr>
+<tr class="row-odd"><td><p>replicas</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">*:5001</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">HEAD</span> <span class="pre">/replica</span></code> → 200</p></td>
+</tr>
+<tr class="row-even"><td><p>stats</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">*:7000</span></code></p></td>
+<td><p>HAProxy stats UI</p></td>
+</tr>
+</tbody>
+</table>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>haproxy<span class="w"> </span>-f<span class="w"> </span>deploy/mysql-ha/haproxy.cfg<span class="w"> </span>-db
+mysql<span class="w"> </span>-h<span class="w"> </span><span class="m">127</span>.0.0.1<span class="w"> </span>-P<span class="w"> </span><span class="m">5000</span><span class="w"> </span>-u<span class="w"> </span>root<span class="w"> </span>-p
+mysql<span class="w"> </span>-h<span class="w"> </span><span class="m">127</span>.0.0.1<span class="w"> </span>-P<span class="w"> </span><span class="m">5001</span><span class="w"> </span>-u<span class="w"> </span>root<span class="w"> </span>-p<span class="w"> </span>-e<span class="w"> </span><span class="s1">&#39;SELECT @@read_only, @@super_read_only&#39;</span>
+</pre></div>
+</div>
+<p>For dynamic membership, adapt <code class="docutils literal notranslate"><span class="pre">extras/confd/templates/haproxy.tmpl</span></code> (same
+<code class="docutils literal notranslate"><span class="pre">conn_url</span></code> / <code class="docutils literal notranslate"><span class="pre">api_url</span></code> pattern as PostgreSQL).</p>
+</section>
+<section id="replication-mode-cutovers">
+<h2><a class="toc-backref" href="#id14" role="doc-backlink">Replication mode cutovers</a></h2>
+<p><strong>No online hot switch.</strong> Always snapshot/backup first.</p>
+<section id="async-semi-sync">
+<h3><a class="toc-backref" href="#id15" role="doc-backlink">async ↔ semi-sync</a></h3>
+<ol class="arabic simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">patronictl</span> <span class="pre">pause</span></code> (recommended).</p></li>
+<li><p>Stop Patroni; align <code class="docutils literal notranslate"><span class="pre">rpl_semi_sync_*</span></code> + <code class="docutils literal notranslate"><span class="pre">plugin-load-add</span></code> order in
+<code class="docutils literal notranslate"><span class="pre">my.cnf</span></code> / YAML (or regenerate <code class="docutils literal notranslate"><span class="pre">--mode</span></code>).</p></li>
+<li><p>Restart mysqld + Patroni; <code class="docutils literal notranslate"><span class="pre">patronictl</span> <span class="pre">resume</span></code>.</p></li>
+<li><p>Verify <code class="docutils literal notranslate"><span class="pre">SHOW</span> <span class="pre">STATUS</span> <span class="pre">LIKE</span> <span class="pre">'Rpl_semi_sync_%'</span></code> and that primary is writable
+only with quorum.</p></li>
+</ol>
+</section>
+<section id="async-semi-sync-mgr">
+<h3><a class="toc-backref" href="#id16" role="doc-backlink">async / semi-sync → MGR</a></h3>
+<ol class="arabic simple">
+<li><p>Drain writes; pause.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">STOP</span> <span class="pre">SLAVE;</span> <span class="pre">RESET</span> <span class="pre">SLAVE</span> <span class="pre">ALL;</span></code> on every node (GR rejects dual channels).</p></li>
+<li><p>Install MGR parameters (shared UUID, seeds, local port = client+10).</p></li>
+<li><p>Replication user: <code class="docutils literal notranslate"><span class="pre">mysql_native_password</span></code> (no <code class="docutils literal notranslate"><span class="pre">GET_MASTER_PUBLIC_KEY</span></code> on
+recovery channel).</p></li>
+<li><p>Bootstrap one node; others <code class="docutils literal notranslate"><span class="pre">rejoin_mgr_group</span></code> via Patroni.</p></li>
+<li><p>Confirm <code class="docutils literal notranslate"><span class="pre">replication_group_members</span></code> all <code class="docutils literal notranslate"><span class="pre">ONLINE</span></code>; resume.</p></li>
+</ol>
+</section>
+<section id="mgr-async-semi-sync">
+<h3><a class="toc-backref" href="#id17" role="doc-backlink">MGR → async / semi-sync</a></h3>
+<ol class="arabic simple">
+<li><p>Pause; <code class="docutils literal notranslate"><span class="pre">STOP</span> <span class="pre">GROUP_REPLICATION</span></code> everywhere; remove GR config.</p></li>
+<li><p>Choose GTID-ahead / former primary as async source; others <code class="docutils literal notranslate"><span class="pre">follow</span></code>.</p></li>
+<li><p>Enable semi-sync after streaming if needed; resume.</p></li>
+</ol>
+<p>Prefer wiping <code class="docutils literal notranslate"><span class="pre">/service/&lt;scope&gt;/</span></code> after a clean stop when changing mode so
+stale member roles do not confuse election.</p>
+</section>
+</section>
+<section id="monitoring-hooks">
+<h2><a class="toc-backref" href="#id18" role="doc-backlink">Monitoring hooks</a></h2>
+<ul class="simple">
+<li><p>REST <code class="docutils literal notranslate"><span class="pre">/metrics</span></code> — Prometheus-style gauges (binlog location substituted for
+xlog where applicable)</p></li>
+<li><p>DCS member <code class="docutils literal notranslate"><span class="pre">gtid_executed</span></code> — MGR election input</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">mgr_gtid_fork</span></code> on member / <code class="docutils literal notranslate"><span class="pre">/patroni</span></code> — split-brain GTID alert</p></li>
+<li><p>Semi-sync: watch <code class="docutils literal notranslate"><span class="pre">Rpl_semi_sync_*_clients</span></code> and primary <code class="docutils literal notranslate"><span class="pre">read_only</span></code></p></li>
+</ul>
+</section>
+<section id="integration-tests-dev">
+<h2><a class="toc-backref" href="#id19" role="doc-backlink">Integration tests (dev)</a></h2>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span><span class="nv">MYSQL_BASE</span><span class="o">=</span>/path/to/mysql<span class="w"> </span><span class="nv">PYTHONPATH</span><span class="o">=</span>.<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>python3<span class="w"> </span>-u<span class="w"> </span>integration-tests/test_mysql_patroni_ha.py
+
+<span class="nv">MYSQL_BASE</span><span class="o">=</span>/path/to/mysql<span class="w"> </span><span class="nv">PYTHONPATH</span><span class="o">=</span>.<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>python3<span class="w"> </span>-u<span class="w"> </span>integration-tests/test_mysql_semi_sync.py
+
+<span class="nv">MYSQL_BASE</span><span class="o">=</span>/path/to/mysql<span class="w"> </span><span class="nv">PYTHONPATH</span><span class="o">=</span>.<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>python3<span class="w"> </span>-u<span class="w"> </span>integration-tests/test_mysql_mgr_patroni_ha.py
+</pre></div>
+</div>
+</section>
+<section id="faq-troubleshooting">
+<h2><a class="toc-backref" href="#id20" role="doc-backlink">FAQ / troubleshooting</a></h2>
+<section id="patronictl-list-empty-no-leader">
+<h3><a class="toc-backref" href="#id21" role="doc-backlink"><code class="docutils literal notranslate"><span class="pre">patronictl</span> <span class="pre">list</span></code> empty / no leader</a></h3>
+<ul class="simple">
+<li><p>Check DCS connectivity (<code class="docutils literal notranslate"><span class="pre">etcdctl</span> <span class="pre">endpoint</span> <span class="pre">health</span></code>).</p></li>
+<li><p>Confirm all nodes share <code class="docutils literal notranslate"><span class="pre">scope</span></code> and <code class="docutils literal notranslate"><span class="pre">namespace</span></code>.</p></li>
+<li><p>For etcd 3.x, YAML must use <code class="docutils literal notranslate"><span class="pre">etcd3:</span></code>, not <code class="docutils literal notranslate"><span class="pre">etcd:</span></code>.</p></li>
+</ul>
+</section>
+<section id="replica-never-becomes-streaming">
+<h3><a class="toc-backref" href="#id22" role="doc-backlink">Replica never becomes <code class="docutils literal notranslate"><span class="pre">streaming</span></code></a></h3>
+<ul class="simple">
+<li><p>Verify replication user/password and grants.</p></li>
+<li><p>On MySQL 8 async, ensure <code class="docutils literal notranslate"><span class="pre">GET_MASTER_PUBLIC_KEY</span></code> path works or use
+<code class="docutils literal notranslate"><span class="pre">mysql_native_password</span></code>.</p></li>
+<li><p>Inspect <code class="docutils literal notranslate"><span class="pre">SHOW</span> <span class="pre">SLAVE</span> <span class="pre">STATUS</span></code> / <code class="docutils literal notranslate"><span class="pre">SHOW</span> <span class="pre">REPLICA</span> <span class="pre">STATUS</span></code> for <code class="docutils literal notranslate"><span class="pre">Last_IO_Error</span></code>.</p></li>
+<li><p>Reclone: <code class="docutils literal notranslate"><span class="pre">patronictl</span> <span class="pre">reinitialize</span> <span class="pre">&lt;name&gt;</span></code>.</p></li>
+</ul>
+</section>
+<section id="semi-sync-primary-stuck-read-only">
+<h3><a class="toc-backref" href="#id23" role="doc-backlink">Semi-sync primary stuck read-only</a></h3>
+<p>Expected when connected semi-sync replicas are below quorum <code class="docutils literal notranslate"><span class="pre">(N-1)//2</span></code>. Restore
+replicas or temporarily adjust <code class="docutils literal notranslate"><span class="pre">cluster_size</span></code> only with care. Check
+<code class="docutils literal notranslate"><span class="pre">Rpl_semi_sync_*_clients</span></code>.</p>
+</section>
+<section id="mgr-group-will-not-form">
+<h3><a class="toc-backref" href="#id24" role="doc-backlink">MGR group will not form</a></h3>
+<ul class="simple">
+<li><p>Need ≥3 nodes and matching <code class="docutils literal notranslate"><span class="pre">group_replication_group_name</span></code>.</p></li>
+<li><p>Local MGR port defaults to <code class="docutils literal notranslate"><span class="pre">mysql_port</span> <span class="pre">+</span> <span class="pre">10</span></code> (avoid overflow schemes).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">caching_sha2_password</span></code> + <code class="docutils literal notranslate"><span class="pre">GET_MASTER_PUBLIC_KEY</span></code> fails on recovery
+channel (ER 3139) → use <code class="docutils literal notranslate"><span class="pre">mysql_native_password</span></code>.</p></li>
+<li><p>Query <code class="docutils literal notranslate"><span class="pre">performance_schema.replication_group_members</span></code> (not
+<code class="docutils literal notranslate"><span class="pre">&#64;&#64;group_replication_primary_member</span></code>, which is not a sysvar).</p></li>
+</ul>
+</section>
+<section id="majority-lost-cluster-paused-mgr-gtid-fork">
+<h3><a class="toc-backref" href="#id25" role="doc-backlink">Majority lost; cluster paused / <code class="docutils literal notranslate"><span class="pre">mgr_gtid_fork</span></code></a></h3>
+<ul class="simple">
+<li><p>Incomparable <code class="docutils literal notranslate"><span class="pre">gtid_executed</span></code> sets → automatic bootstrap refused.</p></li>
+<li><p>Repair data (rebuild divergent node) then <code class="docutils literal notranslate"><span class="pre">patronictl</span> <span class="pre">resume</span></code>.</p></li>
+<li><p>Disable auto-pause only if you accept risk:
+<code class="docutils literal notranslate"><span class="pre">mysql.parameters.mgr_pause_on_gtid_fork:</span> <span class="pre">false</span></code>.</p></li>
+</ul>
+</section>
+<section id="old-primary-does-not-rejoin-after-failover">
+<h3><a class="toc-backref" href="#id26" role="doc-backlink">Old primary does not rejoin after failover</a></h3>
+<ul class="simple">
+<li><p>MySQL demote must release the leader lock on graceful/immediate paths.</p></li>
+<li><p>Confirm <code class="docutils literal notranslate"><span class="pre">follow()</span></code> toward the new primary and GTID auto-position.</p></li>
+<li><p>Check logs for demote/follow errors; no rewind step is expected.</p></li>
+</ul>
+</section>
+<section id="xtrabackup-clone-fails">
+<h3><a class="toc-backref" href="#id27" role="doc-backlink">xtrabackup clone fails</a></h3>
+<ul class="simple">
+<li><p>XtraBackup major.minor must match MySQL.</p></li>
+<li><p>Ensure <code class="docutils literal notranslate"><span class="pre">BACKUP_ADMIN</span></code> (or equivalent) grants on the donor.</p></li>
+<li><p>On failure Patroni should clean partial datadir; retry or fall back to
+<code class="docutils literal notranslate"><span class="pre">mysqldump</span></code> in <code class="docutils literal notranslate"><span class="pre">create_replica_methods</span></code>.</p></li>
+</ul>
+</section>
+<section id="port-conflicts-x-plugin">
+<h3><a class="toc-backref" href="#id28" role="doc-backlink">Port conflicts / X Plugin</a></h3>
+<ul class="simple">
+<li><p>Default <code class="docutils literal notranslate"><span class="pre">mysqlx=OFF</span></code> in generated <code class="docutils literal notranslate"><span class="pre">my.cnf</span></code>.</p></li>
+<li><p>Multi-instance on one host: stagger MySQL and REST ports
+(<code class="docutils literal notranslate"><span class="pre">patroni_mysql_init</span></code> does this).</p></li>
+</ul>
+</section>
+<section id="switchover-loops-forever">
+<h3><a class="toc-backref" href="#id29" role="doc-backlink">Switchover loops forever</a></h3>
+<ul class="simple">
+<li><p>Usually the demoting primary did not release the DCS lock. Upgrade to a
+build that includes graceful MySQL demote lock release, or manually delete
+the leader key and <code class="docutils literal notranslate"><span class="pre">follow</span></code> the intended primary.</p></li>
+</ul>
+</section>
+<section id="standby-promote-demote-problems">
+<h3><a class="toc-backref" href="#id30" role="doc-backlink">Standby promote / demote problems</a></h3>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">promote-cluster</span></code> leaves node read-only: check Patroni logs for
+<code class="docutils literal notranslate"><span class="pre">STOP</span> <span class="pre">SLAVE</span></code> / <code class="docutils literal notranslate"><span class="pre">set_read_write</span></code> failures; confirm DCS no longer has
+<code class="docutils literal notranslate"><span class="pre">standby_cluster</span></code> (<code class="docutils literal notranslate"><span class="pre">patronictl</span> <span class="pre">show-config</span></code>).</p></li>
+<li><p>After demote, old site is not <code class="docutils literal notranslate"><span class="pre">standby_leader</span></code>: ensure <code class="docutils literal notranslate"><span class="pre">--host</span></code>/<code class="docutils literal notranslate"><span class="pre">--port</span></code>
+reach the <strong>new</strong> primary and replication credentials work; look for
+<code class="docutils literal notranslate"><span class="pre">CHANGE</span> <span class="pre">MASTER</span></code> / GTID errors.</p></li>
+<li><p>Split-brain after promote: fence one site, rebuild the loser from clone.</p></li>
+<li><p>Lag never drains before promote: fix network / increase binlog retention;
+do not promote a lagging standby for planned cutover.</p></li>
+</ul>
+</section>
+</section>
+<section id="known-limitations-ops-view">
+<h2><a class="toc-backref" href="#id31" role="doc-backlink">Known limitations (ops view)</a></h2>
+<ul class="simple">
+<li><p>MySQL standby cluster uses <strong>clone + GTID cascade</strong> (not WAL archive /
+<code class="docutils literal notranslate"><span class="pre">restore_command</span></code>). Prefer <code class="docutils literal notranslate"><span class="pre">create_replica_methods:</span> <span class="pre">[xtrabackup,</span> <span class="pre">mysqldump]</span></code>.</p></li>
+<li><p>No <code class="docutils literal notranslate"><span class="pre">pg_rewind</span></code> equivalent</p></li>
+<li><p>Mode changes are rebuild/cutover, not hot switch</p></li>
+<li><p>Still under active development — validate with your workload and the
+integration suite before production</p></li>
+</ul>
+</section>
+</section>
+
+
+            <div class="clearer"></div>
+          </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+  </body>
+</html>

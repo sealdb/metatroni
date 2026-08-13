@@ -1,0 +1,1664 @@
+<?xml version="1.0"?>
+<ncx version="2005-1" xmlns="http://www.daisy.org/z3986/2005/ncx/">
+  <head>
+    <meta name="dtb:uid" content="unknown"/>
+    <meta name="dtb:depth" content="3"/>
+    <meta name="dtb:totalPageCount" content="0"/>
+    <meta name="dtb:maxPageNumber" content="0"/>
+  </head>
+  <docTitle>
+    <text>Metatroni</text>
+  </docTitle>
+  <navMap>    
+    <navPoint id="navPoint1" playOrder="1">
+      <navLabel>
+        <text>Metatroni: HA with ZooKeeper, etcd or Consul (based on Patroni)</text>
+      </navLabel>
+      <content src="index.xhtml" />  
+    </navPoint>
+    <navPoint id="navPoint2" playOrder="2">
+      <navLabel>
+        <text>Introduction</text>
+      </navLabel>
+      <content src="README.xhtml" />  
+      <navPoint id="navPoint3" playOrder="2">
+        <navLabel>
+          <text>Introduction</text>
+        </navLabel>
+        <content src="README.xhtml" />  
+      </navPoint>
+      <navPoint id="navPoint4" playOrder="3">
+        <navLabel>
+          <text>Development Status</text>
+        </navLabel>
+        <content src="README.xhtml#development-status" />  
+      </navPoint>
+      <navPoint id="navPoint5" playOrder="4">
+        <navLabel>
+          <text>Technical Requirements/Installation</text>
+        </navLabel>
+        <content src="README.xhtml#technical-requirements-installation" />  
+      </navPoint>
+      <navPoint id="navPoint6" playOrder="5">
+        <navLabel>
+          <text>Planning the Number of PostgreSQL Nodes</text>
+        </navLabel>
+        <content src="README.xhtml#planning-the-number-of-postgresql-nodes" />  
+      </navPoint>
+      <navPoint id="navPoint7" playOrder="6">
+        <navLabel>
+          <text>Running and Configuring</text>
+        </navLabel>
+        <content src="README.xhtml#running-and-configuring" />  
+      </navPoint>
+      <navPoint id="navPoint8" playOrder="7">
+        <navLabel>
+          <text>YAML Configuration</text>
+        </navLabel>
+        <content src="README.xhtml#yaml-configuration" />  
+      </navPoint>
+      <navPoint id="navPoint9" playOrder="8">
+        <navLabel>
+          <text>Environment Configuration</text>
+        </navLabel>
+        <content src="README.xhtml#environment-configuration" />  
+      </navPoint>
+      <navPoint id="navPoint10" playOrder="9">
+        <navLabel>
+          <text>Replication Choices</text>
+        </navLabel>
+        <content src="README.xhtml#replication-choices" />  
+      </navPoint>
+      <navPoint id="navPoint11" playOrder="10">
+        <navLabel>
+          <text>Applications Should Not Use Superusers</text>
+        </navLabel>
+        <content src="README.xhtml#applications-should-not-use-superusers" />  
+      </navPoint>
+      <navPoint id="navPoint12" playOrder="11">
+        <navLabel>
+          <text>Testing Your HA Solution</text>
+        </navLabel>
+        <content src="README.xhtml#testing-your-ha-solution" />  
+      </navPoint>
+    </navPoint>
+    <navPoint id="navPoint13" playOrder="12">
+      <navLabel>
+        <text>Installation</text>
+      </navLabel>
+      <content src="installation.xhtml" />  
+      <navPoint id="navPoint14" playOrder="12">
+        <navLabel>
+          <text>Installation</text>
+        </navLabel>
+        <content src="installation.xhtml" />  
+      </navPoint>
+      <navPoint id="navPoint15" playOrder="13">
+        <navLabel>
+          <text>Pre-requirements for Mac OS</text>
+        </navLabel>
+        <content src="installation.xhtml#pre-requirements-for-mac-os" />  
+      </navPoint>
+      <navPoint id="navPoint16" playOrder="14">
+        <navLabel>
+          <text>Psycopg</text>
+        </navLabel>
+        <content src="installation.xhtml#psycopg" />  
+      </navPoint>
+      <navPoint id="navPoint17" playOrder="15">
+        <navLabel>
+          <text>General installation for pip</text>
+        </navLabel>
+        <content src="installation.xhtml#general-installation-for-pip" />  
+      </navPoint>
+      <navPoint id="navPoint18" playOrder="16">
+        <navLabel>
+          <text>Package installation on Linux</text>
+        </navLabel>
+        <content src="installation.xhtml#package-installation-on-linux" />  
+        <navPoint id="navPoint19" playOrder="16">
+          <navLabel>
+            <text>Package installation on Linux</text>
+          </navLabel>
+          <content src="installation.xhtml#package-installation-on-linux" />  
+        </navPoint>
+        <navPoint id="navPoint20" playOrder="17">
+          <navLabel>
+            <text>Installing on Debian derivatives</text>
+          </navLabel>
+          <content src="installation.xhtml#installing-on-debian-derivatives" />  
+        </navPoint>
+        <navPoint id="navPoint21" playOrder="18">
+          <navLabel>
+            <text>Installing on RedHat derivatives</text>
+          </navLabel>
+          <content src="installation.xhtml#installing-on-redhat-derivatives" />  
+        </navPoint>
+        <navPoint id="navPoint22" playOrder="19">
+          <navLabel>
+            <text>Installing on SUSE Enterprise Linux</text>
+          </navLabel>
+          <content src="installation.xhtml#installing-on-suse-enterprise-linux" />  
+        </navPoint>
+      </navPoint>
+      <navPoint id="navPoint23" playOrder="20">
+        <navLabel>
+          <text>Upgrading</text>
+        </navLabel>
+        <content src="installation.xhtml#upgrading" />  
+      </navPoint>
+    </navPoint>
+    <navPoint id="navPoint24" playOrder="21">
+      <navLabel>
+        <text>Patroni configuration</text>
+      </navLabel>
+      <content src="patroni_configuration.xhtml" />  
+      <navPoint id="navPoint25" playOrder="21">
+        <navLabel>
+          <text>Patroni configuration</text>
+        </navLabel>
+        <content src="patroni_configuration.xhtml" />  
+      </navPoint>
+      <navPoint id="navPoint26" playOrder="22">
+        <navLabel>
+          <text>Important rules</text>
+        </navLabel>
+        <content src="patroni_configuration.xhtml#important-rules" />  
+        <navPoint id="navPoint27" playOrder="22">
+          <navLabel>
+            <text>Important rules</text>
+          </navLabel>
+          <content src="patroni_configuration.xhtml#important-rules" />  
+        </navPoint>
+        <navPoint id="navPoint28" playOrder="23">
+          <navLabel>
+            <text>PostgreSQL parameters controlled by Patroni</text>
+          </navLabel>
+          <content src="patroni_configuration.xhtml#postgresql-parameters-controlled-by-patroni" />  
+        </navPoint>
+        <navPoint id="navPoint29" playOrder="24">
+          <navLabel>
+            <text>PostgreSQL parameters that touch shared memory</text>
+          </navLabel>
+          <content src="patroni_configuration.xhtml#postgresql-parameters-that-touch-shared-memory" />  
+        </navPoint>
+        <navPoint id="navPoint30" playOrder="25">
+          <navLabel>
+            <text>Patroni configuration parameters</text>
+          </navLabel>
+          <content src="patroni_configuration.xhtml#patroni-configuration-parameters" />  
+        </navPoint>
+      </navPoint>
+      <navPoint id="navPoint31" playOrder="26">
+        <navLabel>
+          <text>Configuration generation and validation</text>
+        </navLabel>
+        <content src="patroni_configuration.xhtml#configuration-generation-and-validation" />  
+        <navPoint id="navPoint32" playOrder="26">
+          <navLabel>
+            <text>Configuration generation and validation</text>
+          </navLabel>
+          <content src="patroni_configuration.xhtml#configuration-generation-and-validation" />  
+        </navPoint>
+        <navPoint id="navPoint33" playOrder="27">
+          <navLabel>
+            <text>Sample Patroni configuration</text>
+          </navLabel>
+          <content src="patroni_configuration.xhtml#sample-patroni-configuration" />  
+        </navPoint>
+        <navPoint id="navPoint34" playOrder="28">
+          <navLabel>
+            <text>Patroni configuration for a running instance</text>
+          </navLabel>
+          <content src="patroni_configuration.xhtml#patroni-configuration-for-a-running-instance" />  
+        </navPoint>
+        <navPoint id="navPoint35" playOrder="29">
+          <navLabel>
+            <text>Validate Patroni configuration</text>
+          </navLabel>
+          <content src="patroni_configuration.xhtml#validate-patroni-configuration" />  
+        </navPoint>
+      </navPoint>
+    </navPoint>
+    <navPoint id="navPoint36" playOrder="30">
+      <navLabel>
+        <text>Patroni REST API</text>
+      </navLabel>
+      <content src="rest_api.xhtml" />  
+      <navPoint id="navPoint37" playOrder="30">
+        <navLabel>
+          <text>Patroni REST API</text>
+        </navLabel>
+        <content src="rest_api.xhtml" />  
+      </navPoint>
+      <navPoint id="navPoint38" playOrder="31">
+        <navLabel>
+          <text>Health check endpoints</text>
+        </navLabel>
+        <content src="rest_api.xhtml#health-check-endpoints" />  
+      </navPoint>
+      <navPoint id="navPoint39" playOrder="32">
+        <navLabel>
+          <text>Monitoring endpoint</text>
+        </navLabel>
+        <content src="rest_api.xhtml#monitoring-endpoint" />  
+        <navPoint id="navPoint40" playOrder="32">
+          <navLabel>
+            <text>Monitoring endpoint</text>
+          </navLabel>
+          <content src="rest_api.xhtml#monitoring-endpoint" />  
+        </navPoint>
+        <navPoint id="navPoint41" playOrder="33">
+          <navLabel>
+            <text>PostgreSQL State Values</text>
+          </navLabel>
+          <content src="rest_api.xhtml#postgresql-state-values" />  
+        </navPoint>
+      </navPoint>
+      <navPoint id="navPoint42" playOrder="34">
+        <navLabel>
+          <text>Cluster status endpoints</text>
+        </navLabel>
+        <content src="rest_api.xhtml#cluster-status-endpoints" />  
+      </navPoint>
+      <navPoint id="navPoint43" playOrder="35">
+        <navLabel>
+          <text>Config endpoint</text>
+        </navLabel>
+        <content src="rest_api.xhtml#config-endpoint" />  
+      </navPoint>
+      <navPoint id="navPoint44" playOrder="36">
+        <navLabel>
+          <text>Switchover and failover endpoints</text>
+        </navLabel>
+        <content src="rest_api.xhtml#switchover-and-failover-endpoints" />  
+        <navPoint id="navPoint45" playOrder="36">
+          <navLabel>
+            <text>Switchover and failover endpoints</text>
+          </navLabel>
+          <content src="rest_api.xhtml#switchover-and-failover-endpoints" />  
+        </navPoint>
+        <navPoint id="navPoint46" playOrder="37">
+          <navLabel>
+            <text>Switchover</text>
+          </navLabel>
+          <content src="rest_api.xhtml#switchover" />  
+        </navPoint>
+        <navPoint id="navPoint47" playOrder="38">
+          <navLabel>
+            <text>Failover</text>
+          </navLabel>
+          <content src="rest_api.xhtml#failover" />  
+        </navPoint>
+        <navPoint id="navPoint48" playOrder="39">
+          <navLabel>
+            <text>Healthy standby</text>
+          </navLabel>
+          <content src="rest_api.xhtml#healthy-standby" />  
+        </navPoint>
+      </navPoint>
+      <navPoint id="navPoint49" playOrder="40">
+        <navLabel>
+          <text>Restart endpoint</text>
+        </navLabel>
+        <content src="rest_api.xhtml#restart-endpoint" />  
+      </navPoint>
+      <navPoint id="navPoint50" playOrder="41">
+        <navLabel>
+          <text>Reload endpoint</text>
+        </navLabel>
+        <content src="rest_api.xhtml#reload-endpoint" />  
+      </navPoint>
+      <navPoint id="navPoint51" playOrder="42">
+        <navLabel>
+          <text>Reinitialize endpoint</text>
+        </navLabel>
+        <content src="rest_api.xhtml#reinitialize-endpoint" />  
+      </navPoint>
+    </navPoint>
+    <navPoint id="navPoint52" playOrder="43">
+      <navLabel>
+        <text>patronictl</text>
+      </navLabel>
+      <content src="patronictl.xhtml" />  
+      <navPoint id="navPoint53" playOrder="43">
+        <navLabel>
+          <text>patronictl</text>
+        </navLabel>
+        <content src="patronictl.xhtml" />  
+      </navPoint>
+      <navPoint id="navPoint54" playOrder="44">
+        <navLabel>
+          <text>Configuration</text>
+        </navLabel>
+        <content src="patronictl.xhtml#configuration" />  
+      </navPoint>
+      <navPoint id="navPoint55" playOrder="45">
+        <navLabel>
+          <text>Usage</text>
+        </navLabel>
+        <content src="patronictl.xhtml#usage" />  
+        <navPoint id="navPoint56" playOrder="45">
+          <navLabel>
+            <text>Usage</text>
+          </navLabel>
+          <content src="patronictl.xhtml#usage" />  
+        </navPoint>
+        <navPoint id="navPoint57" playOrder="46">
+          <navLabel>
+            <text>patronictl dsn</text>
+          </navLabel>
+          <content src="patronictl.xhtml#patronictl-dsn" />  
+        </navPoint>
+        <navPoint id="navPoint58" playOrder="47">
+          <navLabel>
+            <text>patronictl edit-config</text>
+          </navLabel>
+          <content src="patronictl.xhtml#patronictl-edit-config" />  
+        </navPoint>
+        <navPoint id="navPoint59" playOrder="48">
+          <navLabel>
+            <text>patronictl failover</text>
+          </navLabel>
+          <content src="patronictl.xhtml#patronictl-failover" />  
+        </navPoint>
+        <navPoint id="navPoint60" playOrder="49">
+          <navLabel>
+            <text>patronictl flush</text>
+          </navLabel>
+          <content src="patronictl.xhtml#patronictl-flush" />  
+        </navPoint>
+        <navPoint id="navPoint61" playOrder="50">
+          <navLabel>
+            <text>patronictl history</text>
+          </navLabel>
+          <content src="patronictl.xhtml#patronictl-history" />  
+        </navPoint>
+        <navPoint id="navPoint62" playOrder="51">
+          <navLabel>
+            <text>patronictl list</text>
+          </navLabel>
+          <content src="patronictl.xhtml#patronictl-list" />  
+        </navPoint>
+        <navPoint id="navPoint63" playOrder="52">
+          <navLabel>
+            <text>patronictl pause</text>
+          </navLabel>
+          <content src="patronictl.xhtml#patronictl-pause" />  
+        </navPoint>
+        <navPoint id="navPoint64" playOrder="53">
+          <navLabel>
+            <text>patronictl query</text>
+          </navLabel>
+          <content src="patronictl.xhtml#patronictl-query" />  
+        </navPoint>
+        <navPoint id="navPoint65" playOrder="54">
+          <navLabel>
+            <text>patronictl reinit</text>
+          </navLabel>
+          <content src="patronictl.xhtml#patronictl-reinit" />  
+        </navPoint>
+        <navPoint id="navPoint66" playOrder="55">
+          <navLabel>
+            <text>patronictl reload</text>
+          </navLabel>
+          <content src="patronictl.xhtml#patronictl-reload" />  
+        </navPoint>
+        <navPoint id="navPoint67" playOrder="56">
+          <navLabel>
+            <text>patronictl remove</text>
+          </navLabel>
+          <content src="patronictl.xhtml#patronictl-remove" />  
+        </navPoint>
+        <navPoint id="navPoint68" playOrder="57">
+          <navLabel>
+            <text>patronictl restart</text>
+          </navLabel>
+          <content src="patronictl.xhtml#patronictl-restart" />  
+        </navPoint>
+        <navPoint id="navPoint69" playOrder="58">
+          <navLabel>
+            <text>patronictl resume</text>
+          </navLabel>
+          <content src="patronictl.xhtml#patronictl-resume" />  
+        </navPoint>
+        <navPoint id="navPoint70" playOrder="59">
+          <navLabel>
+            <text>patronictl show-config</text>
+          </navLabel>
+          <content src="patronictl.xhtml#patronictl-show-config" />  
+        </navPoint>
+        <navPoint id="navPoint71" playOrder="60">
+          <navLabel>
+            <text>patronictl switchover</text>
+          </navLabel>
+          <content src="patronictl.xhtml#patronictl-switchover" />  
+        </navPoint>
+        <navPoint id="navPoint72" playOrder="61">
+          <navLabel>
+            <text>patronictl topology</text>
+          </navLabel>
+          <content src="patronictl.xhtml#patronictl-topology" />  
+        </navPoint>
+        <navPoint id="navPoint73" playOrder="62">
+          <navLabel>
+            <text>patronictl version</text>
+          </navLabel>
+          <content src="patronictl.xhtml#patronictl-version" />  
+        </navPoint>
+      </navPoint>
+    </navPoint>
+    <navPoint id="navPoint74" playOrder="63">
+      <navLabel>
+        <text>Replica imaging and bootstrap</text>
+      </navLabel>
+      <content src="replica_bootstrap.xhtml" />  
+      <navPoint id="navPoint75" playOrder="63">
+        <navLabel>
+          <text>Replica imaging and bootstrap</text>
+        </navLabel>
+        <content src="replica_bootstrap.xhtml" />  
+      </navPoint>
+      <navPoint id="navPoint76" playOrder="64">
+        <navLabel>
+          <text>Bootstrap</text>
+        </navLabel>
+        <content src="replica_bootstrap.xhtml#bootstrap" />  
+      </navPoint>
+      <navPoint id="navPoint77" playOrder="65">
+        <navLabel>
+          <text>Building replicas</text>
+        </navLabel>
+        <content src="replica_bootstrap.xhtml#building-replicas" />  
+      </navPoint>
+    </navPoint>
+    <navPoint id="navPoint78" playOrder="66">
+      <navLabel>
+        <text>Replication modes</text>
+      </navLabel>
+      <content src="replication_modes.xhtml" />  
+      <navPoint id="navPoint79" playOrder="66">
+        <navLabel>
+          <text>Replication modes</text>
+        </navLabel>
+        <content src="replication_modes.xhtml" />  
+      </navPoint>
+      <navPoint id="navPoint80" playOrder="67">
+        <navLabel>
+          <text>Asynchronous mode durability</text>
+        </navLabel>
+        <content src="replication_modes.xhtml#asynchronous-mode-durability" />  
+      </navPoint>
+      <navPoint id="navPoint81" playOrder="68">
+        <navLabel>
+          <text>PostgreSQL synchronous replication</text>
+        </navLabel>
+        <content src="replication_modes.xhtml#postgresql-synchronous-replication" />  
+      </navPoint>
+      <navPoint id="navPoint82" playOrder="69">
+        <navLabel>
+          <text>Synchronous mode</text>
+        </navLabel>
+        <content src="replication_modes.xhtml#synchronous-mode" />  
+      </navPoint>
+      <navPoint id="navPoint83" playOrder="70">
+        <navLabel>
+          <text>Synchronous Replication Factor</text>
+        </navLabel>
+        <content src="replication_modes.xhtml#synchronous-replication-factor" />  
+      </navPoint>
+      <navPoint id="navPoint84" playOrder="71">
+        <navLabel>
+          <text>Maximum lag on synchronous node</text>
+        </navLabel>
+        <content src="replication_modes.xhtml#maximum-lag-on-synchronous-node" />  
+      </navPoint>
+      <navPoint id="navPoint85" playOrder="72">
+        <navLabel>
+          <text>Synchronous mode implementation</text>
+        </navLabel>
+        <content src="replication_modes.xhtml#synchronous-mode-implementation" />  
+        <navPoint id="navPoint86" playOrder="72">
+          <navLabel>
+            <text>Synchronous mode implementation</text>
+          </navLabel>
+          <content src="replication_modes.xhtml#synchronous-mode-implementation" />  
+        </navPoint>
+        <navPoint id="navPoint87" playOrder="73">
+          <navLabel>
+            <text>Example:</text>
+          </navLabel>
+          <content src="replication_modes.xhtml#example" />  
+        </navPoint>
+      </navPoint>
+      <navPoint id="navPoint88" playOrder="74">
+        <navLabel>
+          <text>Quorum commit mode</text>
+        </navLabel>
+        <content src="replication_modes.xhtml#quorum-commit-mode" />  
+        <navPoint id="navPoint89" playOrder="74">
+          <navLabel>
+            <text>Quorum commit mode</text>
+          </navLabel>
+          <content src="replication_modes.xhtml#quorum-commit-mode" />  
+        </navPoint>
+        <navPoint id="navPoint90" playOrder="75">
+          <navLabel>
+            <text>Example:</text>
+          </navLabel>
+          <content src="replication_modes.xhtml#id5" />  
+        </navPoint>
+      </navPoint>
+    </navPoint>
+    <navPoint id="navPoint91" playOrder="76">
+      <navLabel>
+        <text>Standby cluster</text>
+      </navLabel>
+      <content src="standby_cluster.xhtml" />  
+    </navPoint>
+    <navPoint id="navPoint92" playOrder="77">
+      <navLabel>
+        <text>Watchdog support</text>
+      </navLabel>
+      <content src="watchdog.xhtml" />  
+      <navPoint id="navPoint93" playOrder="77">
+        <navLabel>
+          <text>Watchdog support</text>
+        </navLabel>
+        <content src="watchdog.xhtml" />  
+      </navPoint>
+      <navPoint id="navPoint94" playOrder="78">
+        <navLabel>
+          <text>Setting up software watchdog on Linux</text>
+        </navLabel>
+        <content src="watchdog.xhtml#setting-up-software-watchdog-on-linux" />  
+      </navPoint>
+    </navPoint>
+    <navPoint id="navPoint95" playOrder="79">
+      <navLabel>
+        <text>Pause/Resume mode for the cluster</text>
+      </navLabel>
+      <content src="pause.xhtml" />  
+      <navPoint id="navPoint96" playOrder="79">
+        <navLabel>
+          <text>Pause/Resume mode for the cluster</text>
+        </navLabel>
+        <content src="pause.xhtml" />  
+      </navPoint>
+      <navPoint id="navPoint97" playOrder="80">
+        <navLabel>
+          <text>The goal</text>
+        </navLabel>
+        <content src="pause.xhtml#the-goal" />  
+      </navPoint>
+      <navPoint id="navPoint98" playOrder="81">
+        <navLabel>
+          <text>The implementation</text>
+        </navLabel>
+        <content src="pause.xhtml#the-implementation" />  
+      </navPoint>
+      <navPoint id="navPoint99" playOrder="82">
+        <navLabel>
+          <text>User guide</text>
+        </navLabel>
+        <content src="pause.xhtml#user-guide" />  
+      </navPoint>
+    </navPoint>
+    <navPoint id="navPoint100" playOrder="83">
+      <navLabel>
+        <text>DCS Failsafe Mode</text>
+      </navLabel>
+      <content src="dcs_failsafe_mode.xhtml" />  
+      <navPoint id="navPoint101" playOrder="83">
+        <navLabel>
+          <text>DCS Failsafe Mode</text>
+        </navLabel>
+        <content src="dcs_failsafe_mode.xhtml" />  
+      </navPoint>
+      <navPoint id="navPoint102" playOrder="84">
+        <navLabel>
+          <text>The problem</text>
+        </navLabel>
+        <content src="dcs_failsafe_mode.xhtml#the-problem" />  
+      </navPoint>
+      <navPoint id="navPoint103" playOrder="85">
+        <navLabel>
+          <text>Reasons for the current implementation</text>
+        </navLabel>
+        <content src="dcs_failsafe_mode.xhtml#reasons-for-the-current-implementation" />  
+      </navPoint>
+      <navPoint id="navPoint104" playOrder="86">
+        <navLabel>
+          <text>DCS Failsafe Mode</text>
+        </navLabel>
+        <content src="dcs_failsafe_mode.xhtml#id2" />  
+      </navPoint>
+      <navPoint id="navPoint105" playOrder="87">
+        <navLabel>
+          <text>Low-level implementation details</text>
+        </navLabel>
+        <content src="dcs_failsafe_mode.xhtml#low-level-implementation-details" />  
+      </navPoint>
+      <navPoint id="navPoint106" playOrder="88">
+        <navLabel>
+          <text>F.A.Q.</text>
+        </navLabel>
+        <content src="dcs_failsafe_mode.xhtml#f-a-q" />  
+      </navPoint>
+    </navPoint>
+    <navPoint id="navPoint107" playOrder="89">
+      <navLabel>
+        <text>Using Patroni with Kubernetes</text>
+      </navLabel>
+      <content src="kubernetes.xhtml" />  
+      <navPoint id="navPoint108" playOrder="89">
+        <navLabel>
+          <text>Using Patroni with Kubernetes</text>
+        </navLabel>
+        <content src="kubernetes.xhtml" />  
+      </navPoint>
+      <navPoint id="navPoint109" playOrder="90">
+        <navLabel>
+          <text>Use Endpoints</text>
+        </navLabel>
+        <content src="kubernetes.xhtml#use-endpoints" />  
+      </navPoint>
+      <navPoint id="navPoint110" playOrder="91">
+        <navLabel>
+          <text>Use ConfigMaps</text>
+        </navLabel>
+        <content src="kubernetes.xhtml#use-configmaps" />  
+      </navPoint>
+      <navPoint id="navPoint111" playOrder="92">
+        <navLabel>
+          <text>Configuration</text>
+        </navLabel>
+        <content src="kubernetes.xhtml#configuration" />  
+        <navPoint id="navPoint112" playOrder="92">
+          <navLabel>
+            <text>Configuration</text>
+          </navLabel>
+          <content src="kubernetes.xhtml#configuration" />  
+        </navPoint>
+        <navPoint id="navPoint113" playOrder="93">
+          <navLabel>
+            <text>Customize role label</text>
+          </navLabel>
+          <content src="kubernetes.xhtml#customize-role-label" />  
+        </navPoint>
+      </navPoint>
+      <navPoint id="navPoint114" playOrder="94">
+        <navLabel>
+          <text>Examples</text>
+        </navLabel>
+        <content src="kubernetes.xhtml#examples" />  
+      </navPoint>
+    </navPoint>
+    <navPoint id="navPoint115" playOrder="95">
+      <navLabel>
+        <text>Citus support</text>
+      </navLabel>
+      <content src="citus.xhtml" />  
+      <navPoint id="navPoint116" playOrder="95">
+        <navLabel>
+          <text>Citus support</text>
+        </navLabel>
+        <content src="citus.xhtml" />  
+      </navPoint>
+      <navPoint id="navPoint117" playOrder="96">
+        <navLabel>
+          <text>TL;DR</text>
+        </navLabel>
+        <content src="citus.xhtml#tl-dr" />  
+      </navPoint>
+      <navPoint id="navPoint118" playOrder="97">
+        <navLabel>
+          <text>patronictl</text>
+        </navLabel>
+        <content src="citus.xhtml#patronictl" />  
+      </navPoint>
+      <navPoint id="navPoint119" playOrder="98">
+        <navLabel>
+          <text>Citus worker switchover</text>
+        </navLabel>
+        <content src="citus.xhtml#citus-worker-switchover" />  
+      </navPoint>
+      <navPoint id="navPoint120" playOrder="99">
+        <navLabel>
+          <text>Secondary nodes</text>
+        </navLabel>
+        <content src="citus.xhtml#secondary-nodes" />  
+      </navPoint>
+      <navPoint id="navPoint121" playOrder="100">
+        <navLabel>
+          <text>Peek into DCS</text>
+        </navLabel>
+        <content src="citus.xhtml#peek-into-dcs" />  
+      </navPoint>
+      <navPoint id="navPoint122" playOrder="101">
+        <navLabel>
+          <text>Citus on Kubernetes</text>
+        </navLabel>
+        <content src="citus.xhtml#citus-on-kubernetes" />  
+      </navPoint>
+      <navPoint id="navPoint123" playOrder="102">
+        <navLabel>
+          <text>Citus upgrades and PostgreSQL major upgrades</text>
+        </navLabel>
+        <content src="citus.xhtml#citus-upgrades-and-postgresql-major-upgrades" />  
+      </navPoint>
+    </navPoint>
+    <navPoint id="navPoint124" playOrder="103">
+      <navLabel>
+        <text>MySQL high-availability support</text>
+      </navLabel>
+      <content src="mysql.xhtml" />  
+      <navPoint id="navPoint125" playOrder="103">
+        <navLabel>
+          <text>MySQL high-availability support</text>
+        </navLabel>
+        <content src="mysql.xhtml" />  
+      </navPoint>
+      <navPoint id="navPoint126" playOrder="104">
+        <navLabel>
+          <text>MySQL architecture and model</text>
+        </navLabel>
+        <content src="mysql_architecture.xhtml" />  
+        <navPoint id="navPoint127" playOrder="104">
+          <navLabel>
+            <text>MySQL architecture and model</text>
+          </navLabel>
+          <content src="mysql_architecture.xhtml" />  
+        </navPoint>
+        <navPoint id="navPoint128" playOrder="105">
+          <navLabel>
+            <text>Design goals</text>
+          </navLabel>
+          <content src="mysql_architecture.xhtml#design-goals" />  
+        </navPoint>
+        <navPoint id="navPoint129" playOrder="106">
+          <navLabel>
+            <text>Cluster layout</text>
+          </navLabel>
+          <content src="mysql_architecture.xhtml#cluster-layout" />  
+        </navPoint>
+        <navPoint id="navPoint130" playOrder="107">
+          <navLabel>
+            <text>Component map</text>
+          </navLabel>
+          <content src="mysql_architecture.xhtml#component-map" />  
+        </navPoint>
+        <navPoint id="navPoint131" playOrder="108">
+          <navLabel>
+            <text>Capability flags (vs PostgreSQL)</text>
+          </navLabel>
+          <content src="mysql_architecture.xhtml#capability-flags-vs-postgresql" />  
+        </navPoint>
+        <navPoint id="navPoint132" playOrder="109">
+          <navLabel>
+            <text>DCS data model (MySQL-specific)</text>
+          </navLabel>
+          <content src="mysql_architecture.xhtml#dcs-data-model-mysql-specific" />  
+        </navPoint>
+        <navPoint id="navPoint133" playOrder="110">
+          <navLabel>
+            <text>Roles</text>
+          </navLabel>
+          <content src="mysql_architecture.xhtml#roles" />  
+        </navPoint>
+        <navPoint id="navPoint134" playOrder="111">
+          <navLabel>
+            <text>Mode selection (configuration, not runtime API)</text>
+          </navLabel>
+          <content src="mysql_architecture.xhtml#mode-selection-configuration-not-runtime-api" />  
+        </navPoint>
+        <navPoint id="navPoint135" playOrder="112">
+          <navLabel>
+            <text>Trust boundaries</text>
+          </navLabel>
+          <content src="mysql_architecture.xhtml#trust-boundaries" />  
+        </navPoint>
+      </navPoint>
+      <navPoint id="navPoint136" playOrder="113">
+        <navLabel>
+          <text>MySQL HA mechanisms and sequences</text>
+        </navLabel>
+        <content src="mysql_mechanisms.xhtml" />  
+        <navPoint id="navPoint137" playOrder="113">
+          <navLabel>
+            <text>MySQL HA mechanisms and sequences</text>
+          </navLabel>
+          <content src="mysql_mechanisms.xhtml" />  
+        </navPoint>
+        <navPoint id="navPoint138" playOrder="114">
+          <navLabel>
+            <text>HA control loop (shared + MySQL hooks)</text>
+          </navLabel>
+          <content src="mysql_mechanisms.xhtml#ha-control-loop-shared-mysql-hooks" />  
+        </navPoint>
+        <navPoint id="navPoint139" playOrder="115">
+          <navLabel>
+            <text>Async / semi-sync: failover sequence</text>
+          </navLabel>
+          <content src="mysql_mechanisms.xhtml#async-semi-sync-failover-sequence" />  
+        </navPoint>
+        <navPoint id="navPoint140" playOrder="116">
+          <navLabel>
+            <text>Demote + rejoin (old primary returns)</text>
+          </navLabel>
+          <content src="mysql_mechanisms.xhtml#demote-rejoin-old-primary-returns" />  
+        </navPoint>
+        <navPoint id="navPoint141" playOrder="117">
+          <navLabel>
+            <text>Semi-sync quorum safety</text>
+          </navLabel>
+          <content src="mysql_mechanisms.xhtml#semi-sync-quorum-safety" />  
+        </navPoint>
+        <navPoint id="navPoint142" playOrder="118">
+          <navLabel>
+            <text>MGR: steady state</text>
+          </navLabel>
+          <content src="mysql_mechanisms.xhtml#mgr-steady-state" />  
+        </navPoint>
+        <navPoint id="navPoint143" playOrder="119">
+          <navLabel>
+            <text>MGR: majority-loss GTID election</text>
+          </navLabel>
+          <content src="mysql_mechanisms.xhtml#mgr-majority-loss-gtid-election" />  
+        </navPoint>
+        <navPoint id="navPoint144" playOrder="120">
+          <navLabel>
+            <text>GTID fork (incomparable sets)</text>
+          </navLabel>
+          <content src="mysql_mechanisms.xhtml#gtid-fork-incomparable-sets" />  
+        </navPoint>
+        <navPoint id="navPoint145" playOrder="121">
+          <navLabel>
+            <text>Clone / bootstrap</text>
+          </navLabel>
+          <content src="mysql_mechanisms.xhtml#clone-bootstrap" />  
+        </navPoint>
+        <navPoint id="navPoint146" playOrder="122">
+          <navLabel>
+            <text>Pause interaction</text>
+          </navLabel>
+          <content src="mysql_mechanisms.xhtml#pause-interaction" />  
+        </navPoint>
+      </navPoint>
+      <navPoint id="navPoint147" playOrder="123">
+        <navLabel>
+          <text>MySQL operations and FAQ</text>
+        </navLabel>
+        <content src="mysql_ops.xhtml" />  
+        <navPoint id="navPoint148" playOrder="123">
+          <navLabel>
+            <text>MySQL operations and FAQ</text>
+          </navLabel>
+          <content src="mysql_ops.xhtml" />  
+        </navPoint>
+        <navPoint id="navPoint149" playOrder="124">
+          <navLabel>
+            <text>Prerequisites</text>
+          </navLabel>
+          <content src="mysql_ops.xhtml#prerequisites" />  
+        </navPoint>
+        <navPoint id="navPoint150" playOrder="125">
+          <navLabel>
+            <text>Install</text>
+          </navLabel>
+          <content src="mysql_ops.xhtml#install" />  
+        </navPoint>
+        <navPoint id="navPoint151" playOrder="126">
+          <navLabel>
+            <text>Deploy checklist</text>
+          </navLabel>
+          <content src="mysql_ops.xhtml#deploy-checklist" />  
+        </navPoint>
+        <navPoint id="navPoint152" playOrder="127">
+          <navLabel>
+            <text>Configuration reference (short)</text>
+          </navLabel>
+          <content src="mysql_ops.xhtml#configuration-reference-short" />  
+        </navPoint>
+        <navPoint id="navPoint153" playOrder="128">
+          <navLabel>
+            <text>Day-2 operations</text>
+          </navLabel>
+          <content src="mysql_ops.xhtml#day-2-operations" />  
+        </navPoint>
+        <navPoint id="navPoint154" playOrder="129">
+          <navLabel>
+            <text>HAProxy</text>
+          </navLabel>
+          <content src="mysql_ops.xhtml#haproxy" />  
+        </navPoint>
+        <navPoint id="navPoint155" playOrder="130">
+          <navLabel>
+            <text>Replication mode cutovers</text>
+          </navLabel>
+          <content src="mysql_ops.xhtml#replication-mode-cutovers" />  
+        </navPoint>
+        <navPoint id="navPoint156" playOrder="131">
+          <navLabel>
+            <text>Monitoring hooks</text>
+          </navLabel>
+          <content src="mysql_ops.xhtml#monitoring-hooks" />  
+        </navPoint>
+        <navPoint id="navPoint157" playOrder="132">
+          <navLabel>
+            <text>Integration tests (dev)</text>
+          </navLabel>
+          <content src="mysql_ops.xhtml#integration-tests-dev" />  
+        </navPoint>
+        <navPoint id="navPoint158" playOrder="133">
+          <navLabel>
+            <text>FAQ / troubleshooting</text>
+          </navLabel>
+          <content src="mysql_ops.xhtml#faq-troubleshooting" />  
+        </navPoint>
+        <navPoint id="navPoint159" playOrder="134">
+          <navLabel>
+            <text>Known limitations (ops view)</text>
+          </navLabel>
+          <content src="mysql_ops.xhtml#known-limitations-ops-view" />  
+        </navPoint>
+      </navPoint>
+      <navPoint id="navPoint160" playOrder="135">
+        <navLabel>
+          <text>What you get</text>
+        </navLabel>
+        <content src="mysql.xhtml#what-you-get" />  
+      </navPoint>
+      <navPoint id="navPoint161" playOrder="136">
+        <navLabel>
+          <text>Quick start</text>
+        </navLabel>
+        <content src="mysql.xhtml#quick-start" />  
+      </navPoint>
+      <navPoint id="navPoint162" playOrder="137">
+        <navLabel>
+          <text>Read next</text>
+        </navLabel>
+        <content src="mysql.xhtml#read-next" />  
+      </navPoint>
+    </navPoint>
+    <navPoint id="navPoint163" playOrder="138">
+      <navLabel>
+        <text>Convert a Standalone to a Patroni Cluster</text>
+      </navLabel>
+      <content src="existing_data.xhtml" />  
+      <navPoint id="navPoint164" playOrder="138">
+        <navLabel>
+          <text>Convert a Standalone to a Patroni Cluster</text>
+        </navLabel>
+        <content src="existing_data.xhtml" />  
+      </navPoint>
+      <navPoint id="navPoint165" playOrder="139">
+        <navLabel>
+          <text>Procedure</text>
+        </navLabel>
+        <content src="existing_data.xhtml#procedure" />  
+      </navPoint>
+    </navPoint>
+    <navPoint id="navPoint166" playOrder="140">
+      <navLabel>
+        <text>Major Upgrade of PostgreSQL Version</text>
+      </navLabel>
+      <content src="existing_data.xhtml#major-upgrade-of-postgresql-version" />  
+      <navPoint id="navPoint167" playOrder="140">
+        <navLabel>
+          <text>Major Upgrade of PostgreSQL Version</text>
+        </navLabel>
+        <content src="existing_data.xhtml#major-upgrade-of-postgresql-version" />  
+      </navPoint>
+      <navPoint id="navPoint168" playOrder="141">
+        <navLabel>
+          <text>FAQ</text>
+        </navLabel>
+        <content src="existing_data.xhtml#faq" />  
+      </navPoint>
+    </navPoint>
+    <navPoint id="navPoint169" playOrder="142">
+      <navLabel>
+        <text>Integration with other tools</text>
+      </navLabel>
+      <content src="tools_integration.xhtml" />  
+      <navPoint id="navPoint170" playOrder="142">
+        <navLabel>
+          <text>Integration with other tools</text>
+        </navLabel>
+        <content src="tools_integration.xhtml" />  
+      </navPoint>
+      <navPoint id="navPoint171" playOrder="143">
+        <navLabel>
+          <text>Barman</text>
+        </navLabel>
+        <content src="tools_integration.xhtml#barman" />  
+        <navPoint id="navPoint172" playOrder="143">
+          <navLabel>
+            <text>Barman</text>
+          </navLabel>
+          <content src="tools_integration.xhtml#barman" />  
+        </navPoint>
+        <navPoint id="navPoint173" playOrder="144">
+          <navLabel>
+            <text>patroni_barman recover</text>
+          </navLabel>
+          <content src="tools_integration.xhtml#patroni-barman-recover" />  
+        </navPoint>
+        <navPoint id="navPoint174" playOrder="145">
+          <navLabel>
+            <text>patroni_barman config-switch</text>
+          </navLabel>
+          <content src="tools_integration.xhtml#patroni-barman-config-switch" />  
+        </navPoint>
+      </navPoint>
+    </navPoint>
+    <navPoint id="navPoint175" playOrder="146">
+      <navLabel>
+        <text>Security Considerations</text>
+      </navLabel>
+      <content src="security.xhtml" />  
+      <navPoint id="navPoint176" playOrder="146">
+        <navLabel>
+          <text>Security Considerations</text>
+        </navLabel>
+        <content src="security.xhtml" />  
+      </navPoint>
+      <navPoint id="navPoint177" playOrder="147">
+        <navLabel>
+          <text>Protecting DCS</text>
+        </navLabel>
+        <content src="security.xhtml#protecting-dcs" />  
+      </navPoint>
+      <navPoint id="navPoint178" playOrder="148">
+        <navLabel>
+          <text>Protecting the REST API</text>
+        </navLabel>
+        <content src="security.xhtml#protecting-the-rest-api" />  
+      </navPoint>
+    </navPoint>
+    <navPoint id="navPoint179" playOrder="149">
+      <navLabel>
+        <text>HA multi datacenter</text>
+      </navLabel>
+      <content src="ha_multi_dc.xhtml" />  
+      <navPoint id="navPoint180" playOrder="149">
+        <navLabel>
+          <text>HA multi datacenter</text>
+        </navLabel>
+        <content src="ha_multi_dc.xhtml" />  
+      </navPoint>
+      <navPoint id="navPoint181" playOrder="150">
+        <navLabel>
+          <text>Synchronous Replication</text>
+        </navLabel>
+        <content src="ha_multi_dc.xhtml#synchronous-replication" />  
+      </navPoint>
+      <navPoint id="navPoint182" playOrder="151">
+        <navLabel>
+          <text>Asynchronous Replication</text>
+        </navLabel>
+        <content src="ha_multi_dc.xhtml#asynchronous-replication" />  
+      </navPoint>
+      <navPoint id="navPoint183" playOrder="152">
+        <navLabel>
+          <text>MySQL standby sites</text>
+        </navLabel>
+        <content src="ha_multi_dc.xhtml#mysql-standby-sites" />  
+      </navPoint>
+    </navPoint>
+    <navPoint id="navPoint184" playOrder="153">
+      <navLabel>
+        <text>FAQ</text>
+      </navLabel>
+      <content src="faq.xhtml" />  
+      <navPoint id="navPoint185" playOrder="153">
+        <navLabel>
+          <text>FAQ</text>
+        </navLabel>
+        <content src="faq.xhtml" />  
+      </navPoint>
+      <navPoint id="navPoint186" playOrder="154">
+        <navLabel>
+          <text>Comparison with other HA solutions</text>
+        </navLabel>
+        <content src="faq.xhtml#comparison-with-other-ha-solutions" />  
+      </navPoint>
+      <navPoint id="navPoint187" playOrder="155">
+        <navLabel>
+          <text>DCS</text>
+        </navLabel>
+        <content src="faq.xhtml#dcs" />  
+      </navPoint>
+      <navPoint id="navPoint188" playOrder="156">
+        <navLabel>
+          <text>patronictl</text>
+        </navLabel>
+        <content src="faq.xhtml#patronictl" />  
+      </navPoint>
+      <navPoint id="navPoint189" playOrder="157">
+        <navLabel>
+          <text>Configuration</text>
+        </navLabel>
+        <content src="faq.xhtml#configuration" />  
+      </navPoint>
+      <navPoint id="navPoint190" playOrder="158">
+        <navLabel>
+          <text>Postgres management</text>
+        </navLabel>
+        <content src="faq.xhtml#postgres-management" />  
+      </navPoint>
+      <navPoint id="navPoint191" playOrder="159">
+        <navLabel>
+          <text>Concepts and requirements</text>
+        </navLabel>
+        <content src="faq.xhtml#concepts-and-requirements" />  
+      </navPoint>
+      <navPoint id="navPoint192" playOrder="160">
+        <navLabel>
+          <text>Automatic failover</text>
+        </navLabel>
+        <content src="faq.xhtml#automatic-failover" />  
+      </navPoint>
+      <navPoint id="navPoint193" playOrder="161">
+        <navLabel>
+          <text>Bootstrapping and standbys creation</text>
+        </navLabel>
+        <content src="faq.xhtml#bootstrapping-and-standbys-creation" />  
+      </navPoint>
+      <navPoint id="navPoint194" playOrder="162">
+        <navLabel>
+          <text>Monitoring</text>
+        </navLabel>
+        <content src="faq.xhtml#monitoring" />  
+      </navPoint>
+      <navPoint id="navPoint195" playOrder="163">
+        <navLabel>
+          <text>MySQL backend</text>
+        </navLabel>
+        <content src="faq.xhtml#mysql-backend" />  
+      </navPoint>
+    </navPoint>
+    <navPoint id="navPoint196" playOrder="164">
+      <navLabel>
+        <text>Release notes</text>
+      </navLabel>
+      <content src="releases.xhtml" />  
+      <navPoint id="navPoint197" playOrder="164">
+        <navLabel>
+          <text>Release notes</text>
+        </navLabel>
+        <content src="releases.xhtml" />  
+      </navPoint>
+      <navPoint id="navPoint198" playOrder="165">
+        <navLabel>
+          <text>Version 4.1.3</text>
+        </navLabel>
+        <content src="releases.xhtml#version-4-1-3" />  
+      </navPoint>
+      <navPoint id="navPoint199" playOrder="166">
+        <navLabel>
+          <text>Version 4.1.2</text>
+        </navLabel>
+        <content src="releases.xhtml#version-4-1-2" />  
+      </navPoint>
+      <navPoint id="navPoint200" playOrder="167">
+        <navLabel>
+          <text>Version 4.1.1</text>
+        </navLabel>
+        <content src="releases.xhtml#version-4-1-1" />  
+      </navPoint>
+      <navPoint id="navPoint201" playOrder="168">
+        <navLabel>
+          <text>Version 4.1.0</text>
+        </navLabel>
+        <content src="releases.xhtml#version-4-1-0" />  
+      </navPoint>
+      <navPoint id="navPoint202" playOrder="169">
+        <navLabel>
+          <text>Version 4.0.7</text>
+        </navLabel>
+        <content src="releases.xhtml#version-4-0-7" />  
+      </navPoint>
+      <navPoint id="navPoint203" playOrder="170">
+        <navLabel>
+          <text>Version 4.0.6</text>
+        </navLabel>
+        <content src="releases.xhtml#version-4-0-6" />  
+      </navPoint>
+      <navPoint id="navPoint204" playOrder="171">
+        <navLabel>
+          <text>Version 4.0.5</text>
+        </navLabel>
+        <content src="releases.xhtml#version-4-0-5" />  
+      </navPoint>
+      <navPoint id="navPoint205" playOrder="172">
+        <navLabel>
+          <text>Version 4.0.4</text>
+        </navLabel>
+        <content src="releases.xhtml#version-4-0-4" />  
+      </navPoint>
+      <navPoint id="navPoint206" playOrder="173">
+        <navLabel>
+          <text>Version 4.0.3</text>
+        </navLabel>
+        <content src="releases.xhtml#version-4-0-3" />  
+      </navPoint>
+      <navPoint id="navPoint207" playOrder="174">
+        <navLabel>
+          <text>Version 4.0.2</text>
+        </navLabel>
+        <content src="releases.xhtml#version-4-0-2" />  
+      </navPoint>
+      <navPoint id="navPoint208" playOrder="175">
+        <navLabel>
+          <text>Version 4.0.1</text>
+        </navLabel>
+        <content src="releases.xhtml#version-4-0-1" />  
+      </navPoint>
+      <navPoint id="navPoint209" playOrder="176">
+        <navLabel>
+          <text>Version 4.0.0</text>
+        </navLabel>
+        <content src="releases.xhtml#version-4-0-0" />  
+      </navPoint>
+      <navPoint id="navPoint210" playOrder="177">
+        <navLabel>
+          <text>Version 3.3.2</text>
+        </navLabel>
+        <content src="releases.xhtml#version-3-3-2" />  
+      </navPoint>
+      <navPoint id="navPoint211" playOrder="178">
+        <navLabel>
+          <text>Version 3.3.1</text>
+        </navLabel>
+        <content src="releases.xhtml#version-3-3-1" />  
+      </navPoint>
+      <navPoint id="navPoint212" playOrder="179">
+        <navLabel>
+          <text>Version 3.3.0</text>
+        </navLabel>
+        <content src="releases.xhtml#version-3-3-0" />  
+      </navPoint>
+      <navPoint id="navPoint213" playOrder="180">
+        <navLabel>
+          <text>Version 3.2.2</text>
+        </navLabel>
+        <content src="releases.xhtml#version-3-2-2" />  
+      </navPoint>
+      <navPoint id="navPoint214" playOrder="181">
+        <navLabel>
+          <text>Version 3.2.1</text>
+        </navLabel>
+        <content src="releases.xhtml#version-3-2-1" />  
+      </navPoint>
+      <navPoint id="navPoint215" playOrder="182">
+        <navLabel>
+          <text>Version 3.2.0</text>
+        </navLabel>
+        <content src="releases.xhtml#version-3-2-0" />  
+      </navPoint>
+      <navPoint id="navPoint216" playOrder="183">
+        <navLabel>
+          <text>Version 3.1.2</text>
+        </navLabel>
+        <content src="releases.xhtml#version-3-1-2" />  
+      </navPoint>
+      <navPoint id="navPoint217" playOrder="184">
+        <navLabel>
+          <text>Version 3.1.1</text>
+        </navLabel>
+        <content src="releases.xhtml#version-3-1-1" />  
+      </navPoint>
+      <navPoint id="navPoint218" playOrder="185">
+        <navLabel>
+          <text>Version 3.1.0</text>
+        </navLabel>
+        <content src="releases.xhtml#version-3-1-0" />  
+      </navPoint>
+      <navPoint id="navPoint219" playOrder="186">
+        <navLabel>
+          <text>Version 3.0.4</text>
+        </navLabel>
+        <content src="releases.xhtml#version-3-0-4" />  
+      </navPoint>
+      <navPoint id="navPoint220" playOrder="187">
+        <navLabel>
+          <text>Version 3.0.3</text>
+        </navLabel>
+        <content src="releases.xhtml#version-3-0-3" />  
+      </navPoint>
+      <navPoint id="navPoint221" playOrder="188">
+        <navLabel>
+          <text>Version 3.0.2</text>
+        </navLabel>
+        <content src="releases.xhtml#version-3-0-2" />  
+      </navPoint>
+      <navPoint id="navPoint222" playOrder="189">
+        <navLabel>
+          <text>Version 3.0.1</text>
+        </navLabel>
+        <content src="releases.xhtml#version-3-0-1" />  
+      </navPoint>
+      <navPoint id="navPoint223" playOrder="190">
+        <navLabel>
+          <text>Version 3.0.0</text>
+        </navLabel>
+        <content src="releases.xhtml#version-3-0-0" />  
+      </navPoint>
+      <navPoint id="navPoint224" playOrder="191">
+        <navLabel>
+          <text>Version 2.1.7</text>
+        </navLabel>
+        <content src="releases.xhtml#version-2-1-7" />  
+      </navPoint>
+      <navPoint id="navPoint225" playOrder="192">
+        <navLabel>
+          <text>Version 2.1.6</text>
+        </navLabel>
+        <content src="releases.xhtml#version-2-1-6" />  
+      </navPoint>
+      <navPoint id="navPoint226" playOrder="193">
+        <navLabel>
+          <text>Version 2.1.5</text>
+        </navLabel>
+        <content src="releases.xhtml#version-2-1-5" />  
+      </navPoint>
+      <navPoint id="navPoint227" playOrder="194">
+        <navLabel>
+          <text>Version 2.1.4</text>
+        </navLabel>
+        <content src="releases.xhtml#version-2-1-4" />  
+      </navPoint>
+      <navPoint id="navPoint228" playOrder="195">
+        <navLabel>
+          <text>Version 2.1.3</text>
+        </navLabel>
+        <content src="releases.xhtml#version-2-1-3" />  
+      </navPoint>
+      <navPoint id="navPoint229" playOrder="196">
+        <navLabel>
+          <text>Version 2.1.2</text>
+        </navLabel>
+        <content src="releases.xhtml#version-2-1-2" />  
+      </navPoint>
+      <navPoint id="navPoint230" playOrder="197">
+        <navLabel>
+          <text>Version 2.1.1</text>
+        </navLabel>
+        <content src="releases.xhtml#version-2-1-1" />  
+      </navPoint>
+      <navPoint id="navPoint231" playOrder="198">
+        <navLabel>
+          <text>Version 2.1.0</text>
+        </navLabel>
+        <content src="releases.xhtml#version-2-1-0" />  
+      </navPoint>
+      <navPoint id="navPoint232" playOrder="199">
+        <navLabel>
+          <text>Version 2.0.2</text>
+        </navLabel>
+        <content src="releases.xhtml#version-2-0-2" />  
+      </navPoint>
+      <navPoint id="navPoint233" playOrder="200">
+        <navLabel>
+          <text>Version 2.0.1</text>
+        </navLabel>
+        <content src="releases.xhtml#version-2-0-1" />  
+      </navPoint>
+      <navPoint id="navPoint234" playOrder="201">
+        <navLabel>
+          <text>Version 2.0.0</text>
+        </navLabel>
+        <content src="releases.xhtml#version-2-0-0" />  
+      </navPoint>
+      <navPoint id="navPoint235" playOrder="202">
+        <navLabel>
+          <text>Version 1.6.5</text>
+        </navLabel>
+        <content src="releases.xhtml#version-1-6-5" />  
+      </navPoint>
+      <navPoint id="navPoint236" playOrder="203">
+        <navLabel>
+          <text>Version 1.6.4</text>
+        </navLabel>
+        <content src="releases.xhtml#version-1-6-4" />  
+      </navPoint>
+      <navPoint id="navPoint237" playOrder="204">
+        <navLabel>
+          <text>Version 1.6.3</text>
+        </navLabel>
+        <content src="releases.xhtml#version-1-6-3" />  
+      </navPoint>
+      <navPoint id="navPoint238" playOrder="205">
+        <navLabel>
+          <text>Version 1.6.2</text>
+        </navLabel>
+        <content src="releases.xhtml#version-1-6-2" />  
+      </navPoint>
+      <navPoint id="navPoint239" playOrder="206">
+        <navLabel>
+          <text>Version 1.6.1</text>
+        </navLabel>
+        <content src="releases.xhtml#version-1-6-1" />  
+      </navPoint>
+      <navPoint id="navPoint240" playOrder="207">
+        <navLabel>
+          <text>Version 1.6.0</text>
+        </navLabel>
+        <content src="releases.xhtml#version-1-6-0" />  
+      </navPoint>
+      <navPoint id="navPoint241" playOrder="208">
+        <navLabel>
+          <text>Version 1.5.6</text>
+        </navLabel>
+        <content src="releases.xhtml#version-1-5-6" />  
+      </navPoint>
+      <navPoint id="navPoint242" playOrder="209">
+        <navLabel>
+          <text>Version 1.5.5</text>
+        </navLabel>
+        <content src="releases.xhtml#version-1-5-5" />  
+      </navPoint>
+      <navPoint id="navPoint243" playOrder="210">
+        <navLabel>
+          <text>Version 1.5.4</text>
+        </navLabel>
+        <content src="releases.xhtml#version-1-5-4" />  
+      </navPoint>
+      <navPoint id="navPoint244" playOrder="211">
+        <navLabel>
+          <text>Version 1.5.3</text>
+        </navLabel>
+        <content src="releases.xhtml#version-1-5-3" />  
+      </navPoint>
+      <navPoint id="navPoint245" playOrder="212">
+        <navLabel>
+          <text>Version 1.5.2</text>
+        </navLabel>
+        <content src="releases.xhtml#version-1-5-2" />  
+      </navPoint>
+      <navPoint id="navPoint246" playOrder="213">
+        <navLabel>
+          <text>Version 1.5.1</text>
+        </navLabel>
+        <content src="releases.xhtml#version-1-5-1" />  
+      </navPoint>
+      <navPoint id="navPoint247" playOrder="214">
+        <navLabel>
+          <text>Version 1.5.0</text>
+        </navLabel>
+        <content src="releases.xhtml#version-1-5-0" />  
+      </navPoint>
+      <navPoint id="navPoint248" playOrder="215">
+        <navLabel>
+          <text>Version 1.4.6</text>
+        </navLabel>
+        <content src="releases.xhtml#version-1-4-6" />  
+      </navPoint>
+      <navPoint id="navPoint249" playOrder="216">
+        <navLabel>
+          <text>Version 1.4.5</text>
+        </navLabel>
+        <content src="releases.xhtml#version-1-4-5" />  
+      </navPoint>
+      <navPoint id="navPoint250" playOrder="217">
+        <navLabel>
+          <text>Version 1.4.4</text>
+        </navLabel>
+        <content src="releases.xhtml#version-1-4-4" />  
+      </navPoint>
+      <navPoint id="navPoint251" playOrder="218">
+        <navLabel>
+          <text>Version 1.4.3</text>
+        </navLabel>
+        <content src="releases.xhtml#version-1-4-3" />  
+      </navPoint>
+      <navPoint id="navPoint252" playOrder="219">
+        <navLabel>
+          <text>Version 1.4.2</text>
+        </navLabel>
+        <content src="releases.xhtml#version-1-4-2" />  
+      </navPoint>
+      <navPoint id="navPoint253" playOrder="220">
+        <navLabel>
+          <text>Version 1.4.1</text>
+        </navLabel>
+        <content src="releases.xhtml#version-1-4-1" />  
+      </navPoint>
+      <navPoint id="navPoint254" playOrder="221">
+        <navLabel>
+          <text>Version 1.4</text>
+        </navLabel>
+        <content src="releases.xhtml#version-1-4" />  
+      </navPoint>
+      <navPoint id="navPoint255" playOrder="222">
+        <navLabel>
+          <text>Version 1.3.6</text>
+        </navLabel>
+        <content src="releases.xhtml#version-1-3-6" />  
+      </navPoint>
+      <navPoint id="navPoint256" playOrder="223">
+        <navLabel>
+          <text>Version 1.3.5</text>
+        </navLabel>
+        <content src="releases.xhtml#version-1-3-5" />  
+      </navPoint>
+      <navPoint id="navPoint257" playOrder="224">
+        <navLabel>
+          <text>Version 1.3.4</text>
+        </navLabel>
+        <content src="releases.xhtml#version-1-3-4" />  
+      </navPoint>
+      <navPoint id="navPoint258" playOrder="225">
+        <navLabel>
+          <text>Version 1.3.3</text>
+        </navLabel>
+        <content src="releases.xhtml#version-1-3-3" />  
+      </navPoint>
+      <navPoint id="navPoint259" playOrder="226">
+        <navLabel>
+          <text>Version 1.3.2</text>
+        </navLabel>
+        <content src="releases.xhtml#version-1-3-2" />  
+      </navPoint>
+      <navPoint id="navPoint260" playOrder="227">
+        <navLabel>
+          <text>Version 1.3.1</text>
+        </navLabel>
+        <content src="releases.xhtml#version-1-3-1" />  
+      </navPoint>
+      <navPoint id="navPoint261" playOrder="228">
+        <navLabel>
+          <text>Version 1.3</text>
+        </navLabel>
+        <content src="releases.xhtml#version-1-3" />  
+      </navPoint>
+      <navPoint id="navPoint262" playOrder="229">
+        <navLabel>
+          <text>Version 1.2</text>
+        </navLabel>
+        <content src="releases.xhtml#version-1-2" />  
+      </navPoint>
+      <navPoint id="navPoint263" playOrder="230">
+        <navLabel>
+          <text>Version 1.1</text>
+        </navLabel>
+        <content src="releases.xhtml#version-1-1" />  
+      </navPoint>
+      <navPoint id="navPoint264" playOrder="231">
+        <navLabel>
+          <text>Version 1.0</text>
+        </navLabel>
+        <content src="releases.xhtml#version-1-0" />  
+      </navPoint>
+      <navPoint id="navPoint265" playOrder="232">
+        <navLabel>
+          <text>Version 0.90</text>
+        </navLabel>
+        <content src="releases.xhtml#version-0-90" />  
+      </navPoint>
+      <navPoint id="navPoint266" playOrder="233">
+        <navLabel>
+          <text>Version 0.80</text>
+        </navLabel>
+        <content src="releases.xhtml#version-0-80" />  
+      </navPoint>
+    </navPoint>
+    <navPoint id="navPoint267" playOrder="234">
+      <navLabel>
+        <text>Contributing</text>
+      </navLabel>
+      <content src="CONTRIBUTING.xhtml" />  
+      <navPoint id="navPoint268" playOrder="234">
+        <navLabel>
+          <text>Contributing</text>
+        </navLabel>
+        <content src="CONTRIBUTING.xhtml" />  
+      </navPoint>
+      <navPoint id="navPoint269" playOrder="235">
+        <navLabel>
+          <text>Contributing guidelines</text>
+        </navLabel>
+        <content src="contributing_guidelines.xhtml" />  
+        <navPoint id="navPoint270" playOrder="235">
+          <navLabel>
+            <text>Contributing guidelines</text>
+          </navLabel>
+          <content src="contributing_guidelines.xhtml" />  
+        </navPoint>
+        <navPoint id="navPoint271" playOrder="236">
+          <navLabel>
+            <text>Chatting</text>
+          </navLabel>
+          <content src="contributing_guidelines.xhtml#chatting" />  
+        </navPoint>
+        <navPoint id="navPoint272" playOrder="237">
+          <navLabel>
+            <text>Reporting bugs</text>
+          </navLabel>
+          <content src="contributing_guidelines.xhtml#reporting-bugs" />  
+        </navPoint>
+        <navPoint id="navPoint273" playOrder="238">
+          <navLabel>
+            <text>Running tests</text>
+          </navLabel>
+          <content src="contributing_guidelines.xhtml#running-tests" />  
+        </navPoint>
+        <navPoint id="navPoint274" playOrder="239">
+          <navLabel>
+            <text>Testing with tox</text>
+          </navLabel>
+          <content src="contributing_guidelines.xhtml#testing-with-tox" />  
+        </navPoint>
+        <navPoint id="navPoint275" playOrder="240">
+          <navLabel>
+            <text>Contributing a pull request</text>
+          </navLabel>
+          <content src="contributing_guidelines.xhtml#contributing-a-pull-request" />  
+        </navPoint>
+      </navPoint>
+    </navPoint>
+  </navMap>
+</ncx>

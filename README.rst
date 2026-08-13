@@ -4,13 +4,25 @@
    :height: 128px
    :width: 128px
 
-Patroni: A Template for PostgreSQL HA with ZooKeeper, etcd or Consul
---------------------------------------------------------------------
+Metatroni: HA for PostgreSQL and MySQL with ZooKeeper, etcd or Consul (based on Patroni)
+--------------------------------------------------------
 
-You can find a version of this documentation that is searchable and also easier to navigate at `patroni.readthedocs.io <https://patroni.readthedocs.io>`__.
+**Metatroni** is a self-developed enhancement of
+`Patroni <https://github.com/patroni/patroni>`__.
+
+1. **Fully includes** all original Patroni capabilities (PostgreSQL HA and the
+   rest of the Patroni feature set).
+2. **Additionally supports MySQL high availability** (``database.type: mysql``).
+3. Uses the same DCS backends as Patroni: **ZooKeeper**, **etcd**, or **Consul**
+   (and other backends Patroni already supports, such as Kubernetes).
+
+Patroni is a template for high availability (HA) PostgreSQL solutions using Python. Patroni originated as a fork of `Governor <https://github.com/compose/governor>`__, the project from Compose. It includes plenty of new features.
+
+- Upstream Patroni docs: `patroni.readthedocs.io <https://patroni.readthedocs.io>`__
+- Metatroni MySQL docs: ``docs/mysql*.rst``, ``docs_cn/mysql*.rst``
 
 **Important!**
-  Running Patroni on **memory-restricted systems with Python 3.11+**
+  Running Patroni/Metatroni on **memory-restricted systems with Python 3.11+**
 
 ----
 
@@ -57,24 +69,75 @@ Patroni is a template for high availability (HA) PostgreSQL solutions using Pyth
 
 We call Patroni a "template" because it is far from being a one-size-fits-all or plug-and-play replication system. It will have its own caveats. Use wisely.
 
+Metatroni ships **the full original Patroni feature set** for PostgreSQL. The
+install / configuration / replication sections below apply as in Patroni.
+MySQL HA is covered separately in the next section.
+
 Currently supported PostgreSQL versions: 9.3 to 18.
 
-**Note to Citus users**: Starting from 3.0 Patroni nicely integrates with the `Citus <https://github.com/citusdata/citus>`__ database extension to Postgres. Please check the `Citus support page <https://github.com/patroni/patroni/blob/master/docs/citus.rst>`__ in the Patroni documentation for more info about how to use Patroni high availability together with a Citus distributed cluster.
+**Note to Citus users**: Starting from Patroni 3.0, integration with the `Citus <https://github.com/citusdata/citus>`__ database extension is available. See the `Citus support page <https://github.com/patroni/patroni/blob/master/docs/citus.rst>`__.
 
-**Note to Kubernetes users**: Patroni can run natively on top of Kubernetes. Take a look at the `Kubernetes <https://github.com/patroni/patroni/blob/master/docs/kubernetes.rst>`__ chapter of the Patroni documentation.
+**Note to Kubernetes users**: Patroni/Metatroni can run on top of Kubernetes. See the `Kubernetes <https://github.com/patroni/patroni/blob/master/docs/kubernetes.rst>`__ chapter of the Patroni documentation.
 
 .. contents::
     :local:
     :depth: 1
     :backlinks: none
 
+=======================
+MySQL High Availability
+=======================
+
+**Additionally**, Metatroni supports MySQL HA. Set ``database.type: mysql`` to
+orchestrate ``mysqld`` with ZooKeeper, etcd, or Consul (same DCS model as
+PostgreSQL/Patroni).
+
+.. warning::
+
+   Metatroni’s MySQL support is under active development and is **not yet
+   recommended for production** without validation against your workload and
+   the integration suite.
+
+With MySQL, each node runs Metatroni + ``mysqld``. Metatroni:
+
+- Races for a **leader lease** in ZooKeeper / etcd / Consul / …
+- Publishes health and GTID to the DCS; drives automatic failover / switchover
+- Manages **async GTID**, **semi-sync**, or **Group Replication (MGR)**
+- Clones replicas via **xtrabackup** (preferred) or **mysqldump**
+- Supports a **standby cluster** (cross-site clone + GTID cascade) with
+  ``promote-cluster`` / ``demote-cluster`` cutovers
+- Exposes the usual REST API, ``patronictl``, and HAProxy health checks
+  (``/primary``, ``/replica``, ``/standby-leader``)
+
+Quick start::
+
+    pip install 'patroni[mysql,etcd3]'
+
+    patroni_mysql_init -o deploy/mysql-ha --force \
+      --bin-dir /usr/local/mysql/bin --mode semi-sync --nodes 3
+
+    # start etcd, then:
+    ./deploy/mysql-ha/start.sh
+    patronictl -c deploy/mysql-ha/mysql0/patroni.yml list
+
+Documentation:
+
+* Overview — `docs/mysql.rst <docs/mysql.rst>`__
+* Architecture / mechanisms / ops (incl. standby promote/demote) —
+  `docs/mysql_architecture.rst <docs/mysql_architecture.rst>`__,
+  `docs/mysql_mechanisms.rst <docs/mysql_mechanisms.rst>`__,
+  `docs/mysql_ops.rst <docs/mysql_ops.rst>`__
+* Chinese — ``docs_cn/mysql*.rst``
+
 =================
 How Patroni Works
 =================
 
-Patroni (formerly known as Zalando's Patroni) originated as a fork of `Governor <https://github.com/compose/governor>`__, the project from Compose. It includes plenty of new features.
+Upstream Patroni (formerly Zalando’s Patroni) originated as a fork of
+`Governor <https://github.com/compose/governor>`__, the project from Compose.
+**Metatroni** is based on Patroni: full original capabilities, plus MySQL HA.
 
-For additional background info, see:
+For additional background on upstream Patroni, see:
 
 * `Elephants on Automatic: HA Clustered PostgreSQL with Helm <https://www.youtube.com/watch?v=CftcVhFMGSY>`_, talk by Josh Berkus and Oleksii Kliukin at KubeCon Berlin 2017
 * `PostgreSQL HA with Kubernetes and Patroni <https://www.youtube.com/watch?v=iruaCgeG7qs>`__, talk by Josh Berkus at KubeCon 2016 (video)
@@ -150,7 +213,9 @@ aws
 systemd
     `systemd-python` in order to use sd_notify integration
 mysql
-    `pymysql` in order to use the MySQL backend (``database.type: mysql``); see ``docs/mysql.rst``
+    `pymysql` for the MySQL HA backend (``database.type: mysql``); see
+    `docs/mysql.rst <docs/mysql.rst>`__ and the **MySQL High Availability**
+    section above
 all
     all of the above (except psycopg family)
 psycopg3
@@ -166,11 +231,12 @@ For example, the command in order to install Patroni together with psycopg3, dep
 
     pip install patroni[psycopg3,etcd3,aws]
 
-MySQL backend (development) with etcd3:
+MySQL HA backend (development) with etcd3:
 
 ::
 
     pip install 'patroni[mysql,etcd3]'
+    # optional layout generator: patroni_mysql_init --help
 
 Note that external tools to call in the replica creation or custom bootstrap scripts (i.e. WAL-E) should be installed independently of Patroni.
 
@@ -226,5 +292,5 @@ When connecting from an application, always use a non-superuser. Patroni require
 
 .. |Tests Status| image:: https://github.com/patroni/patroni/actions/workflows/tests.yaml/badge.svg
    :target: https://github.com/patroni/patroni/actions/workflows/tests.yaml?query=branch%3Amaster
-.. |Coverage Status| image:: https://codecov.io/gh/patroni/patroni/graph/badge.svg?token=qWNJyFTeul 
+.. |Coverage Status| image:: https://codecov.io/gh/patroni/patroni/graph/badge.svg?token=qWNJyFTeul
    :target: https://codecov.io/gh/patroni/patroni

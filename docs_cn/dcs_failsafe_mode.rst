@@ -4,13 +4,13 @@ DCS Failsafe 模式
 =================
 
 问题
------------
+----
 
 Patroni 高度依赖分布式配置存储（DCS）来完成 leader 选举和检测网络分区。也就是说，节点只有在能够更新 DCS 中的 leader lock 时，才被允许以 primary 身份运行 Postgres。如果 leader lock 更新失败，Postgres 会立即被降级并以只读方式启动。根据所使用的 DCS 不同，遇到"问题"的几率也不同。例如，对于只用于 Patroni 的 Etcd，几率接近于零，而对于 K8s API（由 Etcd 支撑），则可能更频繁地观察到这个问题。
 
 
 当前实现的原因
----------------------------------------
+--------------
 
 leader lock 更新失败可能由两个主要原因造成：
 
@@ -23,13 +23,13 @@ leader lock 更新失败可能由两个主要原因造成：
 DCS Failsafe 模式
 -----------------
 
-我们引入了一个新的特殊选项，即 ``failsafe_mode``。它只能通过存储在 DCS ``/config`` key 中的全局 :ref:`dynamic configuration <dynamic_configuration>` 启用。如果 failsafe 模式已启用，且 DCS 中的 leader lock 更新失败的原因不是版本/值/索引不匹配，那么只要 Postgres 能够通过 Patroni REST API 访问集群中的所有已知成员，它就可以继续以 primary 身份运行。
+我们引入了一个新的特殊选项，即 ``failsafe_mode``\。它只能通过存储在 DCS ``/config`` key 中的全局 :ref:`dynamic configuration <dynamic_configuration>` 启用。如果 failsafe 模式已启用，且 DCS 中的 leader lock 更新失败的原因不是版本/值/索引不匹配，那么只要 Postgres 能够通过 Patroni REST API 访问集群中的所有已知成员，它就可以继续以 primary 身份运行。
 
 
 底层实现细节
---------------------------------
+------------
 
-- 我们在 DCS 中引入了一个新的永久 key，名为 ``/failsafe``。
+- 我们在 DCS 中引入了一个新的永久 key，名为 ``/failsafe``\。
 - ``/failsafe`` key 包含给定时刻某个 Patroni 集群的所有已知成员。
 - 当前 leader 维护 ``/failsafe`` key。
 - 只有出现在 ``/failsafe`` key 中的成员才被允许参与 leader 竞争并成为新 leader。

@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Contributing guidelines</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="_static/epub.css" />
+    <link rel="stylesheet" type="text/css" href="_static/github_style.css" />
+    <link rel="stylesheet" type="text/css" href="_static/custom.css" /> 
+  </head><body>
+
+    <div class="document">
+      <div class="documentwrapper">
+          <div class="body" role="main">
+            
+  <section id="contributing-guidelines">
+<span id="id1"></span><h1>Contributing guidelines</h1>
+<section id="chatting">
+<span id="id2"></span><h2>Chatting</h2>
+<p>If you have a question, looking for an interactive troubleshooting help or want to chat with other Patroni users, join us on channel <a class="reference external" href="https://postgresteam.slack.com/archives/C9XPYG92A">#patroni</a><span class="link-target"> [https://postgresteam.slack.com/archives/C9XPYG92A]</span> in the <a class="reference external" href="https://pgtreats.info/slack-invite">PostgreSQL Slack</a><span class="link-target"> [https://pgtreats.info/slack-invite]</span>.</p>
+</section>
+<section id="reporting-bugs">
+<span id="id3"></span><h2>Reporting bugs</h2>
+<p>Before reporting a bug please make sure to <strong>reproduce it with the latest Patroni version</strong>!
+Also please double check if the issue already exists in our <a class="reference external" href="https://github.com/patroni/patroni/issues">Issues Tracker</a><span class="link-target"> [https://github.com/patroni/patroni/issues]</span>.</p>
+</section>
+<section id="running-tests">
+<h2>Running tests</h2>
+<p>Requirements for running behave tests:</p>
+<ol class="arabic simple">
+<li><p>PostgreSQL packages including <a class="reference external" href="https://www.postgresql.org/docs/current/contrib.html">contrib</a><span class="link-target"> [https://www.postgresql.org/docs/current/contrib.html]</span> modules need to be installed.</p></li>
+<li><p>PostgreSQL binaries must be available in your <cite>PATH</cite>. You may need to add them to the path with something like <cite>PATH=/usr/lib/postgresql/11/bin:$PATH python -m behave</cite>.</p></li>
+<li><p>If you’d like to test with external DCSs (e.g., Etcd, Consul, and Zookeeper) you’ll need the packages installed and respective services running and accepting unencrypted/unprotected connections on localhost and default port. In the case of Etcd or Consul, the behave test suite could start them up if binaries are available in the <cite>PATH</cite>.</p></li>
+</ol>
+<p>Install dependencies:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># You may want to use Virtualenv or specify pip3.</span>
+pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>requirements.txt
+pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>requirements.dev.txt
+</pre></div>
+</div>
+<p>After you have all dependencies installed, you can run the various test suites:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="c1"># You may want to use Virtualenv or specify python3.</span>
+
+<span class="c1"># Run flake8 to check syntax and formatting:</span>
+python<span class="w"> </span>setup.py<span class="w"> </span>flake8
+
+<span class="c1"># Run the pytest suite in tests/:</span>
+python<span class="w"> </span>setup.py<span class="w"> </span><span class="nb">test</span>
+
+<span class="c1"># Moreover, you may want to run tests in different scopes for debugging purposes,</span>
+<span class="c1"># the -s option include print output during test execution.</span>
+<span class="c1"># Tests in pytest typically follow the pattern: FILEPATH::CLASSNAME::TESTNAME.</span>
+pytest<span class="w"> </span>-s<span class="w"> </span>tests/test_api.py
+pytest<span class="w"> </span>-s<span class="w"> </span>tests/test_api.py::TestRestApiHandler
+pytest<span class="w"> </span>-s<span class="w"> </span>tests/test_api.py::TestRestApiHandler::test_do_GET
+
+<span class="c1"># Run the behave (https://behave.readthedocs.io/en/latest/) test suite in features/;</span>
+<span class="c1"># modify DCS as desired (raft has no dependencies so is the easiest to start with):</span>
+<span class="nv">DCS</span><span class="o">=</span>raft<span class="w"> </span>python<span class="w"> </span>-m<span class="w"> </span>behave
+</pre></div>
+</div>
+</section>
+<section id="testing-with-tox">
+<h2>Testing with tox</h2>
+<p>To run tox tests you only need to install one dependency (other than Python)</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>tox&gt;<span class="o">=</span><span class="m">4</span>
+</pre></div>
+</div>
+<p>If you wish to run <cite>behave</cite> tests then you also need docker installed.</p>
+<p>Tox configuration in <cite>tox.ini</cite> has “environments” to run the following tasks:</p>
+<ul class="simple">
+<li><p>lint: Python code lint with <cite>flake8</cite></p></li>
+<li><p>test: unit tests for all available python interpreters with <cite>pytest</cite>,
+generates XML reports or HTML reports if a TTY is detected</p></li>
+<li><p>dep: detect package dependency conflicts using <cite>pipdeptree</cite></p></li>
+<li><p>type: static type checking with <cite>pyright</cite></p></li>
+<li><p>black: code formatting with <cite>black</cite></p></li>
+<li><p>docker-build: build docker image used for the <cite>behave</cite> env</p></li>
+<li><p>docker-cmd: run arbitrary command with the above image</p></li>
+<li><p>docker-behave-etcd: run tox for behave tests with above image</p></li>
+<li><p>py*behave: run behave with available python interpreters (without docker, although
+this is what is called inside docker containers)</p></li>
+<li><p>docs: build docs with <cite>sphinx</cite></p></li>
+</ul>
+<section id="running-tox">
+<h3>Running tox</h3>
+<p>To run the default env list; dep, lint, test, and docs, just run:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>tox
+</pre></div>
+</div>
+<p>The <cite>test</cite> envs can be run with the label <cite>test</cite>:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>tox<span class="w"> </span>-m<span class="w"> </span><span class="nb">test</span>
+</pre></div>
+</div>
+<p>The <cite>behave</cite> docker tests can be run with the label <cite>behave</cite>:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>tox<span class="w"> </span>-m<span class="w"> </span>behave
+</pre></div>
+</div>
+<p>Similarly, docs has the label <cite>docs</cite>.</p>
+<p>All other envs can be run with their respective env names:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>tox<span class="w"> </span>-e<span class="w"> </span>lint
+tox<span class="w"> </span>-e<span class="w"> </span>py39-test-lin
+</pre></div>
+</div>
+<p>It is also possible to select partial env lists using <cite>factors</cite>. For example, if you want to run
+all envs for python 3.10:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>tox<span class="w"> </span>-f<span class="w"> </span>py310
+</pre></div>
+</div>
+<p>This is equivalent to running all the envs listed below:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$<span class="w"> </span>tox<span class="w"> </span>-l<span class="w"> </span>-f<span class="w"> </span>py310
+py310-test-lin
+py310-test-mac
+py310-test-win
+py310-type-lin
+py310-type-mac
+py310-type-win
+py310-behave-etcd-lin
+py310-behave-etcd-win
+py310-behave-etcd-mac
+</pre></div>
+</div>
+<p>You can list all configured combinations of environments with tox (&gt;=v4) like so</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>tox<span class="w"> </span>l
+</pre></div>
+</div>
+<p>The envs <cite>test</cite> and <cite>docs</cite> will attempt to open the HTML output files
+when the job completes, if tox is run with an active terminal. This
+is intended to be for benefit of the developer running this env locally.
+It will attempt to run <cite>open</cite> on a mac and <cite>xdg-open</cite> on Linux.
+To use a different command set the env var <cite>OPEN_CMD</cite> to the name or path of
+the command. If this step fails it will not fail the run overall.
+If you want to disable this facility set the env var <cite>OPEN_CMD</cite> to the <cite>:</cite> no-op command.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nv">OPEN_CMD</span><span class="o">=</span>:<span class="w"> </span>tox<span class="w"> </span>-m<span class="w"> </span>docs
+</pre></div>
+</div>
+</section>
+<section id="behave-tests">
+<h3>Behave tests</h3>
+<p>Behave tests with <cite>-m behave</cite> will build docker images based on PG_MAJOR version 11 through 16 and then run all
+behave tests. This can take quite a long time to run so you might want to limit the scope to a select version of
+Postgres or to a specific feature set or steps.</p>
+<p>To specify the version of postgres include the full name of the dependent image build env that you want and then the
+behave env name. For instance if you want Postgres 14 use:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>tox<span class="w"> </span>-e<span class="w"> </span>pg14-docker-build,pg14-docker-behave-etcd-lin
+</pre></div>
+</div>
+<p>If on the other hand you want to test a specific feature you can pass positional arguments to behave. This will run
+the watchdog behave feature test scenario with all versions of Postgres.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>tox<span class="w"> </span>-m<span class="w"> </span>behave<span class="w"> </span>--<span class="w"> </span>features/watchdog.feature
+</pre></div>
+</div>
+<p>Of course you can combine the two.</p>
+</section>
+</section>
+<section id="contributing-a-pull-request">
+<h2>Contributing a pull request</h2>
+<ol class="arabic simple">
+<li><p>Fork the repository, develop and test your code changes.</p></li>
+<li><p>Reflect changes in the user documentation.</p></li>
+<li><p>Submit a pull request with a clear description of the changes objective. Link an existing issue if necessary.</p></li>
+</ol>
+<p>You’ll get feedback about your pull request as soon as possible.</p>
+<p>Happy Patroni hacking ;-)</p>
+</section>
+</section>
+
+
+            <div class="clearer"></div>
+          </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+  </body>
+</html>

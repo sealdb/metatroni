@@ -9,7 +9,7 @@ failover, demote/rejoin, semi-sync quorum, MGR majority-loss election, clone,
 and GTID-fork pause.
 
 HA control loop (shared + MySQL hooks)
-=====================================
+======================================
 
 Every ``loop_wait`` seconds, each Patroni runs roughly:
 
@@ -69,7 +69,7 @@ Happy-path automatic failover when the primary’s lease expires:
         │               │                   │   AUTO_POSITION=1 │
 
 ``promote`` / ``follow`` (async GTID)
-------------------------------------
+-------------------------------------
 
 .. code-block:: text
 

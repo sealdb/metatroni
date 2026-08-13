@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>FAQ</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="_static/epub.css" />
+    <link rel="stylesheet" type="text/css" href="_static/github_style.css" />
+    <link rel="stylesheet" type="text/css" href="_static/custom.css" /> 
+  </head><body>
+
+    <div class="document">
+      <div class="documentwrapper">
+          <div class="body" role="main">
+            
+  <section id="faq">
+<span id="id1"></span><h1>FAQ</h1>
+<p>In this section you will find answers for the most frequently asked questions about Patroni.
+Each sub-section attempts to focus on different kinds of questions.</p>
+<p>We hope that this helps you to clarify most of your questions.
+If you still have further concerns or find yourself facing an unexpected issue, please refer to <a class="reference internal" href="contributing_guidelines.xhtml#chatting"><span class="std std-ref">Chatting</span></a> and <a class="reference internal" href="contributing_guidelines.xhtml#reporting-bugs"><span class="std std-ref">Reporting bugs</span></a> for instructions on how to get help or report issues.</p>
+<section id="comparison-with-other-ha-solutions">
+<h2>Comparison with other HA solutions</h2>
+<dl>
+<dt>Why does Patroni require a separate cluster of DCS nodes while other solutions like <code class="docutils literal notranslate"><span class="pre">repmgr</span></code> do not?</dt><dd><p>There are different ways of implementing HA solutions, each of them with their pros and cons.</p>
+<p>Software like <code class="docutils literal notranslate"><span class="pre">repmgr</span></code> performs communication among the nodes to decide when actions should be taken.</p>
+<p>Patroni on the other hand relies on the state stored in the DCS. The DCS acts as a source of truth for Patroni to decide what it should do.</p>
+<p>While having a separate DCS cluster can make you bloat your architecture, this approach also makes it less likely for split-brain scenarios to happen in your Postgres cluster.</p>
+</dd>
+<dt>What is the difference between Patroni and other HA solutions in regards to Postgres management?</dt><dd><p>Patroni does not just manage the high availability of the Postgres cluster but also manages Postgres itself.</p>
+<p>If Postgres nodes do not exist yet, it takes care of bootstrapping the primary and the standby nodes, and also manages Postgres configuration of the nodes. If the Postgres nodes already exist, Patroni will take over management of the cluster.</p>
+<p>Besides the above, Patroni also has self-healing capabilities. In other words, if a primary node fails, Patroni will not only fail over to a replica, but also attempt to rejoin the former primary as a replica of the new primary. Similarly, if a replica fails, Patroni will attempt to rejoin that replica.</p>
+<p>That is way we call Patroni as a “template for HA solutions”. It goes further than just managing physical replication: it manages Postgres as a whole.</p>
+</dd>
+</dl>
+</section>
+<section id="dcs">
+<h2>DCS</h2>
+<dl>
+<dt>Can I use the same <code class="docutils literal notranslate"><span class="pre">etcd</span></code> cluster to store data from two or more Patroni clusters?</dt><dd><p>Yes, you can!</p>
+<p>Information about a Patroni cluster is stored in the DCS under a path prefixed with the <code class="docutils literal notranslate"><span class="pre">namespace</span></code> and <code class="docutils literal notranslate"><span class="pre">scope</span></code> Patroni settings.</p>
+<p>As long as you do not have conflicting namespace and scope across different Patroni clusters, you should be able to use the same DCS cluster to store information from multiple Patroni clusters.</p>
+</dd>
+<dt>What occurs if I attempt to use the same combination of <code class="docutils literal notranslate"><span class="pre">namespace</span></code> and <code class="docutils literal notranslate"><span class="pre">scope</span></code> for different Patroni clusters that point to the same DCS cluster?</dt><dd><p>The second Patroni cluster that attempts to use the same <code class="docutils literal notranslate"><span class="pre">namespace</span></code> and <code class="docutils literal notranslate"><span class="pre">scope</span></code> will not be able to manage Postgres because it will find information related with that same combination in the DCS, but with an incompatible Postgres system identifier.
+The mismatch on the system identifier causes Patroni to abort the management of the second cluster, as it assumes that refers to a different cluster and that the user has misconfigured Patroni.</p>
+<p>Make sure to use different <code class="docutils literal notranslate"><span class="pre">namespace</span></code> / <code class="docutils literal notranslate"><span class="pre">scope</span></code> when dealing with different Patroni clusters that share the same DCS cluster.</p>
+</dd>
+<dt>What occurs if I lose my DCS cluster?</dt><dd><p>The DCS is used to store basically status and the dynamic configuration of the Patroni cluster.</p>
+<p>They very first consequence is that all the Patroni clusters that rely on that DCS will go to read-only mode – unless <a class="reference internal" href="dcs_failsafe_mode.xhtml#dcs-failsafe-mode"><span class="std std-ref">DCS Failsafe Mode</span></a> is enabled.</p>
+</dd>
+<dt>What should I do if I lose my DCS cluster?</dt><dd><p>There are three possible outcomes upon losing your DCS cluster:</p>
+<ol class="arabic simple">
+<li><p>The DCS cluster is fully recovered: this requires no action from the Patroni side. Once the DCS cluster is recovered, Patroni should be able to recover too;</p></li>
+<li><p>The DCS cluster is re-created in place, and the endpoints remain the same. No changes are required on the Patroni side;</p></li>
+<li><p>A new DCS cluster is created with different endpoints. You will need to update the DCS endpoints in the Patroni configuration of each Patroni node.</p></li>
+</ol>
+<p>If you face scenario <code class="docutils literal notranslate"><span class="pre">2.</span></code> or <code class="docutils literal notranslate"><span class="pre">3.</span></code> Patroni will take care of creating the status information again based on the current status of the cluster, and recreate the dynamic configuration on the DCS based on a backup file named <code class="docutils literal notranslate"><span class="pre">patroni.dynamic.json</span></code> which is stored inside the Postgres data directory of each member of the Patroni cluster.</p>
+</dd>
+<dt>What occurs if I lose majority in my DCS cluster?</dt><dd><p>The DCS will become unresponsive, which will cause Patroni to demote the current read/write Postgres node.</p>
+<p>Remember: Patroni relies on the state of the DCS to take actions on the cluster.</p>
+<p>You can use the <a class="reference internal" href="dcs_failsafe_mode.xhtml#dcs-failsafe-mode"><span class="std std-ref">DCS Failsafe Mode</span></a> to alleviate that situation.</p>
+</dd>
+</dl>
+</section>
+<section id="patronictl">
+<h2>patronictl</h2>
+<dl>
+<dt>Do I need to run <a class="reference internal" href="patronictl.xhtml#patronictl"><span class="std std-ref">patronictl</span></a> in the Patroni host?</dt><dd><p>No, you do not need to do that.</p>
+<p>Running <a class="reference internal" href="patronictl.xhtml#patronictl"><span class="std std-ref">patronictl</span></a> in the Patroni host is handy if you have access to the Patroni host because you can use the very same configuration file from the <code class="docutils literal notranslate"><span class="pre">patroni</span></code> agent for the <a class="reference internal" href="patronictl.xhtml#patronictl"><span class="std std-ref">patronictl</span></a> application.</p>
+<p>However, <a class="reference internal" href="patronictl.xhtml#patronictl"><span class="std std-ref">patronictl</span></a> is basically a client and it can be executed from remote machines. You just need to provide it with enough configuration so it can reach the DCS and the REST API of the Patroni member(s).</p>
+</dd>
+<dt>Why did the information from one of my Patroni members disappear from the output of <a class="reference internal" href="patronictl.xhtml#patronictl-list"><span class="std std-ref">patronictl list</span></a> command?</dt><dd><p>Information shown by <a class="reference internal" href="patronictl.xhtml#patronictl-list"><span class="std std-ref">patronictl list</span></a> is based on the contents of the DCS.</p>
+<p>If information about a member disappeared from the DCS it is very likely that the Patroni agent on that node is not running anymore, or it is not able to communicate with the DCS.</p>
+<p>As the member is not able to update the information, the information eventually expires from the DCS, and consequently the member is not shown anymore in the output of <a class="reference internal" href="patronictl.xhtml#patronictl-list"><span class="std std-ref">patronictl list</span></a>.</p>
+</dd>
+<dt>Why is the information about one of my Patroni members not up-to-date in the output of <a class="reference internal" href="patronictl.xhtml#patronictl-list"><span class="std std-ref">patronictl list</span></a> command?</dt><dd><p>Information shown by <a class="reference internal" href="patronictl.xhtml#patronictl-list"><span class="std std-ref">patronictl list</span></a> is based on the contents of the DCS.</p>
+<p>By default, that information is updated by Patroni roughly every <code class="docutils literal notranslate"><span class="pre">loop_wait</span></code> seconds.
+In other words, even if everything is normally functional you may still see a “delay” of up to <code class="docutils literal notranslate"><span class="pre">loop_wait</span></code> seconds in the information stored in the DCS.</p>
+<p>Be aware that that is not a rule, though. Some operations performed by Patroni cause it to immediately update the DCS information.</p>
+</dd>
+</dl>
+</section>
+<section id="configuration">
+<h2>Configuration</h2>
+<dl>
+<dt>What is the difference between dynamic configuration and local configuration?</dt><dd><p>Dynamic configuration (or global configuration) is the configuration stored in the DCS, and which is applied to all members of the Patroni cluster.
+This is primarily where you should store your configuration.</p>
+<p>Settings that are specific to a node, or settings that you would like to overwrite the global configuration with, you should set only on the desired Patroni member as a local configuration.
+That local configuration can be specified either through the configuration file or through environment variables.</p>
+<p>See more in <a class="reference internal" href="patroni_configuration.xhtml#patroni-configuration"><span class="std std-ref">Patroni configuration</span></a>.</p>
+</dd>
+<dt>What are the types of configuration in Patroni, and what is the precedence?</dt><dd><p>The types are:</p>
+<ul class="simple">
+<li><p>Dynamic configuration: applied to all members;</p></li>
+<li><p>Local configuration: applied to the local member, overrides dynamic configuration;</p></li>
+<li><p>Environment configuration: applied to the local member, overrides both dynamic and local configuration.</p></li>
+</ul>
+<p><strong>Note:</strong> some Postgres GUCs can only be set globally, i.e., through dynamic configuration. Besides that, there are GUCs which Patroni enforces a hard-coded value.</p>
+<p>See more in <a class="reference internal" href="patroni_configuration.xhtml#patroni-configuration"><span class="std std-ref">Patroni configuration</span></a>.</p>
+</dd>
+<dt>Is there any facility to help me create my Patroni configuration file?</dt><dd><p>Yes, there is.</p>
+<p>You can use <code class="docutils literal notranslate"><span class="pre">patroni</span> <span class="pre">--generate-sample-config</span></code> or <code class="docutils literal notranslate"><span class="pre">patroni</span> <span class="pre">--generate-config</span></code> commands to generate a sample Patroni configuration or a Patroni configuration based on an existing Postgres instance, respectively.</p>
+<p>Please refer to <a class="reference internal" href="patroni_configuration.xhtml#generate-sample-config"><span class="std std-ref">Sample Patroni configuration</span></a> and <a class="reference internal" href="patroni_configuration.xhtml#generate-config"><span class="std std-ref">Patroni configuration for a running instance</span></a> for more details.</p>
+</dd>
+<dt>I changed my parameters under <code class="docutils literal notranslate"><span class="pre">bootstrap.dcs</span></code> configuration but Patroni is not applying the changes to the cluster members. What is wrong?</dt><dd><p>The values configured under <code class="docutils literal notranslate"><span class="pre">bootstrap.dcs</span></code> are only used when bootstrapping a fresh cluster. Those values will be written to the DCS during the bootstrap.</p>
+<p>After the bootstrap phase finishes, you will only be able to change the dynamic configuration through the DCS.</p>
+<p>Refer to the next question for more details.</p>
+</dd>
+<dt>How can I change my dynamic configuration?</dt><dd><p>You need to change the configuration in the DCS. That is accomplished either through:</p>
+<ul class="simple">
+<li><p><a class="reference internal" href="patronictl.xhtml#patronictl-edit-config"><span class="std std-ref">patronictl edit-config</span></a>; or</p></li>
+<li><p>A <code class="docutils literal notranslate"><span class="pre">PATCH</span></code> request to <a class="reference internal" href="rest_api.xhtml#config-endpoint"><span class="std std-ref">Config endpoint</span></a>.</p></li>
+</ul>
+</dd>
+<dt>How can I change my local configuration?</dt><dd><p>You need to change the configuration file of the corresponding Patroni member and signal the Patroni agent with <code class="docutils literal notranslate"><span class="pre">SIHGUP</span></code>. You can do that using either of these approaches:</p>
+<ul>
+<li><p>Send a <code class="docutils literal notranslate"><span class="pre">POST</span></code> request to the REST API <a class="reference internal" href="rest_api.xhtml#reload-endpoint"><span class="std std-ref">Reload endpoint</span></a>; or</p></li>
+<li><p>Run <a class="reference internal" href="patronictl.xhtml#patronictl-reload"><span class="std std-ref">patronictl reload</span></a>; or</p></li>
+<li><p>Locally signal the Patroni process with <code class="docutils literal notranslate"><span class="pre">SIGHUP</span></code>:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p>If you started Patroni through systemd, you can use the command <code class="docutils literal notranslate"><span class="pre">systemctl</span> <span class="pre">reload</span> <span class="pre">PATRONI_UNIT.service</span></code>, <code class="docutils literal notranslate"><span class="pre">PATRONI_UNIT</span></code> being the name of the Patroni service; or</p></li>
+<li><p>If you started Patroni through other means, you will need to identify the <code class="docutils literal notranslate"><span class="pre">patroni</span></code> process and run <code class="docutils literal notranslate"><span class="pre">kill</span> <span class="pre">-s</span> <span class="pre">HUP</span> <span class="pre">PID</span></code>, <code class="docutils literal notranslate"><span class="pre">PID</span></code> being the process ID of the <code class="docutils literal notranslate"><span class="pre">patroni</span></code> process.</p></li>
+</ul>
+</div></blockquote>
+</li>
+</ul>
+<p><strong>Note:</strong> there are cases where a reload through the <a class="reference internal" href="patronictl.xhtml#patronictl-reload"><span class="std std-ref">patronictl reload</span></a> may not work:</p>
+<ul class="simple">
+<li><p>Expired REST API certificates: you can mitigate that by using the <code class="docutils literal notranslate"><span class="pre">-k</span></code> option of the <a class="reference internal" href="patronictl.xhtml#patronictl"><span class="std std-ref">patronictl</span></a>;</p></li>
+<li><p>Wrong credentials: for example when changing <code class="docutils literal notranslate"><span class="pre">restapi</span></code> or <code class="docutils literal notranslate"><span class="pre">ctl</span></code> credentials in the configuration file, and using that same configuration file for Patroni and <a class="reference internal" href="patronictl.xhtml#patronictl"><span class="std std-ref">patronictl</span></a>.</p></li>
+</ul>
+</dd>
+<dt>How can I change my environment configuration?</dt><dd><p>The environment configuration is only read by Patroni during startup.</p>
+<p>With that in mind, if you change the environment configuration you will need to restart the corresponding Patroni agent.</p>
+<p>Take care to not cause a failover in the cluster! You might be interested in checking <a class="reference internal" href="patronictl.xhtml#patronictl-pause"><span class="std std-ref">patronictl pause</span></a>.</p>
+</dd>
+<dt>How can I reduce repetitive heartbeat log lines during normal operation?</dt><dd><p>If your logs are too noisy because of repeated lines like <code class="docutils literal notranslate"><span class="pre">Lock</span> <span class="pre">owner:</span> <span class="pre">...</span></code> and <code class="docutils literal notranslate"><span class="pre">no</span> <span class="pre">action.</span> <span class="pre">I</span> <span class="pre">am</span> <span class="pre">...</span></code>,
+configure <code class="docutils literal notranslate"><span class="pre">log.deduplicate_heartbeat_logs:</span> <span class="pre">true</span></code>.</p>
+<p>You can set it either in the Patroni YAML file (<a class="reference internal" href="yaml_configuration.xhtml#log-settings"><span class="std std-ref">Log</span></a>) or with
+<code class="docutils literal notranslate"><span class="pre">PATRONI_LOG_DEDUPLICATE_HEARTBEAT_LOGS=true</span></code>.</p>
+<p>Keep in mind this reduces log volume by suppressing repeated heartbeat messages, but you also lose per-loop
+heartbeat visibility that can help during failover diagnostics.</p>
+</dd>
+<dt>What occurs if I change a Postgres GUC that requires a reload?</dt><dd><p>When you change the dynamic or the local configuration as explained in the previous questions, Patroni will take care of reloading the Postgres configuration for you.</p>
+</dd>
+<dt>What occurs if I change a Postgres GUC that requires a restart?</dt><dd><p>Patroni will mark the affected members with a flag of <code class="docutils literal notranslate"><span class="pre">pending</span> <span class="pre">restart</span></code>.</p>
+<p>It is up to you to determine when and how to restart the members. That can be accomplished either through:</p>
+<ul class="simple">
+<li><p><a class="reference internal" href="patronictl.xhtml#patronictl-restart"><span class="std std-ref">patronictl restart</span></a>; or</p></li>
+<li><p>A <code class="docutils literal notranslate"><span class="pre">POST</span></code> request to <a class="reference internal" href="rest_api.xhtml#restart-endpoint"><span class="std std-ref">Restart endpoint</span></a>.</p></li>
+</ul>
+<p><strong>Note:</strong> some Postgres GUCs require a special management in terms of the order for restarting the Postgres nodes. Refer to <a class="reference internal" href="patroni_configuration.xhtml#shared-memory-gucs"><span class="std std-ref">PostgreSQL parameters that touch shared memory</span></a> for more details.</p>
+</dd>
+<dt>What is the difference between <code class="docutils literal notranslate"><span class="pre">etcd</span></code> and <code class="docutils literal notranslate"><span class="pre">etcd3</span></code> in Patroni configuration?</dt><dd><p><code class="docutils literal notranslate"><span class="pre">etcd</span></code> uses the API version 2 of <code class="docutils literal notranslate"><span class="pre">etcd</span></code>, while <code class="docutils literal notranslate"><span class="pre">etcd3</span></code> uses the API version 3 of <code class="docutils literal notranslate"><span class="pre">etcd</span></code>.</p>
+<p>Be aware that information stored by the API version 2 is not manageable by API version 3 and vice-versa.</p>
+<p>We recommend that you configure <code class="docutils literal notranslate"><span class="pre">etcd3</span></code> instead of <code class="docutils literal notranslate"><span class="pre">etcd</span></code> because:</p>
+<ul class="simple">
+<li><p>API version 2 is disabled by default from Etcd v3.4 onward;</p></li>
+<li><p>API version 2 will be completely removed on Etcd v3.6.</p></li>
+</ul>
+</dd>
+<dt>I have <code class="docutils literal notranslate"><span class="pre">use_slots</span></code> enabled in my Patroni configuration, but when a cluster member goes offline for some time, the replication slot used by that member is dropped on the upstream node. What can I do to avoid that issue?</dt><dd><p>There are two options:</p>
+<ol class="arabic simple">
+<li><p>You can tune <code class="docutils literal notranslate"><span class="pre">member_slots_ttl</span></code> (default value <code class="docutils literal notranslate"><span class="pre">30min</span></code>, available since Patroni <code class="docutils literal notranslate"><span class="pre">4.0.0</span></code> and PostgreSQL 11 onwards) and replication slots for absent members will not be removed when the members downtime is shorter than the configured threshold.</p></li>
+<li><p>You can configure permanent physical replication slots for the members.</p></li>
+</ol>
+<p>Since Patroni <code class="docutils literal notranslate"><span class="pre">3.2.0</span></code> it is now possible to have member slots as permanent slots managed by Patroni.</p>
+<p>Patroni will create the permanent physical slots on all nodes, and make sure to not remove the slots, as well as to advance the slots’ LSN on all nodes according to the LSN that has been consumed by the member.</p>
+<p>Later, if you decide to remove the corresponding member, it’s <strong>your responsibility</strong> to adjust the permanent slots configuration, otherwise Patroni will keep the slots around forever.</p>
+<p><strong>Note:</strong> on Patroni older than <code class="docutils literal notranslate"><span class="pre">3.2.0</span></code> you could still have member slots configured as permanent physical slots, however they would be managed only on the current leader. That is, in case of failover/switchover these slots would be created on the new leader, but that wouldn’t guarantee that it had all WAL segments for the absent node.</p>
+<p><strong>Note:</strong> even with Patroni <code class="docutils literal notranslate"><span class="pre">3.2.0</span></code> there might be a small race condition. In the very beginning, when the slot is created on the replica it could be ahead of the same slot on the leader and in case if nobody is consuming the slot there is still a chance that some files could be missing after failover. With that in mind, it is recommended that you configure continuous archiving, which makes it possible to restore required WALs or perform PITR.</p>
+</dd>
+<dt>What is the difference between <code class="docutils literal notranslate"><span class="pre">loop_wait</span></code>, <code class="docutils literal notranslate"><span class="pre">retry_timeout</span></code> and <code class="docutils literal notranslate"><span class="pre">ttl</span></code>?</dt><dd><p>Patroni performs what we call a HA cycle from time to time. On each HA cycle it takes care of performing a series of checks on the cluster to determine its healthiness, and depending on the status it may take actions, like failing over to a standby.</p>
+<p><code class="docutils literal notranslate"><span class="pre">loop_wait</span></code> determines for how long, in seconds, Patroni should sleep before performing a new cycle of HA checks.</p>
+<p><code class="docutils literal notranslate"><span class="pre">retry_timeout</span></code> sets the timeout for retry operations on the DCS and on Postgres. For example: if the DCS is unresponsive for more than <code class="docutils literal notranslate"><span class="pre">retry_timeout</span></code> seconds, Patroni might demote the primary node as a security action.</p>
+<p><code class="docutils literal notranslate"><span class="pre">ttl</span></code> sets the lease time on the <code class="docutils literal notranslate"><span class="pre">leader</span></code> lock in the DCS. If the current leader of the cluster is not able to renew the lease during its HA cycles for longer than <code class="docutils literal notranslate"><span class="pre">ttl</span></code>, then the lease will expire and that will trigger a <code class="docutils literal notranslate"><span class="pre">leader</span> <span class="pre">race</span></code> in the cluster.</p>
+<p><strong>Note:</strong> when modifying these settings, please keep in mind that Patroni enforces the rule and minimal values described in <a class="reference internal" href="dynamic_configuration.xhtml#dynamic-configuration"><span class="std std-ref">Dynamic Configuration Settings</span></a> section of the docs.</p>
+</dd>
+</dl>
+</section>
+<section id="postgres-management">
+<h2>Postgres management</h2>
+<dl>
+<dt>Can I change Postgres GUCs directly in Postgres configuration?</dt><dd><p>You can, but you should avoid that.</p>
+<p>Postgres configuration is managed by Patroni, and attempts to edit the configuration files may end up being frustrated by Patroni as it may eventually overwrite them.</p>
+<p>There are a few options available to overcome the management performed by Patroni:</p>
+<ul class="simple">
+<li><p>Change Postgres GUCs through <code class="docutils literal notranslate"><span class="pre">$PGDATA/postgresql.base.conf</span></code>; or</p></li>
+<li><p>Define a <code class="docutils literal notranslate"><span class="pre">postgresql.custom_conf</span></code> which will be used instead of <code class="docutils literal notranslate"><span class="pre">postgresql.base.conf</span></code> so you can manage that externally; or</p></li>
+<li><p>Change GUCs using <code class="docutils literal notranslate"><span class="pre">ALTER</span> <span class="pre">SYSTEM</span></code> / <code class="docutils literal notranslate"><span class="pre">ALTER</span> <span class="pre">DATABASE</span></code> / <code class="docutils literal notranslate"><span class="pre">ALTER</span> <span class="pre">USER</span></code>.</p></li>
+</ul>
+<p>You can find more information about that in the section <a class="reference internal" href="patroni_configuration.xhtml#important-configuration-rules"><span class="std std-ref">Important rules</span></a>.</p>
+<p>In any case we recommend that you manage all the Postgres configuration through Patroni. That will centralize the management and make it easier to debug Patroni when needed.</p>
+</dd>
+<dt>Can I restart Postgres nodes directly?</dt><dd><p>No, you should <strong>not</strong> attempt to manage Postgres directly!</p>
+<p>Any attempt of bouncing the Postgres server without Patroni can lead your cluster to face failovers.</p>
+<p>If you need to manage the Postgres server, do that through the ways exposed by Patroni.</p>
+</dd>
+<dt>Is Patroni able to take over management of an already existing Postgres cluster?</dt><dd><p>Yes, it can!</p>
+<p>Please refer to <a class="reference internal" href="existing_data.xhtml#existing-data"><span class="std std-ref">Convert a Standalone to a Patroni Cluster</span></a> for detailed instructions.</p>
+</dd>
+<dt>How does Patroni manage Postgres?</dt><dd><p>Patroni takes care of bringing Postgres up and down by running the Postgres binaries, like <code class="docutils literal notranslate"><span class="pre">pg_ctl</span></code> and <code class="docutils literal notranslate"><span class="pre">postgres</span></code>.</p>
+<p>With that in mind you <strong>MUST</strong> disable any other sources that could manage the Postgres clusters, like the systemd units, e.g. <code class="docutils literal notranslate"><span class="pre">postgresql.service</span></code>. Only Patroni should be able to start, stop and promote Postgres instances in the cluster. Not doing so may result in split-brain scenarios. For example: if the node running as a primary failed and the unit <code class="docutils literal notranslate"><span class="pre">postgresql.service</span></code> is enabled, it may bring Postgres back up and cause a split-brain.</p>
+</dd>
+</dl>
+</section>
+<section id="concepts-and-requirements">
+<h2>Concepts and requirements</h2>
+<dl>
+<dt>Which are the applications that make part of Patroni?</dt><dd><p>Patroni basically ships a couple applications:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">patroni</span></code>: This is the Patroni agent, which takes care of managing a Postgres node;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">patronictl</span></code>: This is a command-line utility used to interact with a Patroni cluster (perform switchovers, restarts, changes in the configuration, etc.). Please find more information in <a class="reference internal" href="patronictl.xhtml#patronictl"><span class="std std-ref">patronictl</span></a>.</p></li>
+</ul>
+</dd>
+<dt>What is a <code class="docutils literal notranslate"><span class="pre">standby</span> <span class="pre">cluster</span></code> in Patroni?</dt><dd><p>It is a cluster that does not have any primary Postgres node running, i.e., there is no read/write member in the cluster.</p>
+<p>These kinds of clusters exist to replicate data from another cluster and are usually useful when you want to replicate data across data centers.</p>
+<p>There will be a leader in the cluster which will be a standby in charge of replicating changes from a remote Postgres node.
+Then, there will be a set of standbys configured with cascading replication from such leader member.</p>
+<p><strong>Note:</strong> the standby cluster doesn’t know anything about the source cluster which it is replicating from – it can even use <code class="docutils literal notranslate"><span class="pre">restore_command</span></code> instead of WAL streaming, and may use an absolutely independent DCS cluster.</p>
+<p>Refer to <a class="reference internal" href="standby_cluster.xhtml#standby-cluster"><span class="std std-ref">Standby cluster</span></a> for more details.</p>
+</dd>
+<dt>What is a <code class="docutils literal notranslate"><span class="pre">leader</span></code> in Patroni?</dt><dd><p>A <code class="docutils literal notranslate"><span class="pre">leader</span></code> in Patroni is like a coordinator of the cluster.</p>
+<p>In a regular Patroni cluster, the <code class="docutils literal notranslate"><span class="pre">leader</span></code> will be the read/write node.</p>
+<p>In a standby Patroni cluster, the <code class="docutils literal notranslate"><span class="pre">leader</span></code> (AKA <code class="docutils literal notranslate"><span class="pre">standby</span> <span class="pre">leader</span></code>) will be in charge of replicating from a remote Postgres node, and cascading those changes to the other members of the standby cluster.</p>
+</dd>
+<dt>Does Patroni require a minimum number of Postgres nodes in the cluster?</dt><dd><p>No, you can run Patroni with any number of Postgres nodes.</p>
+<p>Remember: Patroni is decoupled from the DCS.</p>
+</dd>
+<dt>What does <code class="docutils literal notranslate"><span class="pre">pause</span></code> mean in Patroni?</dt><dd><p>Pause is an operation exposed by Patroni so the user can ask Patroni to step back in regards to Postgres management.</p>
+<p>That is mainly useful when you want to perform maintenance on the cluster, and would like to avoid that Patroni takes decisions related with HA, like failing over to a standby when you stop the primary.</p>
+<p>You can find more information about that in <a class="reference internal" href="pause.xhtml#pause"><span class="std std-ref">Pause/Resume mode for the cluster</span></a>.</p>
+</dd>
+</dl>
+</section>
+<section id="automatic-failover">
+<h2>Automatic failover</h2>
+<dl>
+<dt>How does the automatic failover mechanism of Patroni work?</dt><dd><p>Patroni automatic failover is based on what we call <code class="docutils literal notranslate"><span class="pre">leader</span> <span class="pre">race</span></code>.</p>
+<p>Patroni stores the cluster’s status in the DCS, among them a <code class="docutils literal notranslate"><span class="pre">leader</span></code> lock which holds the name of the Patroni member which is the current <code class="docutils literal notranslate"><span class="pre">leader</span></code> of the cluster.</p>
+<p>That <code class="docutils literal notranslate"><span class="pre">leader</span></code> lock has a time-to-live associated with it. If the leader node fails to update the lease of the <code class="docutils literal notranslate"><span class="pre">leader</span></code> lock in time, the key will eventually expire from the DCS.</p>
+<p>When the <code class="docutils literal notranslate"><span class="pre">leader</span></code> lock expires, it triggers what Patroni calls a <code class="docutils literal notranslate"><span class="pre">leader</span> <span class="pre">race</span></code>: all nodes start performing checks to determine if they are the best candidates for taking over the <code class="docutils literal notranslate"><span class="pre">leader</span></code> role.
+Some of these checks include calls to the REST API of all other Patroni members.</p>
+<p>All Patroni members that find themselves as the best candidate for taking over the <code class="docutils literal notranslate"><span class="pre">leader</span></code> lock will attempt to do so.
+The first Patroni member that is able to take the <code class="docutils literal notranslate"><span class="pre">leader</span></code> lock will promote itself to a read/write node (or <code class="docutils literal notranslate"><span class="pre">standby</span> <span class="pre">leader</span></code>), and the others will be configured to follow it.</p>
+</dd>
+<dt>Can I temporarily disable automatic failover in the Patroni cluster?</dt><dd><p>Yes, you can!</p>
+<p>You can achieve that by temporarily pausing the cluster.
+This is typically useful for performing maintenance.</p>
+<p>When you want to resume the automatic failover of the cluster, you just need to unpause it.</p>
+<p>You can find more information about that in <a class="reference internal" href="pause.xhtml#pause"><span class="std std-ref">Pause/Resume mode for the cluster</span></a>.</p>
+</dd>
+</dl>
+</section>
+<section id="bootstrapping-and-standbys-creation">
+<h2>Bootstrapping and standbys creation</h2>
+<dl>
+<dt>How does Patroni create a primary Postgres node? What about a standby Postgres node?</dt><dd><p>By default Patroni will use <code class="docutils literal notranslate"><span class="pre">initdb</span></code> to bootstrap a fresh cluster, and <code class="docutils literal notranslate"><span class="pre">pg_basebackup</span></code> to create standby nodes from a copy of the <code class="docutils literal notranslate"><span class="pre">leader</span></code> member.</p>
+<p>You can customize that behavior by writing your custom bootstrap methods, and your custom replica creation methods.</p>
+<p>Custom methods are usually useful when you want to restore backups created by backup tools like pgBackRest or Barman, for example.</p>
+<p>For detailed information please refer to <a class="reference internal" href="replica_bootstrap.xhtml#custom-bootstrap"><span class="std std-ref">Bootstrap</span></a> and <a class="reference internal" href="replica_bootstrap.xhtml#custom-replica-creation"><span class="std std-ref">Building replicas</span></a>.</p>
+</dd>
+</dl>
+</section>
+<section id="monitoring">
+<h2>Monitoring</h2>
+<dl>
+<dt>How can I monitor my Patroni cluster?</dt><dd><p>Patroni exposes a couple handy endpoints in its <a class="reference internal" href="rest_api.xhtml#rest-api"><span class="std std-ref">Patroni REST API</span></a>:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">/metrics</span></code>: exposes monitoring metrics in a format that can be consumed by Prometheus;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">/patroni</span></code>: exposes the status of the cluster in a JSON format. The information shown here is very similar to what is shown by the <code class="docutils literal notranslate"><span class="pre">/metrics</span></code> endpoint.</p></li>
+</ul>
+<p>You can use those endpoints to implement monitoring checks.</p>
+</dd>
+</dl>
+</section>
+<section id="mysql-backend">
+<h2>MySQL backend</h2>
+<dl>
+<dt>Where is the MySQL HA documentation?</dt><dd><p>See the <a class="reference internal" href="mysql.xhtml#mysql"><span class="std std-ref">MySQL</span></a> chapter:</p>
+<ul class="simple">
+<li><p><a class="reference internal" href="mysql_architecture.xhtml#mysql-architecture"><span class="std std-ref">MySQL architecture and model</span></a> — components and DCS model</p></li>
+<li><p><a class="reference internal" href="mysql_mechanisms.xhtml#mysql-mechanisms"><span class="std std-ref">MySQL HA mechanisms and sequences</span></a> — failover / demote / semi-sync / MGR sequences</p></li>
+<li><p><a class="reference internal" href="mysql_ops.xhtml#mysql-ops"><span class="std std-ref">MySQL operations and FAQ</span></a> — install, deploy, HAProxy, FAQ</p></li>
+</ul>
+</dd>
+<dt>Does MySQL support the same standby cluster feature as PostgreSQL?</dt><dd><p>Yes, with a MySQL-native implementation. Configure DCS <code class="docutils literal notranslate"><span class="pre">standby_cluster</span></code>
+with <code class="docutils literal notranslate"><span class="pre">host</span></code> / <code class="docutils literal notranslate"><span class="pre">port</span></code> of the remote primary. The standby leader is
+<strong>bootstrapped with a full physical/logical clone</strong> (default
+<code class="docutils literal notranslate"><span class="pre">xtrabackup</span></code>, then <code class="docutils literal notranslate"><span class="pre">mysqldump</span></code>) because remote binlogs alone may not
+cover the full dataset; then it streams via GTID cascade
+(<code class="docutils literal notranslate"><span class="pre">CHANGE</span> <span class="pre">MASTER</span> <span class="pre">…</span> <span class="pre">MASTER_AUTO_POSITION=1</span></code>) and stays <code class="docutils literal notranslate"><span class="pre">super_read_only</span></code>.
+Local members cascade from the standby leader. Promote with
+<code class="docutils literal notranslate"><span class="pre">patronictl</span> <span class="pre">promote-cluster</span></code> (removes <code class="docutils literal notranslate"><span class="pre">standby_cluster</span></code>). PostgreSQL
+<code class="docutils literal notranslate"><span class="pre">restore_command</span></code> / replication-slot standby modes are not used.</p>
+<p>For promote / demote drills and cross-site cutover checklists, see
+<a class="reference internal" href="mysql_ops.xhtml#mysql-ops"><span class="std std-ref">MySQL operations and FAQ</span></a> (section <strong>Standby cluster</strong>).</p>
+</dd>
+</dl>
+</section>
+</section>
+
+
+            <div class="clearer"></div>
+          </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+  </body>
+</html>

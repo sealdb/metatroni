@@ -1,7 +1,7 @@
 .. _tools_integration:
 
 与其他工具的集成
-============================
+================
 
 Patroni 能够与你技术栈中的其他工具集成。在本节中，你将看到一些示例列表，虽然这些示例并非详尽无遗，但可能会给你带来关于 Patroni 如何与其他工具集成的启发。
 
@@ -10,7 +10,7 @@ Barman
 
 Patroni 提供了一个名为 ``patroni_barman`` 的应用程序，它包含与 ``pg-backup-api`` 通信的逻辑，因此你可以远程执行 Barman 操作。
 
-该应用程序目前有几个子命令：``recover`` 和 ``config-switch``。
+该应用程序目前有几个子命令：``recover`` 和 ``config-switch``\。
 
 patroni_barman recover
 ^^^^^^^^^^^^^^^^^^^^^^
@@ -40,4 +40,4 @@ patroni_barman config-switch
                     --switch-when promoted
 
 .. note::
-    ``patroni_barman config-switch`` 要求你在 Barman 主机上同时配置好 Barman 和 ``pg-backup-api``，这样它才能通过备份 API 远程执行 ``barman config-switch``。此外，它还要求你预先配置好要应用的 Barman 模型。上面的示例只使用了可用参数的一部分。你可以通过运行 ``patroni_barman config-switch --help`` 以及查阅 Barman 文档来获取更多信息。
+    ``patroni_barman config-switch`` 要求你在 Barman 主机上同时配置好 Barman 和 ``pg-backup-api``\，这样它才能通过备份 API 远程执行 ``barman config-switch``\。此外，它还要求你预先配置好要应用的 Barman 模型。上面的示例只使用了可用参数的一部分。你可以通过运行 ``patroni_barman config-switch --help`` 以及查阅 Barman 文档来获取更多信息。

@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Patroni configuration</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="_static/epub.css" />
+    <link rel="stylesheet" type="text/css" href="_static/github_style.css" />
+    <link rel="stylesheet" type="text/css" href="_static/custom.css" /> 
+  </head><body>
+
+    <div class="document">
+      <div class="documentwrapper">
+          <div class="body" role="main">
+            
+  <section id="patroni-configuration">
+<span id="id1"></span><h1>Patroni configuration</h1>
+<div class="toctree-wrapper compound">
+</div>
+<p>There are 3 types of Patroni configuration:</p>
+<ul class="simple">
+<li><dl class="simple">
+<dt>Global <a class="reference internal" href="dynamic_configuration.xhtml#dynamic-configuration"><span class="std std-ref">dynamic configuration</span></a>.</dt><dd><p>These options are stored in the DCS (Distributed Configuration Store) and applied on all cluster nodes.
+Dynamic configuration can be set at any time using <a class="reference internal" href="patronictl.xhtml#patronictl-edit-config"><span class="std std-ref">patronictl edit-config</span></a> tool or Patroni <a class="reference internal" href="rest_api.xhtml#rest-api"><span class="std std-ref">REST API</span></a>.
+If the options changed are not part of the startup configuration, they are applied asynchronously (upon the next wake up cycle)
+to every node, which gets subsequently reloaded.
+If the node requires a restart to apply the configuration (for <a class="reference external" href="https://www.postgresql.org/docs/current/view-pg-settings.html">PostgreSQL parameters</a><span class="link-target"> [https://www.postgresql.org/docs/current/view-pg-settings.html]</span> with context postmaster, if their values
+have changed), a special flag <code class="docutils literal notranslate"><span class="pre">pending_restart</span></code> indicating this is set in the members.data JSON.
+Additionally, the node status indicates this by showing <code class="docutils literal notranslate"><span class="pre">&quot;restart_pending&quot;:</span> <span class="pre">true</span></code>.</p>
+</dd>
+</dl>
+</li>
+<li><dl class="simple">
+<dt>Local <a class="reference internal" href="yaml_configuration.xhtml#yaml-configuration"><span class="std std-ref">configuration file</span></a> (patroni.yml).</dt><dd><p>These options are defined in the configuration file and take precedence over dynamic configuration.
+<code class="docutils literal notranslate"><span class="pre">patroni.yml</span></code> can be changed and reloaded at runtime (without restart of Patroni) by sending SIGHUP to the Patroni process, performing <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/reload</span></code> REST-API request or executing <a class="reference internal" href="patronictl.xhtml#patronictl-reload"><span class="std std-ref">patronictl reload</span></a>. Local configuration can be either a single YAML file or a directory. When it is a directory, all YAML files in that directory are loaded one by one in sorted order. In case a key is defined in multiple files, the occurrence in the last file takes precedence.</p>
+</dd>
+</dl>
+</li>
+<li><dl class="simple">
+<dt><a class="reference internal" href="ENVIRONMENT.xhtml#environment"><span class="std std-ref">Environment configuration</span></a>.</dt><dd><p>It is possible to set/override some of the “Local” configuration parameters with environment variables.
+Environment configuration is very useful when you are running in a dynamic environment and you don’t know some of the parameters in advance (for example it’s not possible to know your external IP address when you are running inside <code class="docutils literal notranslate"><span class="pre">docker</span></code>).</p>
+</dd>
+</dl>
+</li>
+</ul>
+<section id="important-rules">
+<span id="important-configuration-rules"></span><h2>Important rules</h2>
+<section id="postgresql-parameters-controlled-by-patroni">
+<h3>PostgreSQL parameters controlled by Patroni</h3>
+<p>Some of the PostgreSQL parameters <strong>must hold the same values on the primary and the replicas</strong>. For those, <strong>values set either in the local patroni configuration files or via the environment variables take no effect</strong>. To alter or set their values one must change the shared configuration in the DCS. Below is the actual list of such parameters together with the default and minimal values:</p>
+<ul class="simple">
+<li><p><strong>max_connections</strong>: default value 100, minimal value 25</p></li>
+<li><p><strong>max_locks_per_transaction</strong>: default value 64, minimal value 32</p></li>
+<li><p><strong>max_worker_processes</strong>: default value 8, minimal value 2</p></li>
+<li><p><strong>max_prepared_transactions</strong>: default value 0, minimal value 0</p></li>
+<li><p><strong>wal_level</strong>: default value hot_standby, accepted values: hot_standby, replica, logical</p></li>
+<li><p><strong>track_commit_timestamp</strong>: default value off</p></li>
+</ul>
+<p>For the parameters below, PostgreSQL does not require equal values among the primary and all the replicas. However, considering the possibility of a replica to become the primary at any time, it doesn’t really make sense to set them differently; therefore, <strong>Patroni restricts setting their values to the</strong> <a class="reference internal" href="dynamic_configuration.xhtml#dynamic-configuration"><span class="std std-ref">dynamic configuration</span></a>.</p>
+<ul class="simple">
+<li><p><strong>max_wal_senders</strong>: default value 10, minimal value 3</p></li>
+<li><p><strong>max_replication_slots</strong>: default value 10, minimal value 4</p></li>
+<li><p><strong>wal_keep_segments</strong>: default value 8, minimal value 1</p></li>
+<li><p><strong>wal_keep_size</strong>: default value 128MB, minimal value 16MB</p></li>
+<li><p><strong>wal_log_hints</strong>: on</p></li>
+</ul>
+<p>These parameters are validated to ensure they are sane, or meet a minimum value.</p>
+<p>There are some other Postgres parameters controlled by Patroni:</p>
+<ul class="simple">
+<li><p><strong>listen_addresses</strong> - is set either from <code class="docutils literal notranslate"><span class="pre">postgresql.listen</span></code> or from <code class="docutils literal notranslate"><span class="pre">PATRONI_POSTGRESQL_LISTEN</span></code> environment variable</p></li>
+<li><p><strong>port</strong> - is set either from <code class="docutils literal notranslate"><span class="pre">postgresql.listen</span></code> or from <code class="docutils literal notranslate"><span class="pre">PATRONI_POSTGRESQL_LISTEN</span></code> environment variable</p></li>
+<li><p><strong>cluster_name</strong> - is set either from <code class="docutils literal notranslate"><span class="pre">scope</span></code> or from <code class="docutils literal notranslate"><span class="pre">PATRONI_SCOPE</span></code> environment variable</p></li>
+<li><p><strong>hot_standby: on</strong></p></li>
+</ul>
+<p>To be on the safe side parameters from the above lists are written into <code class="docutils literal notranslate"><span class="pre">postgresql.conf</span></code>, and passed as a list of arguments to the <code class="docutils literal notranslate"><span class="pre">postgres</span></code> which gives them the highest precedence (except <code class="docutils literal notranslate"><span class="pre">wal_keep_segments</span></code> and <code class="docutils literal notranslate"><span class="pre">wal_keep_size</span></code>), even above <a class="reference external" href="https://www.postgresql.org/docs/current/static/sql-altersystem.html">ALTER SYSTEM</a><span class="link-target"> [https://www.postgresql.org/docs/current/static/sql-altersystem.html]</span></p>
+<p>There also are some parameters like <strong>postgresql.listen</strong>, <strong>postgresql.data_dir</strong> that <strong>can be set only locally</strong>, i.e. in the Patroni <a class="reference internal" href="yaml_configuration.xhtml#yaml-configuration"><span class="std std-ref">config file</span></a> or via <a class="reference internal" href="ENVIRONMENT.xhtml#environment"><span class="std std-ref">configuration</span></a> variable. In most cases the local configuration will override the dynamic configuration.</p>
+<p>When applying the local or dynamic configuration options, the following actions are taken:</p>
+<ul class="simple">
+<li><p>The node first checks if there is a <cite>postgresql.base.conf</cite> file or if the <code class="docutils literal notranslate"><span class="pre">custom_conf</span></code> parameter is set.</p></li>
+<li><p>If the <code class="docutils literal notranslate"><span class="pre">custom_conf</span></code> parameter is set, the file it specifies is used as the base configuration, ignoring <cite>postgresql.base.conf</cite> and <cite>postgresql.conf</cite>.</p></li>
+<li><p>If the <code class="docutils literal notranslate"><span class="pre">custom_conf</span></code> parameter is not set and <cite>postgresql.base.conf</cite> exists, it contains the renamed “original” configuration and is used as the base configuration.</p></li>
+<li><p>If there is no <code class="docutils literal notranslate"><span class="pre">custom_conf</span></code> nor <cite>postgresql.base.conf</cite>, the original <cite>postgresql.conf</cite> is renamed to <cite>postgresql.base.conf</cite> and used as the base configuration.</p></li>
+<li><p>The dynamic options (with the exceptions above) are dumped into the <cite>postgresql.conf</cite> and an include is set in
+<cite>postgresql.conf</cite> to the base configuration (either <cite>postgresql.base.conf</cite> or the file at <code class="docutils literal notranslate"><span class="pre">custom_conf</span></code>).
+Therefore, we would be able to apply new options without re-reading the configuration file to check if the include is present or not.</p></li>
+<li><p>Some parameters that are essential for Patroni to manage the cluster are overridden using the command line.</p></li>
+<li><p>If an option that requires restart is changed (we should look at the context in pg_settings and at the actual
+values of those options), a pending_restart flag is set on that node. This flag is reset on any restart.</p></li>
+</ul>
+<p>The parameters would be applied in the following order (run-time are given the highest priority):</p>
+<ol class="arabic simple">
+<li><p>load parameters from file <cite>postgresql.base.conf</cite> (or from a <code class="docutils literal notranslate"><span class="pre">custom_conf</span></code> file, if set)</p></li>
+<li><p>load parameters from file <cite>postgresql.conf</cite></p></li>
+<li><p>load parameters from file <cite>postgresql.auto.conf</cite></p></li>
+<li><p>run-time parameter using <cite>-o –name=value</cite></p></li>
+</ol>
+<p>This allows configuration for all the nodes (2), configuration for a specific node using <code class="docutils literal notranslate"><span class="pre">ALTER</span> <span class="pre">SYSTEM</span></code> (3) and ensures that parameters essential to the running of Patroni are enforced (4), as well as leaves room for configuration tools that manage <cite>postgresql.conf</cite> directly without involving Patroni (1).</p>
+</section>
+<section id="postgresql-parameters-that-touch-shared-memory">
+<span id="shared-memory-gucs"></span><h3>PostgreSQL parameters that touch shared memory</h3>
+<p>PostgreSQL has some parameters that determine the size of the shared memory used by them:</p>
+<ul class="simple">
+<li><p><strong>max_connections</strong></p></li>
+<li><p><strong>max_prepared_transactions</strong></p></li>
+<li><p><strong>max_locks_per_transaction</strong></p></li>
+<li><p><strong>max_wal_senders</strong></p></li>
+<li><p><strong>max_worker_processes</strong></p></li>
+</ul>
+<p>Changing these parameters require a PostgreSQL restart to take effect, and their shared memory structures cannot be smaller on the standby nodes than on the primary node.</p>
+<p>As explained before, Patroni restrict changing their values through <a class="reference internal" href="dynamic_configuration.xhtml#dynamic-configuration"><span class="std std-ref">dynamic configuration</span></a>, which usually consists of:</p>
+<ol class="arabic simple">
+<li><p>Applying changes through <a class="reference internal" href="patronictl.xhtml#patronictl-edit-config"><span class="std std-ref">patronictl edit-config</span></a> (or via REST API <code class="docutils literal notranslate"><span class="pre">/config</span></code> endpoint)</p></li>
+<li><p>Restarting nodes through <a class="reference internal" href="patronictl.xhtml#patronictl-restart"><span class="std std-ref">patronictl restart</span></a> (or via REST API <code class="docutils literal notranslate"><span class="pre">/restart</span></code> endpoint)</p></li>
+</ol>
+<p><strong>Note:</strong> please keep in mind that you should perform a restart of the PostgreSQL nodes through <a class="reference internal" href="patronictl.xhtml#patronictl-restart"><span class="std std-ref">patronictl restart</span></a> command, or via REST API <code class="docutils literal notranslate"><span class="pre">/restart</span></code> endpoint. An attempt to restart PostgreSQL by restarting the Patroni daemon, e.g. by executing <code class="docutils literal notranslate"><span class="pre">systemctl</span> <span class="pre">restart</span> <span class="pre">patroni</span></code>, can cause a failover to occur in the cluster, if you are restarting the primary node.</p>
+<p>However, as those settings manage shared memory, some extra care should be taken when restarting the nodes:</p>
+<ul>
+<li><p>If you want to <strong>increase</strong> the value of any of those settings:</p>
+<blockquote>
+<div><ol class="arabic simple">
+<li><p>Restart all standbys first</p></li>
+<li><p>Restart the primary after that</p></li>
+</ol>
+</div></blockquote>
+</li>
+<li><p>If you want to <strong>decrease</strong> the value of any of those settings:</p>
+<blockquote>
+<div><ol class="arabic simple">
+<li><p>Restart the primary first</p></li>
+<li><p>Restart all standbys after that</p></li>
+</ol>
+</div></blockquote>
+</li>
+</ul>
+<p><strong>Note:</strong> if you attempt to restart all nodes in one go after <strong>decreasing</strong> the value of any of those settings, Patroni will ignore the change and restart the standby with the original setting value, thus requiring that you restart the standbys again later. Patroni does that to prevent the standby to enter in an infinite crash loop, because PostgreSQL quits with a <cite>FATAL</cite> message if you attempt to set any of those parameters to a value lower than what is visible in <code class="docutils literal notranslate"><span class="pre">pg_controldata</span></code> on the Standby node. In other words, we can only decrease the setting on the standby once its <code class="docutils literal notranslate"><span class="pre">pg_controldata</span></code> is up-to-date with the primary in regards to these changes on the primary.</p>
+<p>More information about that can be found at <a class="reference external" href="https://www.postgresql.org/docs/current/hot-standby.html#HOT-STANDBY-ADMIN">PostgreSQL Administrator’s Overview</a><span class="link-target"> [https://www.postgresql.org/docs/current/hot-standby.html#HOT-STANDBY-ADMIN]</span>.</p>
+</section>
+<section id="patroni-configuration-parameters">
+<h3>Patroni configuration parameters</h3>
+<p>Also the following Patroni configuration options <strong>can be changed only dynamically</strong>:</p>
+<ul class="simple">
+<li><p><strong>ttl</strong>: 30</p></li>
+<li><p><strong>loop_wait</strong>: 10</p></li>
+<li><p><strong>retry_timeouts</strong>: 10</p></li>
+<li><p><strong>maximum_lag_on_failover</strong>: 1048576</p></li>
+<li><p><strong>max_timelines_history</strong>: 0</p></li>
+<li><p><strong>check_timeline</strong>: false</p></li>
+<li><p><strong>postgresql.use_slots</strong>: true</p></li>
+</ul>
+<p>Upon changing these options, Patroni will read the relevant section of the configuration stored in DCS and change its run-time values.</p>
+<p>Patroni nodes are dumping the state of the DCS options to disk upon for every change of the configuration into the file <code class="docutils literal notranslate"><span class="pre">patroni.dynamic.json</span></code> located in the Postgres data directory. Only the leader is allowed to restore these options from the on-disk dump if these are completely absent from the DCS or if they are invalid.</p>
+</section>
+</section>
+<section id="configuration-generation-and-validation">
+<span id="validate-generate-config"></span><h2>Configuration generation and validation</h2>
+<p>Patroni provides command-line interfaces for a Patroni <a class="reference internal" href="yaml_configuration.xhtml#yaml-configuration"><span class="std std-ref">local configuration</span></a> generation and validation. Using the <code class="docutils literal notranslate"><span class="pre">patroni</span></code> executable you can:</p>
+<ul class="simple">
+<li><p>Create a sample local Patroni configuration;</p></li>
+<li><p>Create a Patroni configuration file for the locally running PostgreSQL instance (e.g. as a preparation step for the <a class="reference internal" href="existing_data.xhtml#existing-data"><span class="std std-ref">Patroni integration</span></a>);</p></li>
+<li><p>Validate a given Patroni configuration file.</p></li>
+</ul>
+<section id="sample-patroni-configuration">
+<span id="generate-sample-config"></span><h3>Sample Patroni configuration</h3>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>patroni --generate-sample-config [configfile]
+</pre></div>
+</div>
+<section id="description">
+<h4>Description</h4>
+<p>Generate a sample Patroni configuration file in <code class="docutils literal notranslate"><span class="pre">yaml</span></code> format.
+Parameter values are defined using the <a class="reference internal" href="ENVIRONMENT.xhtml#environment"><span class="std std-ref">Environment configuration</span></a>, otherwise, if not set, the defaults used in Patroni or the <code class="docutils literal notranslate"><span class="pre">#FIXME</span></code> string for the values that should be later defined by the user.</p>
+<p>Some default values are defined based on the local setup:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p><strong>postgresql.listen</strong>: the IP address returned by <code class="docutils literal notranslate"><span class="pre">gethostname</span></code> call for the current machine’s hostname and the standard <code class="docutils literal notranslate"><span class="pre">5432</span></code> port.</p></li>
+<li><p><strong>postgresql.connect_address</strong>: the IP address returned by <code class="docutils literal notranslate"><span class="pre">gethostname</span></code> call for the current machine’s hostname and the standard <code class="docutils literal notranslate"><span class="pre">5432</span></code> port.</p></li>
+<li><p><strong>postgresql.authentication.rewind</strong>: is only defined if the PostgreSQL version can be defined from the binary and the version is 11 or later.</p></li>
+<li><p><strong>restapi.listen</strong>: IP address returned by <code class="docutils literal notranslate"><span class="pre">gethostname</span></code> call for the current machine’s hostname and the standard <code class="docutils literal notranslate"><span class="pre">8008</span></code> port.</p></li>
+<li><p><strong>restapi.connect_address</strong>: IP address returned by <code class="docutils literal notranslate"><span class="pre">gethostname</span></code> call for the current machine’s hostname and the standard <code class="docutils literal notranslate"><span class="pre">8008</span></code> port.</p></li>
+</ul>
+</div></blockquote>
+</section>
+<section id="parameters">
+<h4>Parameters</h4>
+<p><code class="docutils literal notranslate"><span class="pre">configfile</span></code> - full path to the configuration file used to store the result. If not provided, the result is sent to <code class="docutils literal notranslate"><span class="pre">stdout</span></code>.</p>
+</section>
+</section>
+<section id="patroni-configuration-for-a-running-instance">
+<span id="generate-config"></span><h3>Patroni configuration for a running instance</h3>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>patroni --generate-config [--dsn DSN] [configfile]
+</pre></div>
+</div>
+<section id="id2">
+<h4>Description</h4>
+<p>Generate a Patroni configuration in <code class="docutils literal notranslate"><span class="pre">yaml</span></code> format for the locally running PostgreSQL instance.
+Either the provided DSN (takes precedence) or PostgreSQL <a class="reference external" href="https://www.postgresql.org/docs/current/libpq-envars.html">environment variables</a><span class="link-target"> [https://www.postgresql.org/docs/current/libpq-envars.html]</span> will be used for the PostgreSQL connection. If the password is not provided, it should be entered via prompt.</p>
+<p>All the non-internal GUCs defined in the source Postgres instance, independently if they were set through a configuration file, through the postmaster command-line, or through environment variables, will be used as the source for the following Patroni configuration parameters:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p><strong>scope</strong>: <code class="docutils literal notranslate"><span class="pre">cluster_name</span></code> GUC value;</p></li>
+<li><p><strong>postgresql.listen</strong>: <code class="docutils literal notranslate"><span class="pre">listen_addresses</span></code> and <code class="docutils literal notranslate"><span class="pre">port</span></code> GUC values;</p></li>
+<li><p><strong>postgresql.datadir</strong>: <code class="docutils literal notranslate"><span class="pre">data_directory</span></code> GUC value;</p></li>
+<li><p><strong>postgresql.parameters</strong>: <code class="docutils literal notranslate"><span class="pre">archive_command</span></code>, <code class="docutils literal notranslate"><span class="pre">restore_command</span></code>, <code class="docutils literal notranslate"><span class="pre">archive_cleanup_command</span></code>, <code class="docutils literal notranslate"><span class="pre">recovery_end_command</span></code>, <code class="docutils literal notranslate"><span class="pre">ssl_passphrase_command</span></code>, <code class="docutils literal notranslate"><span class="pre">hba_file</span></code>, <code class="docutils literal notranslate"><span class="pre">ident_file</span></code>, <code class="docutils literal notranslate"><span class="pre">config_file</span></code> GUC values;</p></li>
+<li><p><strong>bootstrap.dcs</strong>: all other gathered PostgreSQL GUCs.</p></li>
+</ul>
+</div></blockquote>
+<p>If <code class="docutils literal notranslate"><span class="pre">scope</span></code>, <code class="docutils literal notranslate"><span class="pre">postgresql.listen</span></code> or <code class="docutils literal notranslate"><span class="pre">postgresql.datadir</span></code> is not set from the Postgres GUCs, the respective <a class="reference internal" href="ENVIRONMENT.xhtml#environment"><span class="std std-ref">Environment configuration</span></a> value is used.</p>
+<p>Other rules applied for the values definition:</p>
+<blockquote>
+<div><ul class="simple">
+<li><p><strong>name</strong>: <code class="docutils literal notranslate"><span class="pre">PATRONI_NAME</span></code> environment variable value if set, otherwise the current machine’s hostname.</p></li>
+<li><p><strong>postgresql.bin_dir</strong>: path to the Postgres binaries gathered from the running instance.</p></li>
+<li><p><strong>postgresql.connect_address</strong>: the IP address returned by <code class="docutils literal notranslate"><span class="pre">gethostname</span></code> call for the current machine’s hostname and the port used for the instance connection or the <code class="docutils literal notranslate"><span class="pre">port</span></code> GUC value.</p></li>
+<li><p><strong>postgresql.authentication.superuser</strong>: the configuration used for the instance connection;</p></li>
+<li><p><strong>postgresql.pg_hba</strong>: the lines gathered from the source instance’s <code class="docutils literal notranslate"><span class="pre">hba_file</span></code>.</p></li>
+<li><p><strong>postgresql.pg_ident</strong>: the lines gathered from the source instance’s <code class="docutils literal notranslate"><span class="pre">ident_file</span></code>.</p></li>
+<li><p><strong>restapi.listen</strong>: IP address returned by <code class="docutils literal notranslate"><span class="pre">gethostname</span></code> call for the current machine’s hostname and the standard <code class="docutils literal notranslate"><span class="pre">8008</span></code> port.</p></li>
+<li><p><strong>restapi.connect_address</strong>: IP address returned by <code class="docutils literal notranslate"><span class="pre">gethostname</span></code> call for the current machine’s hostname and the standard <code class="docutils literal notranslate"><span class="pre">8008</span></code> port.</p></li>
+</ul>
+</div></blockquote>
+<p>Other parameters defined using <a class="reference internal" href="ENVIRONMENT.xhtml#environment"><span class="std std-ref">Environment configuration</span></a> are also included into the configuration.</p>
+</section>
+<section id="id3">
+<h4>Parameters</h4>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">configfile</span></code></dt><dd><p>Full path to the configuration file used to store the result. If not provided, result is sent to <code class="docutils literal notranslate"><span class="pre">stdout</span></code>.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">dsn</span></code></dt><dd><p>Optional DSN string for the local PostgreSQL instance to get GUC values from.</p>
+</dd>
+</dl>
+</section>
+</section>
+<section id="validate-patroni-configuration">
+<h3>Validate Patroni configuration</h3>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>patroni --validate-config [configfile] [--ignore-listen-port | -i]
+</pre></div>
+</div>
+<section id="id4">
+<h4>Description</h4>
+<p>Validate the given Patroni configuration and print the information about the failed checks.</p>
+</section>
+<section id="id5">
+<h4>Parameters</h4>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">configfile</span></code></dt><dd><p>Full path to the configuration file to check. If not given or file does not exist, will try to read from the <code class="docutils literal notranslate"><span class="pre">PATRONI_CONFIG_VARIABLE</span></code> environment variable or, if not set, from the <a class="reference internal" href="ENVIRONMENT.xhtml#environment"><span class="std std-ref">Patroni environment variables</span></a>.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--ignore-listen-port</span> <span class="pre">|</span> <span class="pre">-i</span></code></dt><dd><p>Optional flag to ignore bind failures for <code class="docutils literal notranslate"><span class="pre">listen</span></code> ports that are already in use when validating the <code class="docutils literal notranslate"><span class="pre">configfile</span></code>.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--print</span> <span class="pre">|</span> <span class="pre">-p</span></code></dt><dd><p>Optional flag to print out local configuration (including environment configuration overrides) after it has been successfully validated.</p>
+</dd>
+</dl>
+</section>
+</section>
+</section>
+</section>
+
+
+            <div class="clearer"></div>
+          </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+  </body>
+</html>

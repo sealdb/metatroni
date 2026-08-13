@@ -1,7 +1,7 @@
 .. _replica_imaging_and_bootstrap:
 
 Replica 镜像与 bootstrap
-=============================
+========================
 
 Patroni 允许自定义新 replica 的创建方式。它还支持定义在全新空集群被 bootstrap 时应该发生什么。两者之间的区别定义得很明确：只有当 DCS 中存在集群的 ``initialize`` 键时，Patroni 才会创建 replica。如果不存在 ``initialize`` 键，Patroni 只在第一个取得 initialize 键锁的节点上执行 bootstrap。
 
@@ -26,7 +26,7 @@ PostgreSQL 提供了 ``initdb`` 命令来初始化新的集群，Patroni 默认�
                 restore_command: <method_specific_restore_command>
 
 
-每个 bootstrap 方法至少必须定义一个 ``name`` 和一个 ``command``。可以使用特殊的 ``initdb`` 方法触发默认行为，在这种情况下可以完全省略 ``method`` 参数。``command`` 可以使用绝对路径，也可以使用相对于 ``patroni`` 命令位置的路径。除了配置文件中定义的固定参数外，Patroni 还提供两个集群特定的参数：
+每个 bootstrap 方法至少必须定义一个 ``name`` 和一个 ``command``\。可以使用特殊的 ``initdb`` 方法触发默认行为，在这种情况下可以完全省略 ``method`` 参数。``command`` 可以使用绝对路径，也可以使用相对于 ``patroni`` 命令位置的路径。除了配置文件中定义的固定参数外，Patroni 还提供两个集群特定的参数：
 
 --scope
     要 bootstrap 的集群的名称
@@ -35,13 +35,13 @@ PostgreSQL 提供了 ``initdb`` 命令来初始化新的集群，Patroni 默认�
 
 可以通过将特殊的 ``no_params`` 参数设置为 ``True`` 来禁用传递这两个附加标志。
 
-如果 bootstrap 脚本返回 ``0``，Patroni 会尝试配置并启动由它生成的 PostgreSQL 实例。如果任何中间步骤失败，或者脚本返回非零值，Patroni 会认为 bootstrap 失败，自行清理并释放 initialize 锁，以便给另一个节点提供 bootstrap 的机会。
+如果 bootstrap 脚本返回 ``0``\，Patroni 会尝试配置并启动由它生成的 PostgreSQL 实例。如果任何中间步骤失败，或者脚本返回非零值，Patroni 会认为 bootstrap 失败，自行清理并释放 initialize 锁，以便给另一个节点提供 bootstrap 的机会。
 
-如果在自定义 bootstrap 方法所在的同一部分定义了 ``recovery_conf`` 块，Patroni 将在启动新 bootstrap 的实例之前生成一个 ``recovery.conf``（如果运行的是 PostgreSQL >= 12，则在 Postgres 配置上设置恢复设置）。通常，此类恢复配置应至少包含一个 ``recovery_target_*`` 参数，并将 ``recovery_target_action`` 设置为 ``promote``。
+如果在自定义 bootstrap 方法所在的同一部分定义了 ``recovery_conf`` 块，Patroni 将在启动新 bootstrap 的实例之前生成一个 ``recovery.conf``\（如果运行的是 PostgreSQL >= 12，则在 Postgres 配置上设置恢复设置）。通常，此类恢复配置应至少包含一个 ``recovery_target_*`` 参数，并将 ``recovery_target_action`` 设置为 ``promote``\。
 
-如果定义 ``keep_existing_recovery_conf`` 并将其设置为 ``True``，Patroni 将不会删除已存在的 ``recovery.conf`` 文件（PostgreSQL <= 11）。同样，在这种情况下，Patroni 不会删除已存在的 ``recovery.signal`` 或 ``standby.signal``，也不会覆盖已配置的恢复设置（PostgreSQL >= 12）。当使用 pgBackRest 等工具从备份进行 bootstrap（这些工具会为您生成适当的恢复配置）时，这非常有用。
+如果定义 ``keep_existing_recovery_conf`` 并将其设置为 ``True``\，Patroni 将不会删除已存在的 ``recovery.conf`` 文件（PostgreSQL <= 11）。同样，在这种情况下，Patroni 不会删除已存在的 ``recovery.signal`` 或 ``standby.signal``\，也不会覆盖已配置的恢复设置（PostgreSQL >= 12）。当使用 pgBackRest 等工具从备份进行 bootstrap（这些工具会为您生成适当的恢复配置）时，这非常有用。
 
-此外，在自定义 bootstrap 方法配置中提供的任何其他键/值对，都将以 ``--name=value`` 的格式作为参数传递给 ``command``。例如：
+此外，在自定义 bootstrap 方法配置中提供的任何其他键/值对，都将以 ``--name=value`` 的格式作为参数传递给 ``command``\。例如：
 
 .. code:: YAML
 
@@ -69,15 +69,15 @@ PostgreSQL 提供了 ``initdb`` 命令来初始化新的集群，Patroni 默认�
             ssh-command: ssh postgres@patroni-host
 
 .. note::
-    ``patroni_barman recover`` 要求您在 Barman 主机上同时配置 Barman 和 ``pg-backup-api``，以便它能够通过备份 API 执行远程的 ``barman recover``。
+    ``patroni_barman recover`` 要求您在 Barman 主机上同时配置 Barman 和 ``pg-backup-api``\，以便它能够通过备份 API 执行远程的 ``barman recover``\。
     上面的示例只使用了可用参数的一部分。您可以通过运行 ``patroni_barman recover --help`` 获取更多信息。
 
 .. _custom_replica_creation:
 
 构建 replica
------------------
+------------
 
-Patroni 使用久经考验的 ``pg_basebackup`` 来创建新的 replica。它的一个缺点是要求 leader 节点处于运行状态。另一个缺点是没有针对备份数据的「即时」压缩，也没有对过时备份文件的内置清理。有些人更喜欢其他备份解决方案，例如 ``WAL-E``、``pgBackRest``、``Barman`` 等，或者干脆自己编写脚本。为了满足所有这些使用场景，Patroni 支持运行自定义脚本来克隆新的 replica。这些在 ``postgresql`` 配置块中进行配置：
+Patroni 使用久经考验的 ``pg_basebackup`` 来创建新的 replica。它的一个缺点是要求 leader 节点处于运行状态。另一个缺点是没有针对备份数据的「即时」压缩，也没有对过时备份文件的内置清理。有些人更喜欢其他备份解决方案，例如 ``WAL-E``\、``pgBackRest``\、``Barman`` 等，或者干脆自己编写脚本。为了满足所有这些使用场景，Patroni 支持运行自定义脚本来克隆新的 replica。这些在 ``postgresql`` 配置块中进行配置：
 
 .. code:: YAML
 
@@ -137,7 +137,7 @@ Patroni 使用久经考验的 ``pg_basebackup`` 来创建新的 replica。它的
             max-rate: '100M'
 
 .. note::
-    ``patroni_barman recover`` 要求您在 Barman 主机上同时配置 Barman 和 ``pg-backup-api``，以便它能够通过备份 API 执行远程的 ``barman recover``。
+    ``patroni_barman recover`` 要求您在 Barman 主机上同时配置 Barman 和 ``pg-backup-api``\，以便它能够通过备份 API 执行远程的 ``barman recover``\。
     上面的示例只使用了可用参数的一部分。您可以通过运行 ``patroni_barman recover --help`` 获取更多信息。
 
 ``create_replica_methods`` 定义了可用的 replica 创建方法及其执行顺序。Patroni 会在第一个返回 0 的方法处停止。每个方法都应在配置文件中定义单独的部分，列出要执行的命令以及应传递给该命令的任何自定义参数。所有参数都将以 ``--name=value`` 格式传递。除了用户定义的参数之外，Patroni 还提供几个集群特定的参数：
@@ -170,7 +170,7 @@ Patroni 使用久经考验的 ``pg_basebackup`` 来创建新的 replica。它的
 路径作为选项，以便在 replica 构建或重新初始化后符号链接仍然存在。不过，此选项仅从 v10 开始支持。
 
 您可以将 basebackup 参数指定为映射（键值对）或元素列表，其中每个元素
-可以是键值对，也可以是单个键（用于不接受任何值的选项，例如 ``--verbose``）。
+可以是键值对，也可以是单个键（用于不接受任何值的选项，例如 ``--verbose``\）。
 请考虑以下两个示例：
 
 .. code:: YAML

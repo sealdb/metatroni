@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Replica imaging and bootstrap</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="_static/epub.css" />
+    <link rel="stylesheet" type="text/css" href="_static/github_style.css" />
+    <link rel="stylesheet" type="text/css" href="_static/custom.css" /> 
+  </head><body>
+
+    <div class="document">
+      <div class="documentwrapper">
+          <div class="body" role="main">
+            
+  <section id="replica-imaging-and-bootstrap">
+<span id="id1"></span><h1>Replica imaging and bootstrap</h1>
+<p>Patroni allows customizing creation of a new replica. It also supports defining what happens when the new empty cluster
+is being bootstrapped. The distinction between two is well defined: Patroni creates replicas only if the <code class="docutils literal notranslate"><span class="pre">initialize</span></code>
+key is present in DCS for the cluster. If there is no <code class="docutils literal notranslate"><span class="pre">initialize</span></code> key - Patroni calls bootstrap exclusively on the
+first node that takes the initialize key lock.</p>
+<section id="bootstrap">
+<span id="custom-bootstrap"></span><h2>Bootstrap</h2>
+<p>PostgreSQL provides <code class="docutils literal notranslate"><span class="pre">initdb</span></code> command to initialize a new cluster and Patroni calls it by default. In certain cases,
+particularly when creating a new cluster as a copy of an existing one, it is necessary to replace a built-in method with
+custom actions. Patroni supports executing user-defined scripts to bootstrap new clusters, supplying some required
+arguments to them, i.e. the name of the cluster and the path to the data directory. This is configured in the
+<code class="docutils literal notranslate"><span class="pre">bootstrap</span></code> section of the Patroni configuration. For example:</p>
+<div class="highlight-YAML notranslate"><div class="highlight"><pre><span></span><span class="nt">bootstrap</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">method</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">&lt;custom_bootstrap_method_name&gt;</span>
+<span class="w">    </span><span class="nt">&lt;custom_bootstrap_method_name&gt;</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">command</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">&lt;path_to_custom_bootstrap_script&gt; [param1 [, ...]]</span>
+<span class="w">        </span><span class="nt">keep_existing_recovery_conf</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">False</span>
+<span class="w">        </span><span class="nt">no_params</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">False</span>
+<span class="w">        </span><span class="nt">recovery_conf</span><span class="p">:</span>
+<span class="w">            </span><span class="nt">recovery_target_action</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">promote</span>
+<span class="w">            </span><span class="nt">recovery_target_timeline</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">latest</span>
+<span class="w">            </span><span class="nt">restore_command</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">&lt;method_specific_restore_command&gt;</span>
+</pre></div>
+</div>
+<p>Each bootstrap method must define at least a <code class="docutils literal notranslate"><span class="pre">name</span></code> and a <code class="docutils literal notranslate"><span class="pre">command</span></code>. A special <code class="docutils literal notranslate"><span class="pre">initdb</span></code> method is available to trigger
+the default behavior, in which case <code class="docutils literal notranslate"><span class="pre">method</span></code> parameter can be omitted altogether. The <code class="docutils literal notranslate"><span class="pre">command</span></code> can be specified using either
+an absolute path, or the one relative to the <code class="docutils literal notranslate"><span class="pre">patroni</span></code> command location. In addition to the fixed parameters defined
+in the configuration files, Patroni supplies two cluster-specific ones:</p>
+<dl class="option-list">
+<dt><kbd><span class="option">--scope</span></kbd></dt>
+<dd><p>Name of the cluster to be bootstrapped</p>
+</dd>
+<dt><kbd><span class="option">--datadir</span></kbd></dt>
+<dd><p>Path to the data directory of the cluster instance to be bootstrapped</p>
+</dd>
+</dl>
+<p>Passing these two additional flags can be disabled by setting a special <code class="docutils literal notranslate"><span class="pre">no_params</span></code> parameter to <code class="docutils literal notranslate"><span class="pre">True</span></code>.</p>
+<p>If the bootstrap script returns <code class="docutils literal notranslate"><span class="pre">0</span></code>, Patroni tries to configure and start the PostgreSQL instance produced by it. If any
+of the intermediate steps fail, or the script returns a non-zero value, Patroni assumes that the bootstrap has failed,
+cleans up after itself and releases the initialize lock to give another node the opportunity to bootstrap.</p>
+<p>If a <code class="docutils literal notranslate"><span class="pre">recovery_conf</span></code> block is defined in the same section as the custom bootstrap method, Patroni will generate a
+<code class="docutils literal notranslate"><span class="pre">recovery.conf</span></code> before starting the newly bootstrapped instance (or set the recovery settings on Postgres configuration if
+running PostgreSQL &gt;= 12).
+Typically, such recovery configuration should contain at least one of the <code class="docutils literal notranslate"><span class="pre">recovery_target_*</span></code> parameters, together with the <code class="docutils literal notranslate"><span class="pre">recovery_target_action</span></code> set to <code class="docutils literal notranslate"><span class="pre">promote</span></code>.</p>
+<p>If <code class="docutils literal notranslate"><span class="pre">keep_existing_recovery_conf</span></code> is defined and set to <code class="docutils literal notranslate"><span class="pre">True</span></code>, Patroni will not remove the existing <code class="docutils literal notranslate"><span class="pre">recovery.conf</span></code> file if it exists (PostgreSQL &lt;= 11).
+Similarly, in that case Patroni will not remove the existing <code class="docutils literal notranslate"><span class="pre">recovery.signal</span></code> or <code class="docutils literal notranslate"><span class="pre">standby.signal</span></code> if either exists, nor will it override the configured recovery settings (PostgreSQL &gt;= 12).
+This is useful when bootstrapping from a backup with tools like pgBackRest that generate the appropriate recovery configuration for you.</p>
+<p>Besides that, any additional key/value pairs informed in the custom bootstrap method configuration will be passed as arguments to <code class="docutils literal notranslate"><span class="pre">command</span></code> in the format <code class="docutils literal notranslate"><span class="pre">--name=value</span></code>. For example:</p>
+<div class="highlight-YAML notranslate"><div class="highlight"><pre><span></span><span class="nt">bootstrap</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">method</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">&lt;custom_bootstrap_method_name&gt;</span>
+<span class="w">    </span><span class="nt">&lt;custom_bootstrap_method_name&gt;</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">command</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">&lt;path_to_custom_bootstrap_script&gt;</span>
+<span class="w">        </span><span class="nt">arg1</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">value1</span>
+<span class="w">        </span><span class="nt">arg2</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">value2</span>
+</pre></div>
+</div>
+<p>Makes the configured <code class="docutils literal notranslate"><span class="pre">command</span></code> to be called additionally with <code class="docutils literal notranslate"><span class="pre">--arg1=value1</span> <span class="pre">--arg2=value2</span></code> command-line arguments.</p>
+<blockquote>
+<div><div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Bootstrap methods are neither chained, nor fallen-back to the default one in case the primary one fails</p>
+</div>
+</div></blockquote>
+<p>As an example, you are able to bootstrap a fresh Patroni cluster from a Barman backup with a configuration like this:</p>
+<div class="highlight-YAML notranslate"><div class="highlight"><pre><span></span><span class="nt">bootstrap</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">method</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">barman</span>
+<span class="w">    </span><span class="nt">barman</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">keep_existing_recovery_conf</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<span class="w">        </span><span class="nt">command</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">patroni_barman --api-url https://barman-host:7480 recover</span>
+<span class="w">        </span><span class="nt">barman-server</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my_server</span>
+<span class="w">        </span><span class="nt">ssh-command</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ssh postgres@patroni-host</span>
+</pre></div>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p><code class="docutils literal notranslate"><span class="pre">patroni_barman</span> <span class="pre">recover</span></code> requires that you have both Barman and <code class="docutils literal notranslate"><span class="pre">pg-backup-api</span></code> configured in the Barman host, so it can execute a remote <code class="docutils literal notranslate"><span class="pre">barman</span> <span class="pre">recover</span></code> through the backup API.
+The above example uses a subset of the available parameters. You can get more information running <code class="docutils literal notranslate"><span class="pre">patroni_barman</span> <span class="pre">recover</span> <span class="pre">--help</span></code>.</p>
+</div>
+</section>
+<section id="building-replicas">
+<span id="custom-replica-creation"></span><h2>Building replicas</h2>
+<p>Patroni uses tried and proven <code class="docutils literal notranslate"><span class="pre">pg_basebackup</span></code> in order to create new replicas. One downside of it is that it requires
+a running leader node. Another one is the lack of ‘on-the-fly’ compression for the backup data and no built-in cleanup
+for outdated backup files. Some people prefer other backup solutions, such as <code class="docutils literal notranslate"><span class="pre">WAL-E</span></code>, <code class="docutils literal notranslate"><span class="pre">pgBackRest</span></code>, <code class="docutils literal notranslate"><span class="pre">Barman</span></code> and
+others, or simply roll their own scripts. In order to accommodate all those use-cases Patroni supports running custom
+scripts to clone a new replica. Those are configured in the <code class="docutils literal notranslate"><span class="pre">postgresql</span></code> configuration block:</p>
+<div class="highlight-YAML notranslate"><div class="highlight"><pre><span></span><span class="nt">postgresql</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">create_replica_methods</span><span class="p">:</span>
+<span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">&lt;method name&gt;</span>
+<span class="w">    </span><span class="nt">&lt;method name&gt;</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">command</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">&lt;command name&gt;</span>
+<span class="w">        </span><span class="nt">keep_data</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">True</span>
+<span class="w">        </span><span class="nt">no_params</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">True</span>
+<span class="w">        </span><span class="nt">no_leader</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+</pre></div>
+</div>
+<p>example: wal_e</p>
+<div class="highlight-YAML notranslate"><div class="highlight"><pre><span></span><span class="nt">postgresql</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">create_replica_methods</span><span class="p">:</span>
+<span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">wal_e</span>
+<span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">basebackup</span>
+<span class="w">    </span><span class="nt">wal_e</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">command</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">patroni_wale_restore</span>
+<span class="w">        </span><span class="nt">no_leader</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+<span class="w">        </span><span class="nt">envdir</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{{</span><span class="nv">WALE_ENV_DIR</span><span class="p p-Indicator">}}</span>
+<span class="w">        </span><span class="nt">use_iam</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+<span class="w">    </span><span class="nt">basebackup</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">max-rate</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;100M&#39;</span>
+</pre></div>
+</div>
+<p>example: pgbackrest</p>
+<div class="highlight-YAML notranslate"><div class="highlight"><pre><span></span><span class="nt">postgresql</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">create_replica_methods</span><span class="p">:</span>
+<span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">pgbackrest</span>
+<span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">basebackup</span>
+<span class="w">    </span><span class="nt">pgbackrest</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">command</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/usr/bin/pgbackrest --stanza=&lt;scope&gt; --delta restore</span>
+<span class="w">        </span><span class="nt">keep_data</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">True</span>
+<span class="w">        </span><span class="nt">no_params</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">True</span>
+<span class="w">    </span><span class="nt">basebackup</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">max-rate</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;100M&#39;</span>
+</pre></div>
+</div>
+<p>example: Barman</p>
+<div class="highlight-YAML notranslate"><div class="highlight"><pre><span></span><span class="nt">postgresql</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">create_replica_methods</span><span class="p">:</span>
+<span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">barman</span>
+<span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">basebackup</span>
+<span class="w">    </span><span class="nt">barman</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">command</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">patroni_barman --api-url https://barman-host:7480 recover</span>
+<span class="w">        </span><span class="nt">barman-server</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my_server</span>
+<span class="w">        </span><span class="nt">ssh-command</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ssh postgres@patroni-host</span>
+<span class="w">    </span><span class="nt">basebackup</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">max-rate</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;100M&#39;</span>
+</pre></div>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p><code class="docutils literal notranslate"><span class="pre">patroni_barman</span> <span class="pre">recover</span></code> requires that you have both Barman and <code class="docutils literal notranslate"><span class="pre">pg-backup-api</span></code> configured in the Barman host, so it can execute a remote <code class="docutils literal notranslate"><span class="pre">barman</span> <span class="pre">recover</span></code> through the backup API.
+The above example uses a subset of the available parameters. You can get more information running <code class="docutils literal notranslate"><span class="pre">patroni_barman</span> <span class="pre">recover</span> <span class="pre">--help</span></code>.</p>
+</div>
+<p>The <code class="docutils literal notranslate"><span class="pre">create_replica_methods</span></code> defines available replica creation methods and the order of executing them. Patroni will
+stop on the first one that returns 0. Each method should define a separate section in the configuration file, listing the command
+to execute and any custom parameters that should be passed to that command. All parameters will be passed in a
+<code class="docutils literal notranslate"><span class="pre">--name=value</span></code> format. Besides user-defined parameters, Patroni supplies a couple of cluster-specific ones:</p>
+<dl class="option-list">
+<dt><kbd><span class="option">--scope</span></kbd></dt>
+<dd><p>Which cluster this replica belongs to</p>
+</dd>
+<dt><kbd><span class="option">--datadir</span></kbd></dt>
+<dd><p>Path to the data directory of the replica</p>
+</dd>
+<dt><kbd><span class="option">--role</span></kbd></dt>
+<dd><p>Always ‘replica’</p>
+</dd>
+<dt><kbd><span class="option">--connstring</span></kbd></dt>
+<dd><p>Connection string to connect to the cluster member to clone from (primary or other replica). The user in the
+connection string can execute SQL and replication protocol commands.</p>
+</dd>
+</dl>
+<p>A special <code class="docutils literal notranslate"><span class="pre">no_leader</span></code> parameter, if defined, allows Patroni to call the replica creation method even if there is no
+running leader or replicas. In that case, an empty string will be passed in a connection string. This is useful for
+restoring the formerly running cluster from the binary backup.</p>
+<p>A special <code class="docutils literal notranslate"><span class="pre">keep_data</span></code> parameter, if defined, will instruct Patroni to  not clean PGDATA folder before calling restore.</p>
+<p>A special <code class="docutils literal notranslate"><span class="pre">no_params</span></code> parameter, if defined, restricts passing parameters to custom command.</p>
+<p>A <code class="docutils literal notranslate"><span class="pre">basebackup</span></code> method is a special case: it will be used if
+<code class="docutils literal notranslate"><span class="pre">create_replica_methods</span></code> is empty, although it is possible
+to list it explicitly among the <code class="docutils literal notranslate"><span class="pre">create_replica_methods</span></code> methods. This method initializes a new replica with the
+<code class="docutils literal notranslate"><span class="pre">pg_basebackup</span></code>, the base backup is taken from the leader unless there are replicas with <code class="docutils literal notranslate"><span class="pre">clonefrom</span></code> tag, in which case one
+of such replicas will be used as the origin for pg_basebackup. It works without any configuration; however, it is
+possible to specify a <code class="docutils literal notranslate"><span class="pre">basebackup</span></code> configuration section. Same rules as with the other method configuration apply,
+namely, only long (with –) options should be specified there. Not all parameters make sense, if you override a connection
+string or provide an option to created tar-ed or compressed base backups, patroni won’t be able to make a replica out
+of it. There is no validation performed on the names or values of the parameters passed to the <code class="docutils literal notranslate"><span class="pre">basebackup</span></code> section.
+Also note that in case symlinks are used for the WAL folder it is up to the user to specify the correct <code class="docutils literal notranslate"><span class="pre">--waldir</span></code>
+path as an option, so that after replica buildup or re-initialization the symlink would persist. This option is supported
+only since v10 though.</p>
+<p>You can specify basebackup parameters as either a map (key-value pairs) or a list of elements, where each element
+could be either a key-value pair or a single key (for options that does not receive any values, for instance, <code class="docutils literal notranslate"><span class="pre">--verbose</span></code>).
+Consider those 2 examples:</p>
+<div class="highlight-YAML notranslate"><div class="highlight"><pre><span></span><span class="nt">postgresql</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">basebackup</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">max-rate</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;100M&#39;</span>
+<span class="w">        </span><span class="nt">checkpoint</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;fast&#39;</span>
+</pre></div>
+</div>
+<p>and</p>
+<div class="highlight-YAML notranslate"><div class="highlight"><pre><span></span><span class="nt">postgresql</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">basebackup</span><span class="p">:</span>
+<span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">verbose</span>
+<span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">max-rate</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;100M&#39;</span>
+<span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">waldir</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/pg-wal-mount/external-waldir</span>
+</pre></div>
+</div>
+<p>If all replica creation methods fail, Patroni will try again all methods in order during the next event loop cycle.</p>
+</section>
+</section>
+
+
+            <div class="clearer"></div>
+          </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+  </body>
+</html>

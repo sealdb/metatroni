@@ -1,0 +1,805 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:epub="http://www.idpf.org/2007/ops" lang="en" xml:lang="en">
+  <head>
+    <title>Table of Contents</title>
+  </head>
+  <body>
+    <nav epub:type="toc">
+      <h1>Table of Contents</h1>
+      <ol>
+        <li>
+          <a href="index.xhtml">Metatroni: HA with ZooKeeper, etcd or Consul (based on Patroni)</a>
+        </li>
+        <li>
+          <a href="README.xhtml">Introduction</a>
+          <ol>
+            <li>
+              <a href="README.xhtml#development-status">Development Status</a>
+            </li>
+            <li>
+              <a href="README.xhtml#technical-requirements-installation">Technical Requirements/Installation</a>
+            </li>
+            <li>
+              <a href="README.xhtml#planning-the-number-of-postgresql-nodes">Planning the Number of PostgreSQL Nodes</a>
+            </li>
+            <li>
+              <a href="README.xhtml#running-and-configuring">Running and Configuring</a>
+            </li>
+            <li>
+              <a href="README.xhtml#yaml-configuration">YAML Configuration</a>
+            </li>
+            <li>
+              <a href="README.xhtml#environment-configuration">Environment Configuration</a>
+            </li>
+            <li>
+              <a href="README.xhtml#replication-choices">Replication Choices</a>
+            </li>
+            <li>
+              <a href="README.xhtml#applications-should-not-use-superusers">Applications Should Not Use Superusers</a>
+            </li>
+            <li>
+              <a href="README.xhtml#testing-your-ha-solution">Testing Your HA Solution</a>
+            </li>
+          </ol>
+        </li>
+        <li>
+          <a href="installation.xhtml">Installation</a>
+          <ol>
+            <li>
+              <a href="installation.xhtml#pre-requirements-for-mac-os">Pre-requirements for Mac OS</a>
+            </li>
+            <li>
+              <a href="installation.xhtml#psycopg">Psycopg</a>
+            </li>
+            <li>
+              <a href="installation.xhtml#general-installation-for-pip">General installation for pip</a>
+            </li>
+            <li>
+              <a href="installation.xhtml#package-installation-on-linux">Package installation on Linux</a>
+              <ol>
+                <li>
+                  <a href="installation.xhtml#installing-on-debian-derivatives">Installing on Debian derivatives</a>
+                </li>
+                <li>
+                  <a href="installation.xhtml#installing-on-redhat-derivatives">Installing on RedHat derivatives</a>
+                </li>
+                <li>
+                  <a href="installation.xhtml#installing-on-suse-enterprise-linux">Installing on SUSE Enterprise Linux</a>
+                </li>
+              </ol>
+            </li>
+            <li>
+              <a href="installation.xhtml#upgrading">Upgrading</a>
+            </li>
+          </ol>
+        </li>
+        <li>
+          <a href="patroni_configuration.xhtml">Patroni configuration</a>
+          <ol>
+            <li>
+              <a href="patroni_configuration.xhtml#important-rules">Important rules</a>
+              <ol>
+                <li>
+                  <a href="patroni_configuration.xhtml#postgresql-parameters-controlled-by-patroni">PostgreSQL parameters controlled by Patroni</a>
+                </li>
+                <li>
+                  <a href="patroni_configuration.xhtml#postgresql-parameters-that-touch-shared-memory">PostgreSQL parameters that touch shared memory</a>
+                </li>
+                <li>
+                  <a href="patroni_configuration.xhtml#patroni-configuration-parameters">Patroni configuration parameters</a>
+                </li>
+              </ol>
+            </li>
+            <li>
+              <a href="patroni_configuration.xhtml#configuration-generation-and-validation">Configuration generation and validation</a>
+              <ol>
+                <li>
+                  <a href="patroni_configuration.xhtml#sample-patroni-configuration">Sample Patroni configuration</a>
+                </li>
+                <li>
+                  <a href="patroni_configuration.xhtml#patroni-configuration-for-a-running-instance">Patroni configuration for a running instance</a>
+                </li>
+                <li>
+                  <a href="patroni_configuration.xhtml#validate-patroni-configuration">Validate Patroni configuration</a>
+                </li>
+              </ol>
+            </li>
+          </ol>
+        </li>
+        <li>
+          <a href="rest_api.xhtml">Patroni REST API</a>
+          <ol>
+            <li>
+              <a href="rest_api.xhtml#health-check-endpoints">Health check endpoints</a>
+            </li>
+            <li>
+              <a href="rest_api.xhtml#monitoring-endpoint">Monitoring endpoint</a>
+              <ol>
+                <li>
+                  <a href="rest_api.xhtml#postgresql-state-values">PostgreSQL State Values</a>
+                </li>
+              </ol>
+            </li>
+            <li>
+              <a href="rest_api.xhtml#cluster-status-endpoints">Cluster status endpoints</a>
+            </li>
+            <li>
+              <a href="rest_api.xhtml#config-endpoint">Config endpoint</a>
+            </li>
+            <li>
+              <a href="rest_api.xhtml#switchover-and-failover-endpoints">Switchover and failover endpoints</a>
+              <ol>
+                <li>
+                  <a href="rest_api.xhtml#switchover">Switchover</a>
+                </li>
+                <li>
+                  <a href="rest_api.xhtml#failover">Failover</a>
+                </li>
+                <li>
+                  <a href="rest_api.xhtml#healthy-standby">Healthy standby</a>
+                </li>
+              </ol>
+            </li>
+            <li>
+              <a href="rest_api.xhtml#restart-endpoint">Restart endpoint</a>
+            </li>
+            <li>
+              <a href="rest_api.xhtml#reload-endpoint">Reload endpoint</a>
+            </li>
+            <li>
+              <a href="rest_api.xhtml#reinitialize-endpoint">Reinitialize endpoint</a>
+            </li>
+          </ol>
+        </li>
+        <li>
+          <a href="patronictl.xhtml">patronictl</a>
+          <ol>
+            <li>
+              <a href="patronictl.xhtml#configuration">Configuration</a>
+            </li>
+            <li>
+              <a href="patronictl.xhtml#usage">Usage</a>
+              <ol>
+                <li>
+                  <a href="patronictl.xhtml#patronictl-dsn">patronictl dsn</a>
+                </li>
+                <li>
+                  <a href="patronictl.xhtml#patronictl-edit-config">patronictl edit-config</a>
+                </li>
+                <li>
+                  <a href="patronictl.xhtml#patronictl-failover">patronictl failover</a>
+                </li>
+                <li>
+                  <a href="patronictl.xhtml#patronictl-flush">patronictl flush</a>
+                </li>
+                <li>
+                  <a href="patronictl.xhtml#patronictl-history">patronictl history</a>
+                </li>
+                <li>
+                  <a href="patronictl.xhtml#patronictl-list">patronictl list</a>
+                </li>
+                <li>
+                  <a href="patronictl.xhtml#patronictl-pause">patronictl pause</a>
+                </li>
+                <li>
+                  <a href="patronictl.xhtml#patronictl-query">patronictl query</a>
+                </li>
+                <li>
+                  <a href="patronictl.xhtml#patronictl-reinit">patronictl reinit</a>
+                </li>
+                <li>
+                  <a href="patronictl.xhtml#patronictl-reload">patronictl reload</a>
+                </li>
+                <li>
+                  <a href="patronictl.xhtml#patronictl-remove">patronictl remove</a>
+                </li>
+                <li>
+                  <a href="patronictl.xhtml#patronictl-restart">patronictl restart</a>
+                </li>
+                <li>
+                  <a href="patronictl.xhtml#patronictl-resume">patronictl resume</a>
+                </li>
+                <li>
+                  <a href="patronictl.xhtml#patronictl-show-config">patronictl show-config</a>
+                </li>
+                <li>
+                  <a href="patronictl.xhtml#patronictl-switchover">patronictl switchover</a>
+                </li>
+                <li>
+                  <a href="patronictl.xhtml#patronictl-topology">patronictl topology</a>
+                </li>
+                <li>
+                  <a href="patronictl.xhtml#patronictl-version">patronictl version</a>
+                </li>
+              </ol>
+            </li>
+          </ol>
+        </li>
+        <li>
+          <a href="replica_bootstrap.xhtml">Replica imaging and bootstrap</a>
+          <ol>
+            <li>
+              <a href="replica_bootstrap.xhtml#bootstrap">Bootstrap</a>
+            </li>
+            <li>
+              <a href="replica_bootstrap.xhtml#building-replicas">Building replicas</a>
+            </li>
+          </ol>
+        </li>
+        <li>
+          <a href="replication_modes.xhtml">Replication modes</a>
+          <ol>
+            <li>
+              <a href="replication_modes.xhtml#asynchronous-mode-durability">Asynchronous mode durability</a>
+            </li>
+            <li>
+              <a href="replication_modes.xhtml#postgresql-synchronous-replication">PostgreSQL synchronous replication</a>
+            </li>
+            <li>
+              <a href="replication_modes.xhtml#synchronous-mode">Synchronous mode</a>
+            </li>
+            <li>
+              <a href="replication_modes.xhtml#synchronous-replication-factor">Synchronous Replication Factor</a>
+            </li>
+            <li>
+              <a href="replication_modes.xhtml#maximum-lag-on-synchronous-node">Maximum lag on synchronous node</a>
+            </li>
+            <li>
+              <a href="replication_modes.xhtml#synchronous-mode-implementation">Synchronous mode implementation</a>
+              <ol>
+                <li>
+                  <a href="replication_modes.xhtml#example">Example:</a>
+                </li>
+              </ol>
+            </li>
+            <li>
+              <a href="replication_modes.xhtml#quorum-commit-mode">Quorum commit mode</a>
+              <ol>
+                <li>
+                  <a href="replication_modes.xhtml#id5">Example:</a>
+                </li>
+              </ol>
+            </li>
+          </ol>
+        </li>
+        <li>
+          <a href="standby_cluster.xhtml">Standby cluster</a>
+        </li>
+        <li>
+          <a href="watchdog.xhtml">Watchdog support</a>
+          <ol>
+            <li>
+              <a href="watchdog.xhtml#setting-up-software-watchdog-on-linux">Setting up software watchdog on Linux</a>
+            </li>
+          </ol>
+        </li>
+        <li>
+          <a href="pause.xhtml">Pause/Resume mode for the cluster</a>
+          <ol>
+            <li>
+              <a href="pause.xhtml#the-goal">The goal</a>
+            </li>
+            <li>
+              <a href="pause.xhtml#the-implementation">The implementation</a>
+            </li>
+            <li>
+              <a href="pause.xhtml#user-guide">User guide</a>
+            </li>
+          </ol>
+        </li>
+        <li>
+          <a href="dcs_failsafe_mode.xhtml">DCS Failsafe Mode</a>
+          <ol>
+            <li>
+              <a href="dcs_failsafe_mode.xhtml#the-problem">The problem</a>
+            </li>
+            <li>
+              <a href="dcs_failsafe_mode.xhtml#reasons-for-the-current-implementation">Reasons for the current implementation</a>
+            </li>
+            <li>
+              <a href="dcs_failsafe_mode.xhtml#id2">DCS Failsafe Mode</a>
+            </li>
+            <li>
+              <a href="dcs_failsafe_mode.xhtml#low-level-implementation-details">Low-level implementation details</a>
+            </li>
+            <li>
+              <a href="dcs_failsafe_mode.xhtml#f-a-q">F.A.Q.</a>
+            </li>
+          </ol>
+        </li>
+        <li>
+          <a href="kubernetes.xhtml">Using Patroni with Kubernetes</a>
+          <ol>
+            <li>
+              <a href="kubernetes.xhtml#use-endpoints">Use Endpoints</a>
+            </li>
+            <li>
+              <a href="kubernetes.xhtml#use-configmaps">Use ConfigMaps</a>
+            </li>
+            <li>
+              <a href="kubernetes.xhtml#configuration">Configuration</a>
+              <ol>
+                <li>
+                  <a href="kubernetes.xhtml#customize-role-label">Customize role label</a>
+                </li>
+              </ol>
+            </li>
+            <li>
+              <a href="kubernetes.xhtml#examples">Examples</a>
+            </li>
+          </ol>
+        </li>
+        <li>
+          <a href="citus.xhtml">Citus support</a>
+          <ol>
+            <li>
+              <a href="citus.xhtml#tl-dr">TL;DR</a>
+            </li>
+            <li>
+              <a href="citus.xhtml#patronictl">patronictl</a>
+            </li>
+            <li>
+              <a href="citus.xhtml#citus-worker-switchover">Citus worker switchover</a>
+            </li>
+            <li>
+              <a href="citus.xhtml#secondary-nodes">Secondary nodes</a>
+            </li>
+            <li>
+              <a href="citus.xhtml#peek-into-dcs">Peek into DCS</a>
+            </li>
+            <li>
+              <a href="citus.xhtml#citus-on-kubernetes">Citus on Kubernetes</a>
+            </li>
+            <li>
+              <a href="citus.xhtml#citus-upgrades-and-postgresql-major-upgrades">Citus upgrades and PostgreSQL major upgrades</a>
+            </li>
+          </ol>
+        </li>
+        <li>
+          <a href="mysql.xhtml">MySQL high-availability support</a>
+          <ol>
+            <li>
+              <a href="mysql_architecture.xhtml">MySQL architecture and model</a>
+              <ol>
+                <li>
+                  <a href="mysql_architecture.xhtml#design-goals">Design goals</a>
+                </li>
+                <li>
+                  <a href="mysql_architecture.xhtml#cluster-layout">Cluster layout</a>
+                </li>
+                <li>
+                  <a href="mysql_architecture.xhtml#component-map">Component map</a>
+                </li>
+                <li>
+                  <a href="mysql_architecture.xhtml#capability-flags-vs-postgresql">Capability flags (vs PostgreSQL)</a>
+                </li>
+                <li>
+                  <a href="mysql_architecture.xhtml#dcs-data-model-mysql-specific">DCS data model (MySQL-specific)</a>
+                </li>
+                <li>
+                  <a href="mysql_architecture.xhtml#roles">Roles</a>
+                </li>
+                <li>
+                  <a href="mysql_architecture.xhtml#mode-selection-configuration-not-runtime-api">Mode selection (configuration, not runtime API)</a>
+                </li>
+                <li>
+                  <a href="mysql_architecture.xhtml#trust-boundaries">Trust boundaries</a>
+                </li>
+              </ol>
+            </li>
+            <li>
+              <a href="mysql_mechanisms.xhtml">MySQL HA mechanisms and sequences</a>
+              <ol>
+                <li>
+                  <a href="mysql_mechanisms.xhtml#ha-control-loop-shared-mysql-hooks">HA control loop (shared + MySQL hooks)</a>
+                </li>
+                <li>
+                  <a href="mysql_mechanisms.xhtml#async-semi-sync-failover-sequence">Async / semi-sync: failover sequence</a>
+                </li>
+                <li>
+                  <a href="mysql_mechanisms.xhtml#demote-rejoin-old-primary-returns">Demote + rejoin (old primary returns)</a>
+                </li>
+                <li>
+                  <a href="mysql_mechanisms.xhtml#semi-sync-quorum-safety">Semi-sync quorum safety</a>
+                </li>
+                <li>
+                  <a href="mysql_mechanisms.xhtml#mgr-steady-state">MGR: steady state</a>
+                </li>
+                <li>
+                  <a href="mysql_mechanisms.xhtml#mgr-majority-loss-gtid-election">MGR: majority-loss GTID election</a>
+                </li>
+                <li>
+                  <a href="mysql_mechanisms.xhtml#gtid-fork-incomparable-sets">GTID fork (incomparable sets)</a>
+                </li>
+                <li>
+                  <a href="mysql_mechanisms.xhtml#clone-bootstrap">Clone / bootstrap</a>
+                </li>
+                <li>
+                  <a href="mysql_mechanisms.xhtml#pause-interaction">Pause interaction</a>
+                </li>
+              </ol>
+            </li>
+            <li>
+              <a href="mysql_ops.xhtml">MySQL operations and FAQ</a>
+              <ol>
+                <li>
+                  <a href="mysql_ops.xhtml#prerequisites">Prerequisites</a>
+                </li>
+                <li>
+                  <a href="mysql_ops.xhtml#install">Install</a>
+                </li>
+                <li>
+                  <a href="mysql_ops.xhtml#deploy-checklist">Deploy checklist</a>
+                </li>
+                <li>
+                  <a href="mysql_ops.xhtml#configuration-reference-short">Configuration reference (short)</a>
+                </li>
+                <li>
+                  <a href="mysql_ops.xhtml#day-2-operations">Day-2 operations</a>
+                </li>
+                <li>
+                  <a href="mysql_ops.xhtml#haproxy">HAProxy</a>
+                </li>
+                <li>
+                  <a href="mysql_ops.xhtml#replication-mode-cutovers">Replication mode cutovers</a>
+                </li>
+                <li>
+                  <a href="mysql_ops.xhtml#monitoring-hooks">Monitoring hooks</a>
+                </li>
+                <li>
+                  <a href="mysql_ops.xhtml#integration-tests-dev">Integration tests (dev)</a>
+                </li>
+                <li>
+                  <a href="mysql_ops.xhtml#faq-troubleshooting">FAQ / troubleshooting</a>
+                </li>
+                <li>
+                  <a href="mysql_ops.xhtml#known-limitations-ops-view">Known limitations (ops view)</a>
+                </li>
+              </ol>
+            </li>
+            <li>
+              <a href="mysql.xhtml#what-you-get">What you get</a>
+            </li>
+            <li>
+              <a href="mysql.xhtml#quick-start">Quick start</a>
+            </li>
+            <li>
+              <a href="mysql.xhtml#read-next">Read next</a>
+            </li>
+          </ol>
+        </li>
+        <li>
+          <a href="existing_data.xhtml">Convert a Standalone to a Patroni Cluster</a>
+          <ol>
+            <li>
+              <a href="existing_data.xhtml#procedure">Procedure</a>
+            </li>
+          </ol>
+        </li>
+        <li>
+          <a href="existing_data.xhtml#major-upgrade-of-postgresql-version">Major Upgrade of PostgreSQL Version</a>
+          <ol>
+            <li>
+              <a href="existing_data.xhtml#faq">FAQ</a>
+            </li>
+          </ol>
+        </li>
+        <li>
+          <a href="tools_integration.xhtml">Integration with other tools</a>
+          <ol>
+            <li>
+              <a href="tools_integration.xhtml#barman">Barman</a>
+              <ol>
+                <li>
+                  <a href="tools_integration.xhtml#patroni-barman-recover">patroni_barman recover</a>
+                </li>
+                <li>
+                  <a href="tools_integration.xhtml#patroni-barman-config-switch">patroni_barman config-switch</a>
+                </li>
+              </ol>
+            </li>
+          </ol>
+        </li>
+        <li>
+          <a href="security.xhtml">Security Considerations</a>
+          <ol>
+            <li>
+              <a href="security.xhtml#protecting-dcs">Protecting DCS</a>
+            </li>
+            <li>
+              <a href="security.xhtml#protecting-the-rest-api">Protecting the REST API</a>
+            </li>
+          </ol>
+        </li>
+        <li>
+          <a href="ha_multi_dc.xhtml">HA multi datacenter</a>
+          <ol>
+            <li>
+              <a href="ha_multi_dc.xhtml#synchronous-replication">Synchronous Replication</a>
+            </li>
+            <li>
+              <a href="ha_multi_dc.xhtml#asynchronous-replication">Asynchronous Replication</a>
+            </li>
+            <li>
+              <a href="ha_multi_dc.xhtml#mysql-standby-sites">MySQL standby sites</a>
+            </li>
+          </ol>
+        </li>
+        <li>
+          <a href="faq.xhtml">FAQ</a>
+          <ol>
+            <li>
+              <a href="faq.xhtml#comparison-with-other-ha-solutions">Comparison with other HA solutions</a>
+            </li>
+            <li>
+              <a href="faq.xhtml#dcs">DCS</a>
+            </li>
+            <li>
+              <a href="faq.xhtml#patronictl">patronictl</a>
+            </li>
+            <li>
+              <a href="faq.xhtml#configuration">Configuration</a>
+            </li>
+            <li>
+              <a href="faq.xhtml#postgres-management">Postgres management</a>
+            </li>
+            <li>
+              <a href="faq.xhtml#concepts-and-requirements">Concepts and requirements</a>
+            </li>
+            <li>
+              <a href="faq.xhtml#automatic-failover">Automatic failover</a>
+            </li>
+            <li>
+              <a href="faq.xhtml#bootstrapping-and-standbys-creation">Bootstrapping and standbys creation</a>
+            </li>
+            <li>
+              <a href="faq.xhtml#monitoring">Monitoring</a>
+            </li>
+            <li>
+              <a href="faq.xhtml#mysql-backend">MySQL backend</a>
+            </li>
+          </ol>
+        </li>
+        <li>
+          <a href="releases.xhtml">Release notes</a>
+          <ol>
+            <li>
+              <a href="releases.xhtml#version-4-1-3">Version 4.1.3</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-4-1-2">Version 4.1.2</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-4-1-1">Version 4.1.1</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-4-1-0">Version 4.1.0</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-4-0-7">Version 4.0.7</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-4-0-6">Version 4.0.6</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-4-0-5">Version 4.0.5</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-4-0-4">Version 4.0.4</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-4-0-3">Version 4.0.3</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-4-0-2">Version 4.0.2</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-4-0-1">Version 4.0.1</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-4-0-0">Version 4.0.0</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-3-3-2">Version 3.3.2</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-3-3-1">Version 3.3.1</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-3-3-0">Version 3.3.0</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-3-2-2">Version 3.2.2</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-3-2-1">Version 3.2.1</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-3-2-0">Version 3.2.0</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-3-1-2">Version 3.1.2</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-3-1-1">Version 3.1.1</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-3-1-0">Version 3.1.0</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-3-0-4">Version 3.0.4</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-3-0-3">Version 3.0.3</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-3-0-2">Version 3.0.2</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-3-0-1">Version 3.0.1</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-3-0-0">Version 3.0.0</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-2-1-7">Version 2.1.7</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-2-1-6">Version 2.1.6</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-2-1-5">Version 2.1.5</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-2-1-4">Version 2.1.4</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-2-1-3">Version 2.1.3</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-2-1-2">Version 2.1.2</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-2-1-1">Version 2.1.1</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-2-1-0">Version 2.1.0</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-2-0-2">Version 2.0.2</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-2-0-1">Version 2.0.1</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-2-0-0">Version 2.0.0</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-1-6-5">Version 1.6.5</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-1-6-4">Version 1.6.4</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-1-6-3">Version 1.6.3</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-1-6-2">Version 1.6.2</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-1-6-1">Version 1.6.1</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-1-6-0">Version 1.6.0</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-1-5-6">Version 1.5.6</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-1-5-5">Version 1.5.5</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-1-5-4">Version 1.5.4</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-1-5-3">Version 1.5.3</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-1-5-2">Version 1.5.2</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-1-5-1">Version 1.5.1</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-1-5-0">Version 1.5.0</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-1-4-6">Version 1.4.6</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-1-4-5">Version 1.4.5</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-1-4-4">Version 1.4.4</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-1-4-3">Version 1.4.3</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-1-4-2">Version 1.4.2</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-1-4-1">Version 1.4.1</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-1-4">Version 1.4</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-1-3-6">Version 1.3.6</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-1-3-5">Version 1.3.5</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-1-3-4">Version 1.3.4</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-1-3-3">Version 1.3.3</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-1-3-2">Version 1.3.2</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-1-3-1">Version 1.3.1</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-1-3">Version 1.3</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-1-2">Version 1.2</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-1-1">Version 1.1</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-1-0">Version 1.0</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-0-90">Version 0.90</a>
+            </li>
+            <li>
+              <a href="releases.xhtml#version-0-80">Version 0.80</a>
+            </li>
+          </ol>
+        </li>
+        <li>
+          <a href="CONTRIBUTING.xhtml">Contributing</a>
+          <ol>
+            <li>
+              <a href="contributing_guidelines.xhtml">Contributing guidelines</a>
+              <ol>
+                <li>
+                  <a href="contributing_guidelines.xhtml#chatting">Chatting</a>
+                </li>
+                <li>
+                  <a href="contributing_guidelines.xhtml#reporting-bugs">Reporting bugs</a>
+                </li>
+                <li>
+                  <a href="contributing_guidelines.xhtml#running-tests">Running tests</a>
+                </li>
+                <li>
+                  <a href="contributing_guidelines.xhtml#testing-with-tox">Testing with tox</a>
+                </li>
+                <li>
+                  <a href="contributing_guidelines.xhtml#contributing-a-pull-request">Contributing a pull request</a>
+                </li>
+              </ol>
+            </li>
+          </ol>
+        </li>
+      </ol>
+    </nav>
+  </body>
+</html>

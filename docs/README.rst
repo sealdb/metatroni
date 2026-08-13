@@ -6,7 +6,13 @@ Introduction
 
 Patroni is a template for high availability (HA) PostgreSQL solutions using Python. Patroni originated as a fork of `Governor <https://github.com/compose/governor>`__, the project from Compose. It includes plenty of new features.
 
-For additional background info, see:
+**Metatroni** is a self-developed enhancement of Patroni:
+
+1. Fully includes all original Patroni capabilities.
+2. Additionally supports MySQL HA (``database.type: mysql``).
+3. Supports ZooKeeper, etcd, or Consul (and other DCS backends Patroni supports).
+
+MySQL details: :ref:`mysql`, :ref:`mysql_ops`. Upstream Patroni background:
 
 * `PostgreSQL HA with Kubernetes and Patroni <https://www.youtube.com/watch?v=iruaCgeG7qs>`__, talk by Josh Berkus at KubeCon 2016 (video)
 * `Feb. 2016 Zalando Tech blog post <https://engineering.zalando.com/posts/2016/02/zalandos-patroni-a-template-for-high-availability-postgresql.html>`__

@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Introduction</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="_static/epub.css" />
+    <link rel="stylesheet" type="text/css" href="_static/github_style.css" />
+    <link rel="stylesheet" type="text/css" href="_static/custom.css" /> 
+  </head><body>
+
+    <div class="document">
+      <div class="documentwrapper">
+          <div class="body" role="main">
+            
+  <section id="introduction">
+<span id="readme"></span><h1>Introduction</h1>
+<p><strong>Metatroni</strong> is a self-developed enhancement of Patroni:</p>
+<ol class="arabic simple">
+<li><p>Fully includes all original Patroni capabilities.</p></li>
+<li><p>Additionally supports MySQL HA (<code class="docutils literal notranslate"><span class="pre">database.type:</span> <span class="pre">mysql</span></code>).</p></li>
+<li><p>Supports ZooKeeper, etcd, or Consul (and other DCS backends Patroni supports).</p></li>
+</ol>
+<p>MySQL details: <a class="reference internal" href="mysql.xhtml#mysql"><span class="std std-ref">MySQL high-availability support</span></a>, <a class="reference internal" href="mysql_ops.xhtml#mysql-ops"><span class="std std-ref">MySQL operations and FAQ</span></a>. Upstream Patroni background:</p>
+<ul class="simple">
+<li><p><a class="reference external" href="https://www.youtube.com/watch?v=iruaCgeG7qs">PostgreSQL HA with Kubernetes and Patroni</a><span class="link-target"> [https://www.youtube.com/watch?v=iruaCgeG7qs]</span>, talk by Josh Berkus at KubeCon 2016 (video)</p></li>
+<li><p><a class="reference external" href="https://engineering.zalando.com/posts/2016/02/zalandos-patroni-a-template-for-high-availability-postgresql.html">Feb. 2016 Zalando Tech blog post</a><span class="link-target"> [https://engineering.zalando.com/posts/2016/02/zalandos-patroni-a-template-for-high-availability-postgresql.html]</span></p></li>
+</ul>
+<section id="development-status">
+<h2>Development Status</h2>
+<p>Patroni is in active development and accepts contributions. See our <a class="reference internal" href="CONTRIBUTING.xhtml#contributing"><span class="std std-ref">Contributing</span></a> section below for more details.</p>
+<p>We report new releases information <a class="reference internal" href="releases.xhtml#releases"><span class="std std-ref">here</span></a>.</p>
+</section>
+<section id="technical-requirements-installation">
+<h2>Technical Requirements/Installation</h2>
+<p>Go <a class="reference internal" href="installation.xhtml#installation"><span class="std std-ref">here</span></a> for guidance on installing and upgrading Patroni on various platforms.</p>
+</section>
+<section id="planning-the-number-of-postgresql-nodes">
+<span id="running-configuring"></span><h2>Planning the Number of PostgreSQL Nodes</h2>
+<p>Patroni/PostgreSQL nodes are decoupled from DCS nodes (except when Patroni implements RAFT on its own) and therefore
+there is no requirement on the minimal number of nodes. Running a cluster consisting of one primary and one standby is
+perfectly fine. You can add more standby nodes later.</p>
+<p><strong>2-node clusters</strong> (primary + standby) are common and provide automatic failover with high availability. Note that during failover, you’ll temporarily have no redundancy until the failed node rejoins.</p>
+<p><strong>DCS requirements</strong>: Your DCS (etcd, ZooKeeper, Consul) has to run with <strong>3 or 5 nodes</strong> for proper consensus and fault tolerance. A single DCS cluster can store information for hundreds or thousands of Patroni clusters using different namespace/scope combinations.</p>
+</section>
+<section id="running-and-configuring">
+<h2>Running and Configuring</h2>
+<p>The following section assumes Patroni repository as being cloned from <a class="reference external" href="https://github.com/patroni/patroni">https://github.com/patroni/patroni</a>. Namely, you
+will need example configuration files <cite>postgres0.yml</cite> and <cite>postgres1.yml</cite>. If you installed Patroni with pip, you can
+obtain those files from the git repository and replace <cite>./patroni.py</cite> below with <cite>patroni</cite> command.</p>
+<p>To get started, do the following from different terminals:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="o">&gt;</span> <span class="n">etcd</span> <span class="o">--</span><span class="n">data</span><span class="o">-</span><span class="nb">dir</span><span class="o">=</span><span class="n">data</span><span class="o">/</span><span class="n">etcd</span> <span class="o">--</span><span class="n">enable</span><span class="o">-</span><span class="n">v2</span><span class="o">=</span><span class="n">true</span>
+<span class="o">&gt;</span> <span class="o">./</span><span class="n">patroni</span><span class="o">.</span><span class="n">py</span> <span class="n">postgres0</span><span class="o">.</span><span class="n">yml</span>
+<span class="o">&gt;</span> <span class="o">./</span><span class="n">patroni</span><span class="o">.</span><span class="n">py</span> <span class="n">postgres1</span><span class="o">.</span><span class="n">yml</span>
+</pre></div>
+</div>
+<p>You will then see a high-availability cluster start up. Test different settings in the YAML files to see how the cluster’s behavior changes. Kill some of the components to see how the system behaves.</p>
+<p>Add more <code class="docutils literal notranslate"><span class="pre">postgres*.yml</span></code> files to create an even larger cluster.</p>
+<p>Patroni provides an <a class="reference external" href="http://www.haproxy.org/">HAProxy</a><span class="link-target"> [http://www.haproxy.org/]</span> configuration, which will give your application a single endpoint for connecting to the cluster’s leader. To configure,
+run:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="o">&gt;</span> <span class="n">haproxy</span> <span class="o">-</span><span class="n">f</span> <span class="n">haproxy</span><span class="o">.</span><span class="n">cfg</span>
+</pre></div>
+</div>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="o">&gt;</span> <span class="n">psql</span> <span class="o">--</span><span class="n">host</span> <span class="mf">127.0.0.1</span> <span class="o">--</span><span class="n">port</span> <span class="mi">5000</span> <span class="n">postgres</span>
+</pre></div>
+</div>
+</section>
+<section id="yaml-configuration">
+<h2>YAML Configuration</h2>
+<p>Go <a class="reference internal" href="yaml_configuration.xhtml#yaml-configuration"><span class="std std-ref">here</span></a> for comprehensive information about settings for etcd, consul, and ZooKeeper. And for an example, see <a class="reference external" href="https://github.com/patroni/patroni/blob/master/postgres0.yml">postgres0.yml</a><span class="link-target"> [https://github.com/patroni/patroni/blob/master/postgres0.yml]</span>.</p>
+</section>
+<section id="environment-configuration">
+<h2>Environment Configuration</h2>
+<p>Go <a class="reference internal" href="ENVIRONMENT.xhtml#environment"><span class="std std-ref">here</span></a> for comprehensive information about configuring(overriding) settings via environment variables.</p>
+</section>
+<section id="replication-choices">
+<h2>Replication Choices</h2>
+<p>Patroni uses Postgres’ streaming replication, which is asynchronous by default. Patroni’s asynchronous replication configuration allows for <code class="docutils literal notranslate"><span class="pre">maximum_lag_on_failover</span></code> settings. This setting ensures failover will not occur if a follower is more than a certain number of bytes behind the leader. This setting should be increased or decreased based on business requirements. It’s also possible to use synchronous replication for better durability guarantees. See <a class="reference internal" href="replication_modes.xhtml#replication-modes"><span class="std std-ref">replication modes documentation</span></a> for details.</p>
+</section>
+<section id="applications-should-not-use-superusers">
+<h2>Applications Should Not Use Superusers</h2>
+<p>When connecting from an application, always use a non-superuser. Patroni requires access to the database to function properly. By using a superuser from an application, you can potentially use the entire connection pool, including the connections reserved for superusers, with the <code class="docutils literal notranslate"><span class="pre">superuser_reserved_connections</span></code> setting. If Patroni cannot access the Primary because the connection pool is full, behavior will be undesirable.</p>
+</section>
+<section id="testing-your-ha-solution">
+<h2>Testing Your HA Solution</h2>
+<p>Testing an HA solution is a time consuming process, with many variables. This is particularly true considering a cross-platform application. You need a trained system administrator or a consultant to do this work. It is not something we can cover in depth in the documentation.</p>
+<p>That said, here are some pieces of your infrastructure you should be sure to test:</p>
+<ul class="simple">
+<li><p>Network (the network in front of your system as well as the NICs [physical or virtual] themselves)</p></li>
+<li><p>Disk IO</p></li>
+<li><p>file limits (nofile in Linux)</p></li>
+<li><p>RAM. Even if you have oomkiller turned off, the unavailability of RAM could cause issues.</p></li>
+<li><p>CPU</p></li>
+<li><p>Virtualization Contention (overcommitting the hypervisor)</p></li>
+<li><p>Any cgroup limitation (likely to be related to the above)</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">kill</span> <span class="pre">-9</span></code> of any postgres process (except postmaster!). This is a decent simulation of a segfault.</p></li>
+</ul>
+<p>One thing that you should not do is run <code class="docutils literal notranslate"><span class="pre">kill</span> <span class="pre">-9</span></code> on a postmaster process. This is because doing so does not mimic any real life scenario. If you are concerned your infrastructure is insecure and an attacker could run <code class="docutils literal notranslate"><span class="pre">kill</span> <span class="pre">-9</span></code>, no amount of HA process is going to fix that. The attacker will simply kill the process again, or cause chaos in another way.</p>
+</section>
+</section>
+
+
+            <div class="clearer"></div>
+          </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+  </body>
+</html>

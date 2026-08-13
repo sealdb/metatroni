@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>HA multi datacenter</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="_static/epub.css" />
+    <link rel="stylesheet" type="text/css" href="_static/github_style.css" />
+    <link rel="stylesheet" type="text/css" href="_static/custom.css" /> 
+  </head><body>
+
+    <div class="document">
+      <div class="documentwrapper">
+          <div class="body" role="main">
+            
+  <section id="ha-multi-datacenter">
+<span id="ha-multi-dc"></span><h1>HA multi datacenter</h1>
+<p>The high availability of a PostgreSQL cluster deployed in multiple data centers is based on replication, which can be synchronous or asynchronous (see <a class="reference internal" href="replication_modes.xhtml#replication-modes"><span class="std std-ref">replication modes</span></a>).</p>
+<p>In both cases, it is important to be clear about the following concepts:</p>
+<ul class="simple">
+<li><p>Postgres can run as primary or standby leader only when it owns the leading key and can update the leading key.</p></li>
+<li><p>You should run the odd number of etcd, ZooKeeper or Consul nodes: 3 or 5!</p></li>
+</ul>
+<section id="synchronous-replication">
+<h2>Synchronous Replication</h2>
+<p>To have a multi DC cluster that can automatically tolerate a zone drop, a minimum of 3 is required.</p>
+<p>The architecture diagram would be the following:</p>
+<img alt="_images/multi-dc-synchronous-replication.png" src="_images/multi-dc-synchronous-replication.png" />
+<p>We must deploy a cluster of etcd, ZooKeeper or Consul through the different DC, with a minimum of 3 nodes, one in each zone.</p>
+<p>Regarding postgres, we must deploy at least 2 nodes, in different DC. Then you have to set <code class="docutils literal notranslate"><span class="pre">synchronous_mode:</span> <span class="pre">true</span></code> in the global <a class="reference internal" href="dynamic_configuration.xhtml#dynamic-configuration"><span class="std std-ref">dynamic configuration</span></a>.</p>
+<p>This enables sync replication and the primary node will choose one of the nodes as synchronous.</p>
+</section>
+<section id="asynchronous-replication">
+<h2>Asynchronous Replication</h2>
+<p>With only two data centers it would be better to have two independent etcd clusters and run Patroni <a class="reference internal" href="standby_cluster.xhtml#standby-cluster"><span class="std std-ref">standby cluster</span></a> in the second data center. If the first site is down, you can MANUALLY promote the <code class="docutils literal notranslate"><span class="pre">standby_cluster</span></code>.</p>
+<p>The architecture diagram would be the following:</p>
+<img alt="_images/multi-dc-asynchronous-replication.png" src="_images/multi-dc-asynchronous-replication.png" />
+<p>Automatic promotion is not possible, because DC2 will never able to figure out the state of DC1.</p>
+<p>You should not use <code class="docutils literal notranslate"><span class="pre">pg_ctl</span> <span class="pre">promote</span></code> in this scenario, you need “manually promote” the healthy cluster by removing <code class="docutils literal notranslate"><span class="pre">standby_cluster</span></code> section from the <a class="reference internal" href="dynamic_configuration.xhtml#dynamic-configuration"><span class="std std-ref">dynamic configuration</span></a>.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>If the source cluster is still up and running and you promote the standby cluster you create a split-brain.</p>
+</div>
+<p>In case you want to return to the “initial” state, there are only two ways of resolving it:</p>
+<ul class="simple">
+<li><p>Add the standby_cluster section back and it will trigger <code class="docutils literal notranslate"><span class="pre">pg_rewind</span></code>; however, for <code class="docutils literal notranslate"><span class="pre">pg_rewind</span></code> to function properly, either the cluster must be initialized with <code class="docutils literal notranslate"><span class="pre">data</span> <span class="pre">page</span> <span class="pre">checksums</span></code> (<code class="docutils literal notranslate"><span class="pre">--data-checksums</span></code> option for <code class="docutils literal notranslate"><span class="pre">initdb</span></code>) and/or <code class="docutils literal notranslate"><span class="pre">wal_log_hints</span></code> must be set to <code class="docutils literal notranslate"><span class="pre">on</span></code>, but there are still chances that <code class="docutils literal notranslate"><span class="pre">pg_rewind</span></code> might fail due to other factors.</p></li>
+<li><p>Rebuild the standby cluster from scratch.</p></li>
+</ul>
+<p>Before promoting standby cluster one have to manually ensure that the source cluster is down (STONITH). When DC1 recovers, the cluster has to be converted to a standby cluster.</p>
+<p>Before doing that you may manually examine the database and extract all changes that happened between the time when network between DC1 and DC2 has stopped working and the time when you manually stopped the cluster in DC1.</p>
+<p>Once extracted, you may also manually apply these changes to the cluster in DC2.</p>
+</section>
+<section id="mysql-standby-sites">
+<h2>MySQL standby sites</h2>
+<p>The same two-DC pattern applies with <code class="docutils literal notranslate"><span class="pre">database.type:</span> <span class="pre">mysql</span></code>: independent DCS
+scopes and a <code class="docutils literal notranslate"><span class="pre">standby_cluster</span></code> pointing at the remote primary. MySQL uses
+<strong>clone + GTID cascade</strong> (no <code class="docutils literal notranslate"><span class="pre">restore_command</span></code> / <code class="docutils literal notranslate"><span class="pre">pg_rewind</span></code>). Prefer
+<code class="docutils literal notranslate"><span class="pre">patronictl</span> <span class="pre">promote-cluster</span></code> / <code class="docutils literal notranslate"><span class="pre">demote-cluster</span></code> for cutovers. For the full
+checklist (planned switchover, disaster promote, demote/rebuild), see
+<a class="reference internal" href="mysql_ops.xhtml#mysql-ops"><span class="std std-ref">MySQL operations and FAQ</span></a>.</p>
+</section>
+</section>
+
+
+            <div class="clearer"></div>
+          </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+  </body>
+</html>

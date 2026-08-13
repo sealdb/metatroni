@@ -6,29 +6,29 @@ Patroni REST API
 Patroni 拥有功能丰富的 REST API，它在 leader 竞争过程中被 Patroni 自身使用，也被 :ref:`patronictl` 工具用于执行 failover/switchover/reinitialize/restart/reload，还被 HAProxy 或任何其他类型的负载均衡器用于执行 HTTP 健康检查，当然也可以用于监控。下面你将看到 Patroni REST API 端点的列表。
 
 健康检查端点
-----------------------
-对于所有健康检查 ``GET`` 请求，Patroni 都会返回一个 JSON 文档，其中包含节点状态以及 HTTP 状态码。如果你不希望或不需要该 JSON 文档，可以考虑使用 ``HEAD`` 或 ``OPTIONS`` 方法，而不是 ``GET``。
+------------
+对于所有健康检查 ``GET`` 请求，Patroni 都会返回一个 JSON 文档，其中包含节点状态以及 HTTP 状态码。如果你不希望或不需要该 JSON 文档，可以考虑使用 ``HEAD`` 或 ``OPTIONS`` 方法，而不是 ``GET``\。
 
-- 仅当 Patroni 节点以 primary 身份运行并持有 leader 锁时，以下对 Patroni REST API 的请求才会返回 HTTP 状态码 **200**：
+- 仅当 Patroni 节点以 primary 身份运行并持有 leader 锁时，以下对 Patroni REST API 的请求才会返回 HTTP 状态码 **200**\：
 
   - ``GET /``
   - ``GET /primary``
   - ``GET /read-write``
 
-- ``GET /standby-leader``：仅当 Patroni 节点在 :ref:`standby cluster <standby_cluster>` 中以 leader 身份运行时，才返回 HTTP 状态码 **200**。
+- ``GET /standby-leader``\：仅当 Patroni 节点在 :ref:`standby cluster <standby_cluster>` 中以 leader 身份运行时，才返回 HTTP 状态码 **200**\。
 
-- ``GET /leader``：当 Patroni 节点持有 leader 锁时返回 HTTP 状态码 **200**。与前面两个端点的主要区别在于，它不考虑 PostgreSQL 是作为 ``primary`` 还是 ``standby_leader`` 运行。
+- ``GET /leader``\：当 Patroni 节点持有 leader 锁时返回 HTTP 状态码 **200**\。与前面两个端点的主要区别在于，它不考虑 PostgreSQL 是作为 ``primary`` 还是 ``standby_leader`` 运行。
 
-- ``GET /replica``：replica 健康检查端点。仅当 Patroni 节点处于 ``running`` 状态、角色为 ``replica`` 且未设置 ``noloadbalance`` 标签时，才返回 HTTP 状态码 **200**。
+- ``GET /replica``\：replica 健康检查端点。仅当 Patroni 节点处于 ``running`` 状态、角色为 ``replica`` 且未设置 ``noloadbalance`` 标签时，才返回 HTTP 状态码 **200**\。
 
-- ``GET /replica?lag=<max-lag>``：replica 检查端点。除了 ``replica`` 的检查之外，它还会检查复制延迟，并且仅当延迟低于指定值时才返回状态码 **200**。出于性能考虑，使用 DCS 中的 cluster.last_leader_operation 键获取 Leader 的 wal 位置，并在 replica 上计算延迟。max-lag 可以以字节（整数）或人类可读的值指定，例如 16kB、64MB、1GB。
+- ``GET /replica?lag=<max-lag>``\：replica 检查端点。除了 ``replica`` 的检查之外，它还会检查复制延迟，并且仅当延迟低于指定值时才返回状态码 **200**\。出于性能考虑，使用 DCS 中的 cluster.last_leader_operation 键获取 Leader 的 wal 位置，并在 replica 上计算延迟。max-lag 可以以字节（整数）或人类可读的值指定，例如 16kB、64MB、1GB。
 
   - ``GET /replica?lag=1048576``
   - ``GET /replica?lag=1024kB``
   - ``GET /replica?lag=10MB``
   - ``GET /replica?lag=1GB``
 
-- ``GET /replica?tag_key1=value1&tag_key2=value2``：replica 检查端点。此外，它还会检查用户自定义的标签 ``key1`` 和 ``key2`` 及其在 yaml 配置管理的 **tags** 部分中各自的值。如果某个实例未定义该标签，或者 yaml 配置中的值与查询值不匹配，它将返回 HTTP 状态码 503。
+- ``GET /replica?tag_key1=value1&tag_key2=value2``\：replica 检查端点。此外，它还会检查用户自定义的标签 ``key1`` 和 ``key2`` 及其在 yaml 配置管理的 **tags** 部分中各自的值。如果某个实例未定义该标签，或者 yaml 配置中的值与查询值不匹配，它将返回 HTTP 状态码 503。
 
   在以下请求中，由于我们检查的是 leader 或 standby-leader 状态，因此 Patroni 不会应用任何用户自定义的标签，它们将被忽略。
 
@@ -39,33 +39,33 @@ Patroni 拥有功能丰富的 REST API，它在 leader 竞争过程中被 Patron
   - ``GET /standby_leader?tag_key1=value1&tag_key2=value2``
   - ``GET /standby-leader?tag_key1=value1&tag_key2=value2``
 
-- ``GET /read-only``：与上述端点类似，但同时也包含 primary。
+- ``GET /read-only``\：与上述端点类似，但同时也包含 primary。
 
-- ``GET /synchronous`` 或 ``GET /sync``：仅当 Patroni 节点作为 synchronous standby 运行时，才返回 HTTP 状态码 **200**。
+- ``GET /synchronous`` 或 ``GET /sync``\：仅当 Patroni 节点作为 synchronous standby 运行时，才返回 HTTP 状态码 **200**\。
 
-- ``GET /read-only-sync``：与上述端点类似，但同时也包含 primary。
+- ``GET /read-only-sync``\：与上述端点类似，但同时也包含 primary。
 
-- ``GET /quorum``：仅当此 Patroni 节点被列在 primary 的 ``synchronous_standby_names`` 中作为 quorum 节点时，才返回 HTTP 状态码 **200**。
+- ``GET /quorum``\：仅当此 Patroni 节点被列在 primary 的 ``synchronous_standby_names`` 中作为 quorum 节点时，才返回 HTTP 状态码 **200**\。
 
-- ``GET /read-only-quorum``：与上述端点类似，但同时也包含 primary。
+- ``GET /read-only-quorum``\：与上述端点类似，但同时也包含 primary。
 
-- ``GET /asynchronous`` 或 ``GET /async``：仅当 Patroni 节点作为 asynchronous standby 运行时，才返回 HTTP 状态码 **200**。
+- ``GET /asynchronous`` 或 ``GET /async``\：仅当 Patroni 节点作为 asynchronous standby 运行时，才返回 HTTP 状态码 **200**\。
 
 
-- ``GET /asynchronous?lag=<max-lag>`` 或 ``GET /async?lag=<max-lag>``：asynchronous standby 检查端点。除了 ``asynchronous`` 或 ``async`` 的检查之外，它还会检查复制延迟，并且仅当延迟低于指定值时才返回状态码 **200**。出于性能考虑，使用 DCS 中的 cluster.last_leader_operation 键获取 Leader 的 wal 位置，并在 replica 上计算延迟。max-lag 可以以字节（整数）或人类可读的值指定，例如 16kB、64MB、1GB。
+- ``GET /asynchronous?lag=<max-lag>`` 或 ``GET /async?lag=<max-lag>``\：asynchronous standby 检查端点。除了 ``asynchronous`` 或 ``async`` 的检查之外，它还会检查复制延迟，并且仅当延迟低于指定值时才返回状态码 **200**\。出于性能考虑，使用 DCS 中的 cluster.last_leader_operation 键获取 Leader 的 wal 位置，并在 replica 上计算延迟。max-lag 可以以字节（整数）或人类可读的值指定，例如 16kB、64MB、1GB。
 
   - ``GET /async?lag=1048576``
   - ``GET /async?lag=1024kB``
   - ``GET /async?lag=10MB``
   - ``GET /async?lag=1GB``
 
-- ``GET /health``：仅当 PostgreSQL 已启动并正在运行时，才返回 HTTP 状态码 **200**。
+- ``GET /health``\：仅当 PostgreSQL 已启动并正在运行时，才返回 HTTP 状态码 **200**\。
 
-- ``GET /liveness``：如果 Patroni 的心跳循环正常运行，则返回 HTTP 状态码 **200**；如果上次运行在 primary 上距今超过 ``ttl`` 秒，或在 replica 上距今超过 ``2*ttl`` 秒，则返回 **503**。可用于 ``livenessProbe``。
+- ``GET /liveness``\：如果 Patroni 的心跳循环正常运行，则返回 HTTP 状态码 **200**\；如果上次运行在 primary 上距今超过 ``ttl`` 秒，或在 replica 上距今超过 ``2*ttl`` 秒，则返回 **503**\。可用于 ``livenessProbe``\。
 
-- ``GET /readiness?lag=<max-lag>&mode=apply|write``：当 Patroni 节点作为 leader 运行，或者当 PostgreSQL 已启动、正在复制且落后于 leader 的程度没有超出允许范围时，返回 HTTP 状态码 **200**。lag 参数设置 standby 允许落后的程度，默认为 ``maximum_lag_on_failover``。lag 可以以字节或人类可读的值指定，例如 16kB、64MB、1GB。mode 设置 WAL 是需要被回放（apply）还是仅需被接收（write）。默认值为 apply。
+- ``GET /readiness?lag=<max-lag>&mode=apply|write``\：当 Patroni 节点作为 leader 运行，或者当 PostgreSQL 已启动、正在复制且落后于 leader 的程度没有超出允许范围时，返回 HTTP 状态码 **200**\。lag 参数设置 standby 允许落后的程度，默认为 ``maximum_lag_on_failover``\。lag 可以以字节或人类可读的值指定，例如 16kB、64MB、1GB。mode 设置 WAL 是需要被回放（apply）还是仅需被接收（write）。默认值为 apply。
 
-  当用作 Kubernetes 的 ``readinessProbe`` 时，它可以确保新启动的 pod 只有在追赶上 leader 之后才会变为 ready 状态。这与 PodDisruptionBudget 结合使用，可以防止在节点滚动重启期间 leader 被过早终止。它还能确保无法跟上复制进度的 replica 不承担只读流量。在无法使用 Kubernetes endpoints 进行 leader 选举的环境（如 OpenShift）中，该端点也可用于 ``readinessProbe``。
+  当用作 Kubernetes 的 ``readinessProbe`` 时，它可以确保新启动的 pod 只有在追赶上 leader 之后才会变为 ready 状态。这与 PodDisruptionBudget 结合使用，可以防止在节点滚动重启期间 leader 被过早终止。它还能确保无法跟上复制进度的 replica 不承担只读流量。在无法使用 Kubernetes endpoints 进行 leader 选举的环境（如 OpenShift）中，该端点也可用于 ``readinessProbe``\。
 
 ``liveness`` 端点非常轻量，不会执行任何 SQL。探针应配置为在 leader 键即将到期时开始失败。使用 ``ttl`` 的默认值 ``30s`` 时，示例探针配置如下：
 
@@ -94,7 +94,7 @@ Patroni 拥有功能丰富的 REST API，它在 leader 竞争过程中被 Patron
 
 
 监控端点
--------------------
+--------
 
 ``GET /patroni`` 在 leader 竞争过程中被 Patroni 使用。它也可以被你的监控系统使用。该端点生成的 JSON 文档与健康检查端点生成的 JSON 具有相同的结构。
 
@@ -359,7 +359,7 @@ Patroni 拥有功能丰富的 REST API，它在 leader 竞争过程中被 Patron
 	patroni_postgres_state{scope="batman",name="patroni1"} 5
 
 PostgreSQL 状态值
-^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^
 
 ``patroni_postgres_state`` 指标提供了当前 PostgreSQL 实例状态的数值表示。这对于需要随时间跟踪状态变化的监控和告警系统非常有用。这些数值是通过 ``PostgresqlState.get_metrics_description()`` 静态方法生成的。
 
@@ -421,7 +421,7 @@ PostgreSQL 状态值
 
 
 Cluster 状态端点
-------------------------
+----------------
 
 - ``GET /cluster`` 端点会生成一个描述当前 cluster 拓扑和状态的 JSON 文档：
 
@@ -505,9 +505,9 @@ Cluster 状态端点
 .. _config_endpoint:
 
 Config 端点
----------------
+-----------
 
-``GET /config``：获取当前版本的动态配置：
+``GET /config``\：获取当前版本的动态配置：
 
 .. code-block:: bash
 
@@ -531,7 +531,7 @@ Config 端点
 	}
 
 
-``PATCH /config``：更改现有配置。
+``PATCH /config``\：更改现有配置。
 
 .. code-block:: bash
 
@@ -616,9 +616,9 @@ Config 端点
 	  }
 	}
 
-上述调用会从动态配置中移除 ``postgresql.parameters.max_connections``。
+上述调用会从动态配置中移除 ``postgresql.parameters.max_connections``\。
 
-``PUT /config``：也可以无条件地完整重写现有的动态配置：
+``PUT /config``\：也可以无条件地完整重写现有的动态配置：
 
 .. code-block:: bash
 
@@ -644,7 +644,7 @@ Config 端点
 
 
 Switchover 和 failover 端点
----------------------------------
+---------------------------
 
 .. _switchover_api:
 
@@ -657,7 +657,7 @@ Switchover
 
 在 ``POST`` 请求的 JSON body 中，你必须指定 ``leader`` 字段。``candidate`` 和 ``scheduled_at`` 字段是可选的，可用于在特定时间计划执行 switchover。
 
-根据情况不同，请求可能返回不同的 HTTP 状态码和响应体。当 switchover 或 failover 成功完成时返回状态码 **200**。如果 switchover 成功计划，Patroni 将返回 HTTP 状态码 **202**。如果出现错误，将返回错误状态码（**400**、**412** 或 **503** 之一），并在响应体中包含一些详细信息。
+根据情况不同，请求可能返回不同的 HTTP 状态码和响应体。当 switchover 或 failover 成功完成时返回状态码 **200**\。如果 switchover 成功计划，Patroni 将返回 HTTP 状态码 **202**\。如果出现错误，将返回错误状态码（**400**\、**412** 或 **503** 之一），并在响应体中包含一些详细信息。
 
 ``DELETE /switchover`` 可用于删除当前已计划的 switchover。
 
@@ -732,15 +732,15 @@ Failover
 .. _failover_healthcheck:
 
 健康的 standby
-^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^
 
 cluster 的一个 member 需要满足以下几项检查，才能在 switchover 期间参与 leader 竞争，或作为 failover/switchover 候选节点成为 leader：
 
 - 可以通过 Patroni API 访问；
-- 未将 ``nofailover`` 标签设置为 ``true``；
+- 未将 ``nofailover`` 标签设置为 ``true``\；
 - watchdog 完全正常（如果配置要求的话）；
 - 在健康 cluster 中执行 switchover 或自动 failover 时，不超过最大复制延迟（``maximum_lag_on_failover`` :ref:`配置参数 <dynamic_configuration>`）；
-- 在健康 cluster 中执行 switchover 或自动 failover 时，如果 ``check_timeline`` :ref:`配置参数 <dynamic_configuration>` 设置为 ``true``，则 timeline 号不能小于 cluster 的 timeline；
+- 在健康 cluster 中执行 switchover 或自动 failover 时，如果 ``check_timeline`` :ref:`配置参数 <dynamic_configuration>` 设置为 ``true``\，则 timeline 号不能小于 cluster 的 timeline；
 - 在 :ref:`synchronous mode <synchronous_mode>` 下：
 
   - 在执行 switchover 时（无论是否指定候选节点）：必须出现在 ``/sync`` key 的 members 中；
@@ -755,36 +755,36 @@ cluster 的一个 member 需要满足以下几项检查，才能在 switchover �
 .. _restart_endpoint:
 
 Restart 端点
-----------------
+------------
 
-- ``POST /restart``：通过执行 ``POST /restart`` 调用，你可以重启指定节点上的 Postgres。在 ``POST`` 请求的 JSON body 中，可以可选地指定一些重启条件：
+- ``POST /restart``\：通过执行 ``POST /restart`` 调用，你可以重启指定节点上的 Postgres。在 ``POST`` 请求的 JSON body 中，可以可选地指定一些重启条件：
 
-  - **restart_pending**：布尔值，如果设置为 ``true``，则 Patroni 只会在需要重启以应用 PostgreSQL 配置中的某些更改时重启 PostgreSQL。
-  - **role**：仅当节点的当前角色与 POST 请求中的角色匹配时才执行重启。
-  - **postgres_version**：仅当当前 postgres 版本低于 POST 请求中指定的版本时才执行重启。
-  - **timeout**：在 PostgreSQL 开始接受连接之前我们应该等待多长时间。覆盖 ``primary_start_timeout``。
-  - **schedule**：带时区的 timestamp，将重启计划到将来的某个时间。
+  - **restart_pending**\：布尔值，如果设置为 ``true``\，则 Patroni 只会在需要重启以应用 PostgreSQL 配置中的某些更改时重启 PostgreSQL。
+  - **role**\：仅当节点的当前角色与 POST 请求中的角色匹配时才执行重启。
+  - **postgres_version**\：仅当当前 postgres 版本低于 POST 请求中指定的版本时才执行重启。
+  - **timeout**\：在 PostgreSQL 开始接受连接之前我们应该等待多长时间。覆盖 ``primary_start_timeout``\。
+  - **schedule**\：带时区的 timestamp，将重启计划到将来的某个时间。
 
-- ``DELETE /restart``：删除已计划的重启
+- ``DELETE /restart``\：删除已计划的重启
 
 ``POST /restart`` 和 ``DELETE /restart`` 端点分别由 :ref:`patronictl_restart` 和 :ref:`patronictl flush cluster-name restart <patronictl_flush_parameters>` 使用。
 
 .. _reload_endpoint:
 
 Reload 端点
----------------
+-----------
 
-``POST /reload`` 调用将指示 Patroni 重新读取并应用配置文件。这相当于向 Patroni 进程发送 ``SIGHUP`` 信号。如果你更改了某些需要重启才能生效的 Postgres 参数（例如 **shared_buffers**），你仍然必须通过调用 ``POST /restart`` 端点或借助 :ref:`patronictl_restart` 显式地重启 Postgres。
+``POST /reload`` 调用将指示 Patroni 重新读取并应用配置文件。这相当于向 Patroni 进程发送 ``SIGHUP`` 信号。如果你更改了某些需要重启才能生效的 Postgres 参数（例如 **shared_buffers**\），你仍然必须通过调用 ``POST /restart`` 端点或借助 :ref:`patronictl_restart` 显式地重启 Postgres。
 
 reload 端点由 :ref:`patronictl_reload` 使用。
 
 
 Reinitialize 端点
----------------------
+-----------------
 
-``POST /reinitialize``：重新初始化指定节点上的 PostgreSQL 数据目录。它只允许在 replica 上执行。调用后，它将删除数据目录并启动 ``pg_basebackup`` 或某种替代的 :ref:`replica 创建方法 <custom_replica_creation>`。
+``POST /reinitialize``\：重新初始化指定节点上的 PostgreSQL 数据目录。它只允许在 replica 上执行。调用后，它将删除数据目录并启动 ``pg_basebackup`` 或某种替代的 :ref:`replica 创建方法 <custom_replica_creation>`。
 
-如果 Patroni 正处于尝试恢复（重启）故障 Postgres 的循环中，该调用可能会失败。为了克服此问题，可以在请求 body 中指定 ``{"force":true}``。
+如果 Patroni 正处于尝试恢复（重启）故障 Postgres 的循环中，该调用可能会失败。为了克服此问题，可以在请求 body 中指定 ``{"force":true}``\。
 
 你可以在请求 body 中指定 {"from-leader":true}，以直接从 leader 节点获取 basebackup。当所有 replica 节点都故障时执行 reinit，此选项非常有用。
 

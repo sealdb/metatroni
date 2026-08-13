@@ -1,8 +1,8 @@
 .. _mysql_ops:
 
-=============================
+========================
 MySQL operations and FAQ
-=============================
+========================
 
 Operator guide: install, deploy, day-2 management, standby promote/demote
 cutovers, mode changes, HAProxy, and common failures.
@@ -477,7 +477,7 @@ FAQ / troubleshooting
 =====================
 
 ``patronictl list`` empty / no leader
-------------------------------------
+-------------------------------------
 
 - Check DCS connectivity (``etcdctl endpoint health``).
 - Confirm all nodes share ``scope`` and ``namespace``.
@@ -510,7 +510,7 @@ MGR group will not form
   ``@@group_replication_primary_member``, which is not a sysvar).
 
 Majority lost; cluster paused / ``mgr_gtid_fork``
-------------------------------------------------
+-------------------------------------------------
 
 - Incomparable ``gtid_executed`` sets → automatic bootstrap refused.
 - Repair data (rebuild divergent node) then ``patronictl resume``.

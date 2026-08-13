@@ -1,10 +1,10 @@
 .. _installation:
 
 安装
-============
+====
 
 Mac OS 的安装前要求
----------------------------
+-------------------
 
 要在 Mac 上安装所需依赖，请运行以下命令：
 
@@ -19,7 +19,7 @@ Psycopg
 
 从 `psycopg2-2.8`_ 开始，psycopg2 的二进制版本将不再默认安装。从源代码安装它需要
 C 编译器和 postgres+python 开发包。由于在 Python 世界中无法将依赖指定为
-``psycopg2 OR psycopg2-binary``，您必须自行决定如何安装它。
+``psycopg2 OR psycopg2-binary``\，您必须自行决定如何安装它。
 
 有几个选项可用：
 
@@ -36,7 +36,7 @@ C 编译器和 postgres+python 开发包。由于在 Python 世界中无法将�
 .. _extras:
 
 使用 pip 进行常规安装
-----------------------------
+---------------------
 
 Patroni 可以使用 pip 安装：
 
@@ -65,7 +65,7 @@ jsonlogger
 systemd
     使用 sd_notify 集成所需的 `systemd-python`
 mysql
-    使用 MySQL 后端（``database.type: mysql``）所需的 `pymysql`
+    使用 MySQL 后端（``database.type: mysql``\）所需的 `pymysql`
 all
     以上所有项（psycopg 系列除外）
 psycopg3
@@ -93,7 +93,7 @@ Patroni 安装。
 .. _package_installation:
 
 在 Linux 上通过软件包安装
------------------------------
+-------------------------
 
 您的操作系统可能提供由 Postgres 社区构建的 Patroni 软件包，适用于：
 
@@ -116,7 +116,7 @@ Patroni 安装。
     需要支持，请首先尝试在 `Postgres slack`_ 上联系。
 
 在 Debian 衍生发行版上安装
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 安装好 PGDG 仓库后，参见 :ref:`above <package_installation>`，通过 apt 安装 Patroni，运行：
 
@@ -125,7 +125,7 @@ Patroni 安装。
     apt-get install patroni
 
 在 RedHat 衍生发行版上安装
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 安装好 PGDG 仓库后，参见 :ref:`above <package_installation>`，在 RHEL 9（及衍生发行版）上通过 dnf 安装带 etcd DCS 的 patroni，运行：
 
@@ -144,7 +144,7 @@ Patroni 安装。
 如果需要，您可以将仓库中的 RHEL 版本替换为 `8`，以启用 `pgdg-rhel8-extras`。在 RockyLinux、AlmaLinux、Oracle Linux 等发行版上，仓库名称仍然是 `pgdg-rhelN-extras`。
 
 在 SUSE Enterprise Linux 上安装
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 某些依赖可能需要您启用 SUSE PackageHub 仓库。请参阅 `SUSE PackageHub`_ 的文档。
 
@@ -162,7 +162,7 @@ Patroni 安装。
     zypper install etcd
 
 升级
----------
+----
 
 升级 patroni 是一个非常简单的过程，只需更新软件安装并在集群中的每个节点上重启 Patroni 守护进程。
 

@@ -1,18 +1,27 @@
-.. Patroni documentation master file, created by
-   sphinx-quickstart on Mon Dec 19 16:54:09 2016.
+.. Patroni / Metatroni documentation master file, created by sphinx-quickstart.
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-Patroni: A Template for PostgreSQL HA with ZooKeeper, etcd or Consul
-====================================================================
+Metatroni: A Template for PostgreSQL and MySQL HA with ZooKeeper, etcd or Consul (based on Patroni)
+===================================================================================================
 
 .. image:: _static/patroni-logo.png
    :height: 128px
    :width: 128px
 
+**Metatroni** is a self-developed enhancement of Patroni:
+
+1. **Fully includes** all original Patroni capabilities.
+2. **Additionally supports MySQL high availability** (``database.type: mysql``).
+3. Supports **ZooKeeper**, **etcd**, or **Consul** (and other DCS backends
+   Patroni already supports).
+
+Shared Patroni behaviour is documented throughout this manual; MySQL guides
+start at :ref:`mysql`.
+
 .. warning::
 
-  Running Patroni on **memory-restricted systems with Python 3.11+**
+  Running Patroni/Metatroni on **memory-restricted systems with Python 3.11+**
 
 ----
 

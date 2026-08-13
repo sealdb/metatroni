@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Pause/Resume mode for the cluster</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="_static/epub.css" />
+    <link rel="stylesheet" type="text/css" href="_static/github_style.css" />
+    <link rel="stylesheet" type="text/css" href="_static/custom.css" /> 
+  </head><body>
+
+    <div class="document">
+      <div class="documentwrapper">
+          <div class="body" role="main">
+            
+  <section id="pause-resume-mode-for-the-cluster">
+<span id="pause"></span><h1>Pause/Resume mode for the cluster</h1>
+<section id="the-goal">
+<h2>The goal</h2>
+<p>Under certain circumstances Patroni needs to temporarily step down from managing the cluster, while still retaining the cluster state in DCS. Possible use cases are uncommon activities on the cluster, such as major version upgrades or corruption recovery. During those activities nodes are often started and stopped for reasons unknown to Patroni, some nodes can be even temporarily promoted, violating the assumption of running only one primary. Therefore, Patroni needs to be able to “detach” from the running cluster, implementing an equivalent of the maintenance mode in Pacemaker.</p>
+</section>
+<section id="the-implementation">
+<h2>The implementation</h2>
+<p>When Patroni runs in a paused mode, it does not change the state of PostgreSQL, except for the following cases:</p>
+<ul class="simple">
+<li><p>For each node, the member key in DCS is updated with the current information about the cluster. This causes Patroni to run read-only queries on a member node if the member is running.</p></li>
+<li><p>For the Postgres primary with the leader lock Patroni updates the lock. If the node with the leader lock stops being the primary (i.e. is demoted manually), Patroni will release the lock instead of promoting the node back.</p></li>
+<li><p>Manual unscheduled restart, manual unscheduled failover/switchover and reinitialize are allowed. No scheduled action is allowed. Manual switchover is only allowed if the node to switch over to is specified.</p></li>
+<li><p>If ‘parallel’ primaries are detected by Patroni, it emits a warning, but does not demote the primary without the leader lock.</p></li>
+<li><p>If there is no leader lock in the cluster, the running primary acquires the lock. If there is more than one primary node, then the first primary to acquire the lock wins. If there are no primary altogether, Patroni does not try to promote any replicas. There is an exception in this rule: if there is no leader lock because the old primary has demoted itself due to the manual promotion, then only the candidate node mentioned in the promotion request may take the leader lock. When the new leader lock is granted (i.e. after promoting a replica manually), Patroni makes sure the replicas that were streaming from the previous leader will switch to the new one.</p></li>
+<li><p>When Postgres is stopped, Patroni does not try to start it. When Patroni is stopped, it does not try to stop the Postgres instance it is managing.</p></li>
+<li><p>Patroni will not try to remove replication slots that don’t represent the other cluster member or are not listed in the configuration of the permanent slots.</p></li>
+</ul>
+</section>
+<section id="user-guide">
+<h2>User guide</h2>
+<p><code class="docutils literal notranslate"><span class="pre">patronictl</span></code> supports <a class="reference internal" href="patronictl.xhtml#patronictl-pause"><span class="std std-ref">pause</span></a> and <a class="reference internal" href="patronictl.xhtml#patronictl-resume"><span class="std std-ref">resume</span></a> commands.</p>
+<p>One can also issue a <code class="docutils literal notranslate"><span class="pre">PATCH</span></code> request to the <code class="docutils literal notranslate"><span class="pre">{namespace}/{cluster}/config</span></code> key with <code class="docutils literal notranslate"><span class="pre">{&quot;pause&quot;:</span> <span class="pre">true/false/null}</span></code></p>
+</section>
+</section>
+
+
+            <div class="clearer"></div>
+          </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+  </body>
+</html>

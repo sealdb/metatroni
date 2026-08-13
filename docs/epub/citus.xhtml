@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Citus support</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="_static/epub.css" />
+    <link rel="stylesheet" type="text/css" href="_static/github_style.css" />
+    <link rel="stylesheet" type="text/css" href="_static/custom.css" /> 
+  </head><body>
+
+    <div class="document">
+      <div class="documentwrapper">
+          <div class="body" role="main">
+            
+  <section id="citus-support">
+<span id="citus"></span><h1>Citus support</h1>
+<p>Patroni makes it extremely simple to deploy <a class="reference external" href="https://docs.citusdata.com/en/stable/installation/multi_node.html">Multi-Node Citus</a><span class="link-target"> [https://docs.citusdata.com/en/stable/installation/multi_node.html]</span> clusters.</p>
+<section id="tl-dr">
+<h2>TL;DR</h2>
+<p>There are only a few simple rules you need to follow:</p>
+<ol class="arabic simple">
+<li><p><a class="reference external" href="https://github.com/citusdata/citus">Citus</a><span class="link-target"> [https://github.com/citusdata/citus]</span> database extension to
+PostgreSQL must be available on all nodes.  Absolute minimum supported Citus
+version is 10.0, but, to take all benefits from transparent switchovers and
+restarts of workers we recommend using at least Citus 11.2.</p></li>
+<li><p>Cluster name (<code class="docutils literal notranslate"><span class="pre">scope</span></code>) must be the same for all Citus nodes!</p></li>
+<li><p>Superuser credentials must be the same on coordinator and all worker
+nodes, and <code class="docutils literal notranslate"><span class="pre">pg_hba.conf</span></code> should allow superuser access between all nodes.</p></li>
+<li><p><a class="reference internal" href="yaml_configuration.xhtml#restapi-settings"><span class="std std-ref">REST API</span></a> access should be allowed from worker
+nodes to the coordinator. E.g., credentials should be the same and if
+configured, client certificates from worker nodes must be accepted by the
+coordinator.</p></li>
+<li><p>Add the following section to the <code class="docutils literal notranslate"><span class="pre">patroni.yaml</span></code>:</p></li>
+</ol>
+<div class="highlight-YAML notranslate"><div class="highlight"><pre><span></span><span class="nt">citus</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">group</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">X</span><span class="w">  </span><span class="c1"># 0 for coordinator and 1, 2, 3, etc for workers</span>
+<span class="w">  </span><span class="nt">database</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">citus</span><span class="w">  </span><span class="c1"># must be the same on all nodes</span>
+</pre></div>
+</div>
+<p>After that you just need to start Patroni and it will handle the rest:</p>
+<ol class="arabic simple" start="0">
+<li><p>Patroni will set <code class="docutils literal notranslate"><span class="pre">bootstrap.dcs.synchronous_mode</span></code> to <a class="reference internal" href="replication_modes.xhtml#quorum-mode"><span class="std std-ref">quorum</span></a>
+if it is not explicitly set to any other value.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">citus</span></code> extension will be automatically added to <code class="docutils literal notranslate"><span class="pre">shared_preload_libraries</span></code>.</p></li>
+<li><p>If <code class="docutils literal notranslate"><span class="pre">max_prepared_transactions</span></code> isn’t explicitly set in the global
+<a class="reference internal" href="dynamic_configuration.xhtml#dynamic-configuration"><span class="std std-ref">dynamic configuration</span></a> Patroni will
+automatically set it to <code class="docutils literal notranslate"><span class="pre">2*max_connections</span></code>.</p></li>
+<li><p>The <code class="docutils literal notranslate"><span class="pre">citus.local_hostname</span></code> GUC value will be adjusted from <code class="docutils literal notranslate"><span class="pre">localhost</span></code> to the
+value that Patroni is using in order to connect to the local PostgreSQL
+instance. The value sometimes should be different from the <code class="docutils literal notranslate"><span class="pre">localhost</span></code>
+because PostgreSQL might be not listening on it.</p></li>
+<li><p>The <code class="docutils literal notranslate"><span class="pre">citus.database</span></code> will be automatically created followed by <code class="docutils literal notranslate"><span class="pre">CREATE</span> <span class="pre">EXTENSION</span> <span class="pre">citus</span></code>.</p></li>
+<li><p>Current superuser <a class="reference internal" href="yaml_configuration.xhtml#postgresql-settings"><span class="std std-ref">credentials</span></a> will be added to the <code class="docutils literal notranslate"><span class="pre">pg_dist_authinfo</span></code>
+table to allow cross-node communication. Don’t forget to update them if
+later you decide to change superuser username/password/sslcert/sslkey!</p></li>
+<li><p>The coordinator primary node will automatically discover worker primary
+nodes and add them to the <code class="docutils literal notranslate"><span class="pre">pg_dist_node</span></code> table using the
+<code class="docutils literal notranslate"><span class="pre">citus_add_node()</span></code> function.</p></li>
+<li><p>Patroni will also maintain <code class="docutils literal notranslate"><span class="pre">pg_dist_node</span></code> in case failover/switchover
+on the coordinator or worker clusters occurs.</p></li>
+</ol>
+</section>
+<section id="patronictl">
+<h2>patronictl</h2>
+<p>Coordinator and worker clusters are physically different PostgreSQL/Patroni
+clusters that are just logically grouped together using the
+<a class="reference external" href="https://github.com/citusdata/citus">Citus</a><span class="link-target"> [https://github.com/citusdata/citus]</span> database extension to
+PostgreSQL. Therefore in most cases it is not possible to manage them as a
+single entity.</p>
+<p>It results in two major differences in <a class="reference internal" href="patronictl.xhtml#patronictl"><span class="std std-ref">patronictl</span></a> behaviour when
+<code class="docutils literal notranslate"><span class="pre">patroni.yaml</span></code> has the <code class="docutils literal notranslate"><span class="pre">citus</span></code> section comparing with the usual:</p>
+<ol class="arabic simple">
+<li><p>The <code class="docutils literal notranslate"><span class="pre">list</span></code> and the <code class="docutils literal notranslate"><span class="pre">topology</span></code> by default output all members of the Citus
+formation (coordinators and workers). The new column <code class="docutils literal notranslate"><span class="pre">Group</span></code> indicates
+which Citus group they belong to.</p></li>
+<li><p>For all <code class="docutils literal notranslate"><span class="pre">patronictl</span></code> commands the new option is introduced, named
+<code class="docutils literal notranslate"><span class="pre">--group</span></code>. For some commands the default value for the group might be
+taken from the <code class="docutils literal notranslate"><span class="pre">patroni.yaml</span></code>. For example, <a class="reference internal" href="patronictl.xhtml#patronictl-pause"><span class="std std-ref">patronictl pause</span></a> will
+enable the maintenance mode by default for the <code class="docutils literal notranslate"><span class="pre">group</span></code> that is set in the
+<code class="docutils literal notranslate"><span class="pre">citus</span></code> section, but for example for <a class="reference internal" href="patronictl.xhtml#patronictl-switchover"><span class="std std-ref">patronictl switchover</span></a> or
+<a class="reference internal" href="patronictl.xhtml#patronictl-remove"><span class="std std-ref">patronictl remove</span></a> the group must be explicitly specified.</p></li>
+</ol>
+<p>An example of <a class="reference internal" href="patronictl.xhtml#patronictl-list"><span class="std std-ref">patronictl list</span></a> output for the Citus cluster:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>postgres@coord1:~$ patronictl list demo
++ Citus cluster: demo ----------+----------------+---------+----+-------------+-----+------------+-----+
+| Group | Member  | Host        | Role           | State   | TL | Receive LSN | Lag | Replay LSN | Lag |
++-------+---------+-------------+----------------+---------+----+-------------+-----+------------+-----+
+|     0 | coord1  | 172.27.0.10 | Replica        | running |  1 |   0/41C0368 |   0 |  0/41C0368 |   0 |
+|     0 | coord2  | 172.27.0.6  | Quorum Standby | running |  1 |   0/41C0368 |   0 |  0/41C0368 |   0 |
+|     0 | coord3  | 172.27.0.4  | Leader         | running |  1 |             |     |            |     |
+|     1 | work1-1 | 172.27.0.8  | Quorum Standby | running |  1 |   0/31D3198 |   0 |  0/31D3198 |   0 |
+|     1 | work1-2 | 172.27.0.2  | Leader         | running |  1 |             |     |            |     |
+|     2 | work2-1 | 172.27.0.5  | Quorum Standby | running |  1 |   0/31CDFC0 |   0 |  0/31CDFC0 |   0 |
+|     2 | work2-2 | 172.27.0.7  | Leader         | running |  1 |             |     |            |     |
++-------+---------+-------------+----------------+---------+----+-------------+-----+------------+-----+
+</pre></div>
+</div>
+<p>If we add the <code class="docutils literal notranslate"><span class="pre">--group</span></code> option, the output will change to:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>postgres@coord1:~$ patronictl list demo --group 0
++ Citus cluster: demo (group: 0, 7179854923829112860) -+-------------+-----+------------+-----+
+| Member | Host        | Role           | State   | TL | Receive LSN | Lag | Replay LSN | Lag |
++--------+-------------+----------------+---------+----+-------------+-----+------------+-----+
+| coord1 | 172.27.0.10 | Replica        | running |  1 |   0/41C0368 |   0 |  0/41C0368 |   0 |
+| coord2 | 172.27.0.6  | Quorum Standby | running |  1 |   0/41C0368 |   0 |  0/41C0368 |   0 |
+| coord3 | 172.27.0.4  | Leader         | running |  1 |             |     |            |     |
++--------+-------------+----------------+---------+----+-------------+-----+------------+-----+
+
+postgres@coord1:~$ patronictl list demo --group 1
++ Citus cluster: demo (group: 1, 7179854923881963547) -+-------------+-----+------------+-----+
+| Member  | Host       | Role           | State   | TL | Receive LSN | Lag | Replay LSN | Lag |
++---------+------------+----------------+---------+----+-------------+-----+------------+-----+
+| work1-1 | 172.27.0.8 | Quorum Standby | running |  1 |   0/31D3198 |   0 |  0/31D3198 |   0 |
+| work1-2 | 172.27.0.2 | Leader         | running |  1 |             |     |            |     |
++---------+------------+----------------+---------+----+-------------+-----+------------+-----+
+</pre></div>
+</div>
+</section>
+<section id="citus-worker-switchover">
+<h2>Citus worker switchover</h2>
+<p>When a switchover is orchestrated for a Citus worker node, Citus offers the
+opportunity to make the switchover close to transparent for an application.
+Because the application connects to the coordinator, which in turn connects to
+the worker nodes, then it is possible with Citus to <cite>pause</cite> the SQL traffic on
+the coordinator for the shards hosted on a worker node. The switchover then
+happens while the traffic is kept on the coordinator, and resumes as soon as a
+new primary worker node is ready to accept read-write queries.</p>
+<p>An example of <a class="reference internal" href="patronictl.xhtml#patronictl-switchover"><span class="std std-ref">patronictl switchover</span></a> on the worker cluster:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>postgres@coord1:~$ patronictl switchover demo
++ Citus cluster: demo ----------+----------------+---------+----+-------------+-----+------------+-----+
+| Group | Member  | Host        | Role           | State   | TL | Receive LSN | Lag | Replay LSN | Lag |
++-------+---------+-------------+----------------+---------+----+-------------+-----+------------+-----+
+|     0 | coord1  | 172.27.0.10 | Replica        | running |  1 |   0/41C0368 |   0 |  0/41C0368 |   0 |
+|     0 | coord2  | 172.27.0.6  | Quorum Standby | running |  1 |   0/41C0368 |   0 |  0/41C0368 |   0 |
+|     0 | coord3  | 172.27.0.4  | Leader         | running |  1 |             |     |            |     |
+|     1 | work1-1 | 172.27.0.8  | Leader         | running |  1 |             |     |            |     |
+|     1 | work1-2 | 172.27.0.2  | Quorum Standby | running |  1 |   0/31D3198 |   0 |  0/31D3198 |   0 |
+|     2 | work2-1 | 172.27.0.5  | Quorum Standby | running |  1 |   0/31CDFC0 |   0 |  0/31CDFC0 |   0 |
+|     2 | work2-2 | 172.27.0.7  | Leader         | running |  1 |             |     |            |     |
++-------+---------+-------------+----------------+---------+----+-------------+-----+------------+-----+
+Citus group: 2
+Primary [work2-2]:
+Candidate [&#39;work2-1&#39;] []:
+When should the switchover take place (e.g. 2024-08-26T08:02 )  [now]:
+Current cluster topology
++ Citus cluster: demo (group: 2, 7179854924063375386) -+-------------+-----+------------+-----+
+| Member  | Host       | Role           | State   | TL | Receive LSN | Lag | Replay LSN | Lag |
++---------+------------+----------------+---------+----+-------------+-----+------------+-----+
+| work2-1 | 172.27.0.5 | Quorum Standby | running |  1 |   0/31CDFC0 |   0 |  0/31CDFC0 |   0 |
+| work2-2 | 172.27.0.7 | Leader         | running |  1 |             |     |            |     |
++---------+------------+----------------+---------+----+-------------+-----+------------+-----+
+Are you sure you want to switchover cluster demo, demoting current primary work2-2? [y/N]: y
+2024-08-26 07:02:40.33003 Successfully switched over to &quot;work2-1&quot;
++ Citus cluster: demo (group: 2, 7179854924063375386) --------+---------+------------+---------+
+| Member  | Host       | Role    | State   | TL | Receive LSN |     Lag | Replay LSN |     Lag |
++---------+------------+---------+---------+----+-------------+---------+------------+---------+
+| work2-1 | 172.27.0.5 | Leader  | running |  1 |             |         |            |         |
+| work2-2 | 172.27.0.7 | Replica | stopped |    |     unknown | unknown |    unknown | unknown |
++---------+------------+---------+---------+----+-------------+---------+------------+---------+
+
+postgres@coord1:~$ patronictl list demo
++ Citus cluster: demo ----------+----------------+---------+----+-------------+-----+------------+-----+
+| Group | Member  | Host        | Role           | State   | TL | Receive LSN | Lag | Replay LSN | Lag |
++-------+---------+-------------+----------------+---------+----+-------------+-----+------------+-----+
+|     0 | coord1  | 172.27.0.10 | Replica        | running |  1 |   0/41C0368 |   0 |  0/41C0368 |   0 |
+|     0 | coord2  | 172.27.0.6  | Quorum Standby | running |  1 |   0/41C0368 |   0 |  0/41C0368 |   0 |
+|     0 | coord3  | 172.27.0.4  | Leader         | running |  1 |             |     |            |     |
+|     1 | work1-1 | 172.27.0.8  | Leader         | running |  1 |             |     |            |     |
+|     1 | work1-2 | 172.27.0.2  | Quorum Standby | running |  1 |   0/31D3198 |   0 |  0/31D3198 |   0 |
+|     2 | work2-1 | 172.27.0.5  | Leader         | running |  2 |             |     |            |     |
+|     2 | work2-2 | 172.27.0.7  | Quorum Standby | running |  2 |   0/31CDFC0 |   0 |  0/31CDFC0 |   0 |
++-------+---------+-------------+----------------+---------+----+-------------+-----+------------+-----+
+</pre></div>
+</div>
+<p>And this is how it looks on the coordinator side:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="c1"># The worker primary notifies the coordinator that it is going to execute &quot;pg_ctl stop&quot;.</span>
+<span class="mi">2024</span><span class="o">-</span><span class="mi">08</span><span class="o">-</span><span class="mi">26</span> <span class="mi">07</span><span class="p">:</span><span class="mi">02</span><span class="p">:</span><span class="mi">38</span><span class="p">,</span><span class="mi">636</span> <span class="nc">DEBUG</span><span class="p">:</span> <span class="kp">query</span><span class="p">(</span><span class="nc">BEGIN</span><span class="p">,</span> <span class="p">())</span>
+<span class="mi">2024</span><span class="o">-</span><span class="mi">08</span><span class="o">-</span><span class="mi">26</span> <span class="mi">07</span><span class="p">:</span><span class="mi">02</span><span class="p">:</span><span class="mi">38</span><span class="p">,</span><span class="mi">636</span> <span class="nc">DEBUG</span><span class="p">:</span> <span class="kp">query</span><span class="p">(</span><span class="nc">SELECT</span> <span class="n">pg_catalog</span><span class="o">.</span><span class="kp">citus_update_node</span><span class="p">(</span><span class="o">%</span><span class="n">s</span><span class="p">,</span> <span class="o">%</span><span class="n">s</span><span class="p">,</span> <span class="o">%</span><span class="n">s</span><span class="p">,</span> <span class="n">true</span><span class="p">,</span> <span class="o">%</span><span class="n">s</span><span class="p">),</span> <span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="s1">&#39;172.19.0.7-demoted&#39;</span><span class="p">,</span> <span class="mi">5432</span><span class="p">,</span> <span class="mi">10000</span><span class="p">))</span>
+<span class="c1"># From this moment all application traffic on the coordinator to the worker group 2 is paused.</span>
+
+<span class="c1"># The old worker primary is assigned as a secondary.</span>
+<span class="mi">2024</span><span class="o">-</span><span class="mi">08</span><span class="o">-</span><span class="mi">26</span> <span class="mi">07</span><span class="p">:</span><span class="mi">02</span><span class="p">:</span><span class="mi">40</span><span class="p">,</span><span class="mi">084</span> <span class="nc">DEBUG</span><span class="p">:</span> <span class="kp">query</span><span class="p">(</span><span class="nc">SELECT</span> <span class="n">pg_catalog</span><span class="o">.</span><span class="kp">citus_update_node</span><span class="p">(</span><span class="o">%</span><span class="n">s</span><span class="p">,</span> <span class="o">%</span><span class="n">s</span><span class="p">,</span> <span class="o">%</span><span class="n">s</span><span class="p">,</span> <span class="n">true</span><span class="p">,</span> <span class="o">%</span><span class="n">s</span><span class="p">),</span> <span class="p">(</span><span class="mi">7</span><span class="p">,</span> <span class="s1">&#39;172.19.0.7&#39;</span><span class="p">,</span> <span class="mi">5432</span><span class="p">,</span> <span class="mi">10000</span><span class="p">))</span>
+
+<span class="c1"># The future worker primary notifies the coordinator that it acquired the leader lock in DCS and about to run &quot;pg_ctl promote&quot;.</span>
+<span class="mi">2024</span><span class="o">-</span><span class="mi">08</span><span class="o">-</span><span class="mi">26</span> <span class="mi">07</span><span class="p">:</span><span class="mi">02</span><span class="p">:</span><span class="mi">40</span><span class="p">,</span><span class="mi">085</span> <span class="nc">DEBUG</span><span class="p">:</span> <span class="kp">query</span><span class="p">(</span><span class="nc">SELECT</span> <span class="n">pg_catalog</span><span class="o">.</span><span class="kp">citus_update_node</span><span class="p">(</span><span class="o">%</span><span class="n">s</span><span class="p">,</span> <span class="o">%</span><span class="n">s</span><span class="p">,</span> <span class="o">%</span><span class="n">s</span><span class="p">,</span> <span class="n">true</span><span class="p">,</span> <span class="o">%</span><span class="n">s</span><span class="p">),</span> <span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="s1">&#39;172.19.0.5&#39;</span><span class="p">,</span> <span class="mi">5432</span><span class="p">,</span> <span class="mi">10000</span><span class="p">))</span>
+
+<span class="c1"># The new worker primary just finished promote and notifies coordinator that it is ready to accept read-write traffic.</span>
+<span class="mi">2024</span><span class="o">-</span><span class="mi">08</span><span class="o">-</span><span class="mi">26</span> <span class="mi">07</span><span class="p">:</span><span class="mi">02</span><span class="p">:</span><span class="mi">41</span><span class="p">,</span><span class="mi">485</span> <span class="nc">DEBUG</span><span class="p">:</span> <span class="kp">query</span><span class="p">(</span><span class="nc">COMMIT</span><span class="p">,</span> <span class="p">())</span>
+<span class="c1"># From this moment the application traffic on the coordinator to the worker group 2 is unblocked.</span>
+</pre></div>
+</div>
+</section>
+<section id="secondary-nodes">
+<h2>Secondary nodes</h2>
+<p>Starting from Patroni v4.0.0 Citus secondary nodes without <code class="docutils literal notranslate"><span class="pre">noloadbalance</span></code> <a class="reference internal" href="yaml_configuration.xhtml#tags-settings"><span class="std std-ref">tag</span></a> are also registered in <code class="docutils literal notranslate"><span class="pre">pg_dist_node</span></code>.
+However, to use secondary nodes for read-only queries applications need to change <a class="reference external" href="https://docs.citusdata.com/en/latest/develop/api_guc.html#citus-use-secondary-nodes-enum">citus.use_secondary_nodes</a><span class="link-target"> [https://docs.citusdata.com/en/latest/develop/api_guc.html#citus-use-secondary-nodes-enum]</span> GUC.</p>
+</section>
+<section id="peek-into-dcs">
+<h2>Peek into DCS</h2>
+<p>The Citus cluster (coordinator and workers) are stored in DCS as a fleet of
+Patroni clusters logically grouped together:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="o">/</span><span class="n">service</span><span class="o">/</span><span class="n">batman</span><span class="o">/</span>              <span class="c1"># scope=batman</span>
+<span class="o">/</span><span class="n">service</span><span class="o">/</span><span class="n">batman</span><span class="o">/</span><span class="mi">0</span><span class="o">/</span>            <span class="c1"># citus.group=0, coordinator</span>
+<span class="o">/</span><span class="n">service</span><span class="o">/</span><span class="n">batman</span><span class="o">/</span><span class="mi">0</span><span class="o">/</span><span class="n">initialize</span>
+<span class="o">/</span><span class="n">service</span><span class="o">/</span><span class="n">batman</span><span class="o">/</span><span class="mi">0</span><span class="o">/</span><span class="n">leader</span>
+<span class="o">/</span><span class="n">service</span><span class="o">/</span><span class="n">batman</span><span class="o">/</span><span class="mi">0</span><span class="o">/</span><span class="n">members</span><span class="o">/</span>
+<span class="o">/</span><span class="n">service</span><span class="o">/</span><span class="n">batman</span><span class="o">/</span><span class="mi">0</span><span class="o">/</span><span class="n">members</span><span class="o">/</span><span class="n">m1</span>
+<span class="o">/</span><span class="n">service</span><span class="o">/</span><span class="n">batman</span><span class="o">/</span><span class="mi">0</span><span class="o">/</span><span class="n">members</span><span class="o">/</span><span class="n">m2</span>
+<span class="o">/</span><span class="n">service</span><span class="o">/</span><span class="n">batman</span><span class="o">/</span><span class="mi">1</span><span class="o">/</span>            <span class="c1"># citus.group=1, worker</span>
+<span class="o">/</span><span class="n">service</span><span class="o">/</span><span class="n">batman</span><span class="o">/</span><span class="mi">1</span><span class="o">/</span><span class="n">initialize</span>
+<span class="o">/</span><span class="n">service</span><span class="o">/</span><span class="n">batman</span><span class="o">/</span><span class="mi">1</span><span class="o">/</span><span class="n">leader</span>
+<span class="o">/</span><span class="n">service</span><span class="o">/</span><span class="n">batman</span><span class="o">/</span><span class="mi">1</span><span class="o">/</span><span class="n">members</span><span class="o">/</span>
+<span class="o">/</span><span class="n">service</span><span class="o">/</span><span class="n">batman</span><span class="o">/</span><span class="mi">1</span><span class="o">/</span><span class="n">members</span><span class="o">/</span><span class="n">m3</span>
+<span class="o">/</span><span class="n">service</span><span class="o">/</span><span class="n">batman</span><span class="o">/</span><span class="mi">1</span><span class="o">/</span><span class="n">members</span><span class="o">/</span><span class="n">m4</span>
+<span class="o">...</span>
+</pre></div>
+</div>
+<p>Such an approach was chosen because for most DCS it becomes possible to fetch
+the entire Citus cluster with a single recursive read request. Only Citus
+coordinator nodes are reading the whole tree, because they have to discover
+worker nodes. Worker nodes are reading only the subtree for their own group and
+in some cases they could read the subtree of the coordinator group.</p>
+</section>
+<section id="citus-on-kubernetes">
+<h2>Citus on Kubernetes</h2>
+<p>Since Kubernetes doesn’t support hierarchical structures we had to include the
+citus group to all K8s objects Patroni creates:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">batman</span><span class="o">-</span><span class="mi">0</span><span class="o">-</span><span class="n">leader</span>  <span class="c1"># the leader config map for the coordinator</span>
+<span class="n">batman</span><span class="o">-</span><span class="mi">0</span><span class="o">-</span><span class="n">config</span>  <span class="c1"># the config map holding initialize, config, and history &quot;keys&quot;</span>
+<span class="o">...</span>
+<span class="n">batman</span><span class="o">-</span><span class="mi">1</span><span class="o">-</span><span class="n">leader</span>  <span class="c1"># the leader config map for worker group 1</span>
+<span class="n">batman</span><span class="o">-</span><span class="mi">1</span><span class="o">-</span><span class="n">config</span>
+<span class="o">...</span>
+</pre></div>
+</div>
+<p>I.e., the naming pattern is: <code class="docutils literal notranslate"><span class="pre">${scope}-${citus.group}-${type}</span></code>.</p>
+<p>All Kubernetes objects are discovered by Patroni using the <a class="reference external" href="https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#label-selectors">label selector</a><span class="link-target"> [https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#label-selectors]</span>,
+therefore all Pods with Patroni&amp;Citus and Endpoints/ConfigMaps must have
+similar labels, and Patroni must be configured to use them using Kubernetes
+<a class="reference internal" href="yaml_configuration.xhtml#kubernetes-settings"><span class="std std-ref">settings</span></a> or <a class="reference internal" href="ENVIRONMENT.xhtml#kubernetes-environment"><span class="std std-ref">environment variables</span></a>.</p>
+<p>A couple of examples of Patroni configuration using Pods environment variables:</p>
+<ol class="arabic simple">
+<li><p>for the coordinator cluster</p></li>
+</ol>
+<div class="highlight-YAML notranslate"><div class="highlight"><pre><span></span><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">v1</span>
+<span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Pod</span>
+<span class="nt">metadata</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">labels</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">application</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">patroni</span>
+<span class="w">    </span><span class="nt">citus-group</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;0&quot;</span>
+<span class="w">    </span><span class="nt">citus-type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">coordinator</span>
+<span class="w">    </span><span class="nt">cluster-name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">citusdemo</span>
+<span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">citusdemo-0-0</span>
+<span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">default</span>
+<span class="nt">spec</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">containers</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">env</span><span class="p">:</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PATRONI_SCOPE</span>
+<span class="w">      </span><span class="nt">value</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">citusdemo</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PATRONI_NAME</span>
+<span class="w">      </span><span class="nt">valueFrom</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">fieldRef</span><span class="p">:</span>
+<span class="w">          </span><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">v1</span>
+<span class="w">          </span><span class="nt">fieldPath</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">metadata.name</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PATRONI_KUBERNETES_POD_IP</span>
+<span class="w">      </span><span class="nt">valueFrom</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">fieldRef</span><span class="p">:</span>
+<span class="w">          </span><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">v1</span>
+<span class="w">          </span><span class="nt">fieldPath</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">status.podIP</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PATRONI_KUBERNETES_NAMESPACE</span>
+<span class="w">      </span><span class="nt">valueFrom</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">fieldRef</span><span class="p">:</span>
+<span class="w">          </span><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">v1</span>
+<span class="w">          </span><span class="nt">fieldPath</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">metadata.namespace</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PATRONI_KUBERNETES_LABELS</span>
+<span class="w">      </span><span class="nt">value</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;{application:</span><span class="nv"> </span><span class="s">patroni}&#39;</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PATRONI_CITUS_DATABASE</span>
+<span class="w">      </span><span class="nt">value</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">citus</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PATRONI_CITUS_GROUP</span>
+<span class="w">      </span><span class="nt">value</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;0&quot;</span>
+</pre></div>
+</div>
+<ol class="arabic simple" start="2">
+<li><p>for the worker cluster from the group 2</p></li>
+</ol>
+<div class="highlight-YAML notranslate"><div class="highlight"><pre><span></span><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">v1</span>
+<span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Pod</span>
+<span class="nt">metadata</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">labels</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">application</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">patroni</span>
+<span class="w">    </span><span class="nt">citus-group</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;2&quot;</span>
+<span class="w">    </span><span class="nt">citus-type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">worker</span>
+<span class="w">    </span><span class="nt">cluster-name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">citusdemo</span>
+<span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">citusdemo-2-0</span>
+<span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">default</span>
+<span class="nt">spec</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">containers</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">env</span><span class="p">:</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PATRONI_SCOPE</span>
+<span class="w">      </span><span class="nt">value</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">citusdemo</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PATRONI_NAME</span>
+<span class="w">      </span><span class="nt">valueFrom</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">fieldRef</span><span class="p">:</span>
+<span class="w">          </span><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">v1</span>
+<span class="w">          </span><span class="nt">fieldPath</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">metadata.name</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PATRONI_KUBERNETES_POD_IP</span>
+<span class="w">      </span><span class="nt">valueFrom</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">fieldRef</span><span class="p">:</span>
+<span class="w">          </span><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">v1</span>
+<span class="w">          </span><span class="nt">fieldPath</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">status.podIP</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PATRONI_KUBERNETES_NAMESPACE</span>
+<span class="w">      </span><span class="nt">valueFrom</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">fieldRef</span><span class="p">:</span>
+<span class="w">          </span><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">v1</span>
+<span class="w">          </span><span class="nt">fieldPath</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">metadata.namespace</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PATRONI_KUBERNETES_LABELS</span>
+<span class="w">      </span><span class="nt">value</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;{application:</span><span class="nv"> </span><span class="s">patroni}&#39;</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PATRONI_CITUS_DATABASE</span>
+<span class="w">      </span><span class="nt">value</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">citus</span>
+<span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PATRONI_CITUS_GROUP</span>
+<span class="w">      </span><span class="nt">value</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;2&quot;</span>
+</pre></div>
+</div>
+<p>As you may noticed, both examples have <code class="docutils literal notranslate"><span class="pre">citus-group</span></code> label set. This label
+allows Patroni to identify object as belonging to a certain Citus group. In
+addition to that, there is also <code class="docutils literal notranslate"><span class="pre">PATRONI_CITUS_GROUP</span></code> environment variable,
+which has the same value as the <code class="docutils literal notranslate"><span class="pre">citus-group</span></code> label. When Patroni creates
+new Kubernetes objects ConfigMaps or Endpoints, it automatically puts the
+<code class="docutils literal notranslate"><span class="pre">citus-group:</span> <span class="pre">${env.PATRONI_CITUS_GROUP}</span></code> label on them:</p>
+<div class="highlight-YAML notranslate"><div class="highlight"><pre><span></span><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">v1</span>
+<span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ConfigMap</span>
+<span class="nt">metadata</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">citusdemo-0-leader</span><span class="w">  </span><span class="c1"># Is generated as ${env.PATRONI_SCOPE}-${env.PATRONI_CITUS_GROUP}-leader</span>
+<span class="w">  </span><span class="nt">labels</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">application</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">patroni</span><span class="w">    </span><span class="c1"># Is set from the ${env.PATRONI_KUBERNETES_LABELS}</span>
+<span class="w">    </span><span class="nt">cluster-name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">citusdemo</span><span class="w"> </span><span class="c1"># Is automatically set from the ${env.PATRONI_SCOPE}</span>
+<span class="w">    </span><span class="nt">citus-group</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;0&#39;</span><span class="w">        </span><span class="c1"># Is automatically set from the ${env.PATRONI_CITUS_GROUP}</span>
+</pre></div>
+</div>
+<p>You can find a complete example of Patroni deployment on Kubernetes with Citus
+support in the <a class="reference external" href="https://github.com/patroni/patroni/tree/master/kubernetes">kubernetes</a><span class="link-target"> [https://github.com/patroni/patroni/tree/master/kubernetes]</span> folder of the Patroni repository.</p>
+<p>There are two important files for you:</p>
+<ol class="arabic simple">
+<li><p>Dockerfile.citus</p></li>
+<li><p>citus_k8s.yaml</p></li>
+</ol>
+</section>
+<section id="citus-upgrades-and-postgresql-major-upgrades">
+<h2>Citus upgrades and PostgreSQL major upgrades</h2>
+<p>First, please read about upgrading Citus version in the <a class="reference external" href="https://docs.citusdata.com/en/latest/admin_guide/upgrading_citus.html">documentation</a><span class="link-target"> [https://docs.citusdata.com/en/latest/admin_guide/upgrading_citus.html]</span>.
+There is one minor change in the process. When executing upgrade, you have to
+use <a class="reference internal" href="patronictl.xhtml#patronictl-restart"><span class="std std-ref">patronictl restart</span></a> instead of <code class="docutils literal notranslate"><span class="pre">systemctl</span> <span class="pre">restart</span></code> to restart
+PostgreSQL.</p>
+<p>The PostgreSQL major upgrade with Citus is a bit more complex. You will have to
+combine techniques used in the Citus documentation about major upgrades and
+Patroni documentation about <a class="reference internal" href="existing_data.xhtml#major-upgrade"><span class="std std-ref">PostgreSQL major upgrade</span></a>.
+Please keep in mind that Citus cluster consists of many Patroni clusters
+(coordinator and workers) and they all have to be upgraded independently.</p>
+</section>
+</section>
+
+
+            <div class="clearer"></div>
+          </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+  </body>
+</html>

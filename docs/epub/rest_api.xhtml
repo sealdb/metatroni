@@ -1,0 +1,783 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Patroni REST API</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="_static/epub.css" />
+    <link rel="stylesheet" type="text/css" href="_static/github_style.css" />
+    <link rel="stylesheet" type="text/css" href="_static/custom.css" /> 
+  </head><body>
+
+    <div class="document">
+      <div class="documentwrapper">
+          <div class="body" role="main">
+            
+  <section id="patroni-rest-api">
+<span id="rest-api"></span><h1>Patroni REST API</h1>
+<p>Patroni has a rich REST API, which is used by Patroni itself during the leader race, by the <a class="reference internal" href="patronictl.xhtml#patronictl"><span class="std std-ref">patronictl</span></a> tool in order to perform failovers/switchovers/reinitialize/restarts/reloads, by HAProxy or any other kind of load balancer to perform HTTP health checks, and of course could also be used for monitoring. Below you will find the list of Patroni REST API endpoints.</p>
+<section id="health-check-endpoints">
+<h2>Health check endpoints</h2>
+<p>For all health check <code class="docutils literal notranslate"><span class="pre">GET</span></code> requests Patroni returns a JSON document with the status of the node, along with the HTTP status code. If you don’t want or don’t need the JSON document, you might consider using the <code class="docutils literal notranslate"><span class="pre">HEAD</span></code> or <code class="docutils literal notranslate"><span class="pre">OPTIONS</span></code> method instead of <code class="docutils literal notranslate"><span class="pre">GET</span></code>.</p>
+<ul>
+<li><p>The following requests to Patroni REST API will return HTTP status code <strong>200</strong> only when the Patroni node is running as the primary with leader lock:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/primary</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/read-write</span></code></p></li>
+</ul>
+</li>
+<li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/standby-leader</span></code>: returns HTTP status code <strong>200</strong> only when the Patroni node is running as the leader in a <a class="reference internal" href="standby_cluster.xhtml#standby-cluster"><span class="std std-ref">standby cluster</span></a>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/leader</span></code>: returns HTTP status code <strong>200</strong> when the Patroni node has the leader lock. The major difference from the two previous endpoints is that it doesn’t take into account whether PostgreSQL is running as the <code class="docutils literal notranslate"><span class="pre">primary</span></code> or the <code class="docutils literal notranslate"><span class="pre">standby_leader</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/replica</span></code>: replica health check endpoint. It returns HTTP status code <strong>200</strong> only when the Patroni node is in the state <code class="docutils literal notranslate"><span class="pre">running</span></code>, the role is <code class="docutils literal notranslate"><span class="pre">replica</span></code> and <code class="docutils literal notranslate"><span class="pre">noloadbalance</span></code> tag is not set.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/replica?lag=&lt;max-lag&gt;</span></code>: replica check endpoint. In addition to checks from <code class="docutils literal notranslate"><span class="pre">replica</span></code>, it also checks replication latency and returns status code <strong>200</strong> only when it is below specified value. The key cluster.last_leader_operation from DCS is used for Leader wal position and compute latency on replica for performance reasons. max-lag can be specified in bytes (integer) or in human readable values, for e.g. 16kB, 64MB, 1GB.</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/replica?lag=1048576</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/replica?lag=1024kB</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/replica?lag=10MB</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/replica?lag=1GB</span></code></p></li>
+</ul>
+</li>
+<li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/replica?tag_key1=value1&amp;tag_key2=value2</span></code>: replica check endpoint. In addition, It will also check for user defined tags <code class="docutils literal notranslate"><span class="pre">key1</span></code> and <code class="docutils literal notranslate"><span class="pre">key2</span></code> and their respective values in the <strong>tags</strong> section of the yaml configuration management. If the tag isn’t defined for an instance, or if the value in the yaml configuration doesn’t match the querying value, it will return HTTP Status Code 503.</p>
+<p>In the following requests, since we are checking for the leader or standby-leader status, Patroni doesn’t apply any of the user defined tags and they will be ignored.</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/?tag_key1=value1&amp;tag_key2=value2</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/leader?tag_key1=value1&amp;tag_key2=value2</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/primary?tag_key1=value1&amp;tag_key2=value2</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/read-write?tag_key1=value1&amp;tag_key2=value2</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/standby_leader?tag_key1=value1&amp;tag_key2=value2</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/standby-leader?tag_key1=value1&amp;tag_key2=value2</span></code></p></li>
+</ul>
+</li>
+<li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/read-only</span></code>: like the above endpoint, but also includes the primary.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/synchronous</span></code> or <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/sync</span></code>: returns HTTP status code <strong>200</strong> only when the Patroni node is running as a synchronous standby.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/read-only-sync</span></code>: like the above endpoint, but also includes the primary.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/quorum</span></code>: returns HTTP status code <strong>200</strong> only when this Patroni node is listed as a quorum node in <code class="docutils literal notranslate"><span class="pre">synchronous_standby_names</span></code> on the primary.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/read-only-quorum</span></code>: like the above endpoint, but also includes the primary.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/asynchronous</span></code> or <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/async</span></code>: returns HTTP status code <strong>200</strong> only when the Patroni node is running as an asynchronous standby.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/asynchronous?lag=&lt;max-lag&gt;</span></code> or <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/async?lag=&lt;max-lag&gt;</span></code>: asynchronous standby check endpoint. In addition to checks from <code class="docutils literal notranslate"><span class="pre">asynchronous</span></code> or <code class="docutils literal notranslate"><span class="pre">async</span></code>, it also checks replication latency and returns status code <strong>200</strong> only when it is below specified value. The key cluster.last_leader_operation from DCS is used for Leader wal position and compute latency on replica for performance reasons. max-lag can be specified in bytes (integer) or in human readable values, for e.g. 16kB, 64MB, 1GB.</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/async?lag=1048576</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/async?lag=1024kB</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/async?lag=10MB</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/async?lag=1GB</span></code></p></li>
+</ul>
+</li>
+<li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/health</span></code>: returns HTTP status code <strong>200</strong> only when PostgreSQL is up and running.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/liveness</span></code>: returns HTTP status code <strong>200</strong> if Patroni heartbeat loop is properly running and <strong>503</strong> if the last run was more than <code class="docutils literal notranslate"><span class="pre">ttl</span></code> seconds ago on the primary or <code class="docutils literal notranslate"><span class="pre">2*ttl</span></code> on the replica. Could be used for <code class="docutils literal notranslate"><span class="pre">livenessProbe</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/readiness?lag=&lt;max-lag&gt;&amp;mode=apply|write</span></code>: returns HTTP status code <strong>200</strong> when the Patroni node is running as the leader or when PostgreSQL is up, replicating and not too far behind the leader. The lag parameter sets how far a standby is allowed to be behind, it defaults to <code class="docutils literal notranslate"><span class="pre">maximum_lag_on_failover</span></code>. Lag can be specified in bytes or in human readable values, for e.g. 16kB, 64MB, 1GB. Mode sets whether the WAL needs to be replayed (apply) or just received (write). The default is apply.</p>
+<p>When used as Kubernetes <code class="docutils literal notranslate"><span class="pre">readinessProbe</span></code> it will make sure freshly started pods only become ready when they have caught up to the leader. This combined with a PodDisruptionBudget will protect against leader being terminated too early during a rolling restart of nodes. It will also make sure that replicas that cannot keep up with replication do not service read-only traffic. The endpoint could be used for <code class="docutils literal notranslate"><span class="pre">readinessProbe</span></code> when it is not possible to use Kubernetes endpoints for leader elections (OpenShift).</p>
+</li>
+</ul>
+<p>The <code class="docutils literal notranslate"><span class="pre">liveness</span></code> endpoint is very light-weight and not executing any SQL. Probes should be configured in such a way that they start failing about time when the leader key is expiring. With the default value of <code class="docutils literal notranslate"><span class="pre">ttl</span></code>, which is <code class="docutils literal notranslate"><span class="pre">30s</span></code> example probes would look like:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">readinessProbe</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">httpGet</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">scheme</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">HTTP</span>
+<span class="w">    </span><span class="nt">path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/readiness</span>
+<span class="w">    </span><span class="nt">port</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">8008</span>
+<span class="w">  </span><span class="nt">initialDelaySeconds</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3</span>
+<span class="w">  </span><span class="nt">periodSeconds</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">10</span>
+<span class="w">  </span><span class="nt">timeoutSeconds</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5</span>
+<span class="w">  </span><span class="nt">successThreshold</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+<span class="w">  </span><span class="nt">failureThreshold</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3</span>
+<span class="nt">livenessProbe</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">httpGet</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">scheme</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">HTTP</span>
+<span class="w">    </span><span class="nt">path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/liveness</span>
+<span class="w">    </span><span class="nt">port</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">8008</span>
+<span class="w">  </span><span class="nt">initialDelaySeconds</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3</span>
+<span class="w">  </span><span class="nt">periodSeconds</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">10</span>
+<span class="w">  </span><span class="nt">timeoutSeconds</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5</span>
+<span class="w">  </span><span class="nt">successThreshold</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+<span class="w">  </span><span class="nt">failureThreshold</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3</span>
+</pre></div>
+</div>
+</section>
+<section id="monitoring-endpoint">
+<h2>Monitoring endpoint</h2>
+<p>The <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/patroni</span></code> is used by Patroni during the leader race. It also could be used by your monitoring system. The JSON document produced by this endpoint has the same structure as the JSON produced by the health check endpoints.</p>
+<p><strong>Example:</strong> A healthy cluster</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$<span class="w"> </span>curl<span class="w"> </span>-s<span class="w"> </span>http://localhost:8008/patroni<span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>.
+<span class="o">{</span>
+<span class="w">  </span><span class="s2">&quot;state&quot;</span>:<span class="w"> </span><span class="s2">&quot;running&quot;</span>,
+<span class="w">  </span><span class="s2">&quot;postmaster_start_time&quot;</span>:<span class="w"> </span><span class="s2">&quot;2024-08-28 19:39:26.352526+00:00&quot;</span>,
+<span class="w">  </span><span class="s2">&quot;role&quot;</span>:<span class="w"> </span><span class="s2">&quot;primary&quot;</span>,
+<span class="w">  </span><span class="s2">&quot;server_version&quot;</span>:<span class="w"> </span><span class="m">160004</span>,
+<span class="w">  </span><span class="s2">&quot;xlog&quot;</span>:<span class="w"> </span><span class="o">{</span>
+<span class="w">    </span><span class="s2">&quot;location&quot;</span>:<span class="w"> </span><span class="m">67395656</span>
+<span class="w">  </span><span class="o">}</span>,
+<span class="w">  </span><span class="s2">&quot;timeline&quot;</span>:<span class="w"> </span><span class="m">1</span>,
+<span class="w">  </span><span class="s2">&quot;replication&quot;</span>:<span class="w"> </span><span class="o">[</span>
+<span class="w">    </span><span class="o">{</span>
+<span class="w">      </span><span class="s2">&quot;usename&quot;</span>:<span class="w"> </span><span class="s2">&quot;replicator&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;application_name&quot;</span>:<span class="w"> </span><span class="s2">&quot;patroni2&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;client_addr&quot;</span>:<span class="w"> </span><span class="s2">&quot;10.89.0.6&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;state&quot;</span>:<span class="w"> </span><span class="s2">&quot;streaming&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;sync_state&quot;</span>:<span class="w"> </span><span class="s2">&quot;async&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;sync_priority&quot;</span>:<span class="w"> </span><span class="m">0</span>
+<span class="w">    </span><span class="o">}</span>,
+<span class="w">    </span><span class="o">{</span>
+<span class="w">      </span><span class="s2">&quot;usename&quot;</span>:<span class="w"> </span><span class="s2">&quot;replicator&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;application_name&quot;</span>:<span class="w"> </span><span class="s2">&quot;patroni3&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;client_addr&quot;</span>:<span class="w"> </span><span class="s2">&quot;10.89.0.2&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;state&quot;</span>:<span class="w"> </span><span class="s2">&quot;streaming&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;sync_state&quot;</span>:<span class="w"> </span><span class="s2">&quot;async&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;sync_priority&quot;</span>:<span class="w"> </span><span class="m">0</span>
+<span class="w">    </span><span class="o">}</span>
+<span class="w">  </span><span class="o">]</span>,
+<span class="w">  </span><span class="s2">&quot;dcs_last_seen&quot;</span>:<span class="w"> </span><span class="m">1692356718</span>,
+<span class="w">  </span><span class="s2">&quot;tags&quot;</span>:<span class="w"> </span><span class="o">{</span>
+<span class="w">    </span><span class="s2">&quot;clonefrom&quot;</span>:<span class="w"> </span><span class="nb">true</span>
+<span class="w">  </span><span class="o">}</span>,
+<span class="w">  </span><span class="s2">&quot;database_system_identifier&quot;</span>:<span class="w"> </span><span class="s2">&quot;7268616322854375442&quot;</span>,
+<span class="w">  </span><span class="s2">&quot;patroni&quot;</span>:<span class="w"> </span><span class="o">{</span>
+<span class="w">    </span><span class="s2">&quot;version&quot;</span>:<span class="w"> </span><span class="s2">&quot;4.0.0&quot;</span>,
+<span class="w">    </span><span class="s2">&quot;scope&quot;</span>:<span class="w"> </span><span class="s2">&quot;demo&quot;</span>,
+<span class="w">    </span><span class="s2">&quot;name&quot;</span>:<span class="w"> </span><span class="s2">&quot;patroni1&quot;</span>
+<span class="w">  </span><span class="o">}</span>
+<span class="o">}</span>
+</pre></div>
+</div>
+<p><strong>Example:</strong> An unlocked cluster</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$<span class="w"> </span>curl<span class="w"> </span>-s<span class="w"> </span>http://localhost:8008/patroni<span class="w">  </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>.
+<span class="o">{</span>
+<span class="w">  </span><span class="s2">&quot;state&quot;</span>:<span class="w"> </span><span class="s2">&quot;running&quot;</span>,
+<span class="w">  </span><span class="s2">&quot;postmaster_start_time&quot;</span>:<span class="w"> </span><span class="s2">&quot;2024-08-28 19:39:26.352526+00:00&quot;</span>,
+<span class="w">  </span><span class="s2">&quot;role&quot;</span>:<span class="w"> </span><span class="s2">&quot;replica&quot;</span>,
+<span class="w">  </span><span class="s2">&quot;server_version&quot;</span>:<span class="w"> </span><span class="m">160004</span>,
+<span class="w">  </span><span class="s2">&quot;xlog&quot;</span>:<span class="w"> </span><span class="o">{</span>
+<span class="w">    </span><span class="s2">&quot;received_location&quot;</span>:<span class="w"> </span><span class="m">67419744</span>,
+<span class="w">    </span><span class="s2">&quot;replayed_location&quot;</span>:<span class="w"> </span><span class="m">67419744</span>,
+<span class="w">    </span><span class="s2">&quot;replayed_timestamp&quot;</span>:<span class="w"> </span>null,
+<span class="w">    </span><span class="s2">&quot;paused&quot;</span>:<span class="w"> </span><span class="nb">false</span>
+<span class="w">  </span><span class="o">}</span>,
+<span class="w">  </span><span class="s2">&quot;timeline&quot;</span>:<span class="w"> </span><span class="m">1</span>,
+<span class="w">  </span><span class="s2">&quot;replication&quot;</span>:<span class="w"> </span><span class="o">[</span>
+<span class="w">    </span><span class="o">{</span>
+<span class="w">      </span><span class="s2">&quot;usename&quot;</span>:<span class="w"> </span><span class="s2">&quot;replicator&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;application_name&quot;</span>:<span class="w"> </span><span class="s2">&quot;patroni2&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;client_addr&quot;</span>:<span class="w"> </span><span class="s2">&quot;10.89.0.6&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;state&quot;</span>:<span class="w"> </span><span class="s2">&quot;streaming&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;sync_state&quot;</span>:<span class="w"> </span><span class="s2">&quot;async&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;sync_priority&quot;</span>:<span class="w"> </span><span class="m">0</span>
+<span class="w">    </span><span class="o">}</span>,
+<span class="w">    </span><span class="o">{</span>
+<span class="w">      </span><span class="s2">&quot;usename&quot;</span>:<span class="w"> </span><span class="s2">&quot;replicator&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;application_name&quot;</span>:<span class="w"> </span><span class="s2">&quot;patroni3&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;client_addr&quot;</span>:<span class="w"> </span><span class="s2">&quot;10.89.0.2&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;state&quot;</span>:<span class="w"> </span><span class="s2">&quot;streaming&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;sync_state&quot;</span>:<span class="w"> </span><span class="s2">&quot;async&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;sync_priority&quot;</span>:<span class="w"> </span><span class="m">0</span>
+<span class="w">    </span><span class="o">}</span>
+<span class="w">  </span><span class="o">]</span>,
+<span class="w">  </span><span class="s2">&quot;cluster_unlocked&quot;</span>:<span class="w"> </span>true,
+<span class="w">  </span><span class="s2">&quot;dcs_last_seen&quot;</span>:<span class="w"> </span><span class="m">1692356928</span>,
+<span class="w">  </span><span class="s2">&quot;tags&quot;</span>:<span class="w"> </span><span class="o">{</span>
+<span class="w">    </span><span class="s2">&quot;clonefrom&quot;</span>:<span class="w"> </span><span class="nb">true</span>
+<span class="w">  </span><span class="o">}</span>,
+<span class="w">  </span><span class="s2">&quot;database_system_identifier&quot;</span>:<span class="w"> </span><span class="s2">&quot;7268616322854375442&quot;</span>,
+<span class="w">  </span><span class="s2">&quot;patroni&quot;</span>:<span class="w"> </span><span class="o">{</span>
+<span class="w">    </span><span class="s2">&quot;version&quot;</span>:<span class="w"> </span><span class="s2">&quot;4.0.0&quot;</span>,
+<span class="w">    </span><span class="s2">&quot;scope&quot;</span>:<span class="w"> </span><span class="s2">&quot;demo&quot;</span>,
+<span class="w">    </span><span class="s2">&quot;name&quot;</span>:<span class="w"> </span><span class="s2">&quot;patroni1&quot;</span>
+<span class="w">  </span><span class="o">}</span>
+<span class="o">}</span>
+</pre></div>
+</div>
+<p><strong>Example:</strong> An unlocked cluster with <a class="reference internal" href="dcs_failsafe_mode.xhtml#dcs-failsafe-mode"><span class="std std-ref">DCS failsafe mode</span></a> enabled</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$<span class="w"> </span>curl<span class="w"> </span>-s<span class="w"> </span>http://localhost:8008/patroni<span class="w">  </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>.
+<span class="o">{</span>
+<span class="w">  </span><span class="s2">&quot;state&quot;</span>:<span class="w"> </span><span class="s2">&quot;running&quot;</span>,
+<span class="w">  </span><span class="s2">&quot;postmaster_start_time&quot;</span>:<span class="w"> </span><span class="s2">&quot;2024-08-28 19:39:26.352526+00:00&quot;</span>,
+<span class="w">  </span><span class="s2">&quot;role&quot;</span>:<span class="w"> </span><span class="s2">&quot;replica&quot;</span>,
+<span class="w">  </span><span class="s2">&quot;server_version&quot;</span>:<span class="w"> </span><span class="m">160004</span>,
+<span class="w">  </span><span class="s2">&quot;xlog&quot;</span>:<span class="w"> </span><span class="o">{</span>
+<span class="w">    </span><span class="s2">&quot;location&quot;</span>:<span class="w"> </span><span class="m">67420024</span>
+<span class="w">  </span><span class="o">}</span>,
+<span class="w">  </span><span class="s2">&quot;timeline&quot;</span>:<span class="w"> </span><span class="m">1</span>,
+<span class="w">  </span><span class="s2">&quot;replication&quot;</span>:<span class="w"> </span><span class="o">[</span>
+<span class="w">    </span><span class="o">{</span>
+<span class="w">      </span><span class="s2">&quot;usename&quot;</span>:<span class="w"> </span><span class="s2">&quot;replicator&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;application_name&quot;</span>:<span class="w"> </span><span class="s2">&quot;patroni2&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;client_addr&quot;</span>:<span class="w"> </span><span class="s2">&quot;10.89.0.6&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;state&quot;</span>:<span class="w"> </span><span class="s2">&quot;streaming&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;sync_state&quot;</span>:<span class="w"> </span><span class="s2">&quot;async&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;sync_priority&quot;</span>:<span class="w"> </span><span class="m">0</span>
+<span class="w">    </span><span class="o">}</span>,
+<span class="w">    </span><span class="o">{</span>
+<span class="w">      </span><span class="s2">&quot;usename&quot;</span>:<span class="w"> </span><span class="s2">&quot;replicator&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;application_name&quot;</span>:<span class="w"> </span><span class="s2">&quot;patroni3&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;client_addr&quot;</span>:<span class="w"> </span><span class="s2">&quot;10.89.0.2&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;state&quot;</span>:<span class="w"> </span><span class="s2">&quot;streaming&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;sync_state&quot;</span>:<span class="w"> </span><span class="s2">&quot;async&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;sync_priority&quot;</span>:<span class="w"> </span><span class="m">0</span>
+<span class="w">    </span><span class="o">}</span>
+<span class="w">  </span><span class="o">]</span>,
+<span class="w">  </span><span class="s2">&quot;cluster_unlocked&quot;</span>:<span class="w"> </span>true,
+<span class="w">  </span><span class="s2">&quot;failsafe_mode_is_active&quot;</span>:<span class="w"> </span>true,
+<span class="w">  </span><span class="s2">&quot;dcs_last_seen&quot;</span>:<span class="w"> </span><span class="m">1692356928</span>,
+<span class="w">  </span><span class="s2">&quot;tags&quot;</span>:<span class="w"> </span><span class="o">{</span>
+<span class="w">    </span><span class="s2">&quot;clonefrom&quot;</span>:<span class="w"> </span><span class="nb">true</span>
+<span class="w">  </span><span class="o">}</span>,
+<span class="w">  </span><span class="s2">&quot;database_system_identifier&quot;</span>:<span class="w"> </span><span class="s2">&quot;7268616322854375442&quot;</span>,
+<span class="w">  </span><span class="s2">&quot;patroni&quot;</span>:<span class="w"> </span><span class="o">{</span>
+<span class="w">    </span><span class="s2">&quot;version&quot;</span>:<span class="w"> </span><span class="s2">&quot;4.0.0&quot;</span>,
+<span class="w">    </span><span class="s2">&quot;scope&quot;</span>:<span class="w"> </span><span class="s2">&quot;demo&quot;</span>,
+<span class="w">    </span><span class="s2">&quot;name&quot;</span>:<span class="w"> </span><span class="s2">&quot;patroni1&quot;</span>
+<span class="w">  </span><span class="o">}</span>
+<span class="o">}</span>
+</pre></div>
+</div>
+<p><strong>Example:</strong> A cluster with the <a class="reference internal" href="pause.xhtml#pause"><span class="std std-ref">pause mode</span></a> enabled</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$<span class="w"> </span>curl<span class="w"> </span>-s<span class="w"> </span>http://localhost:8008/patroni<span class="w">  </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>.
+<span class="o">{</span>
+<span class="w">  </span><span class="s2">&quot;state&quot;</span>:<span class="w"> </span><span class="s2">&quot;running&quot;</span>,
+<span class="w">  </span><span class="s2">&quot;postmaster_start_time&quot;</span>:<span class="w"> </span><span class="s2">&quot;2024-08-28 19:39:26.352526+00:00&quot;</span>,
+<span class="w">  </span><span class="s2">&quot;role&quot;</span>:<span class="w"> </span><span class="s2">&quot;replica&quot;</span>,
+<span class="w">  </span><span class="s2">&quot;server_version&quot;</span>:<span class="w"> </span><span class="m">160004</span>,
+<span class="w">  </span><span class="s2">&quot;xlog&quot;</span>:<span class="w"> </span><span class="o">{</span>
+<span class="w">    </span><span class="s2">&quot;location&quot;</span>:<span class="w"> </span><span class="m">67420024</span>
+<span class="w">  </span><span class="o">}</span>,
+<span class="w">  </span><span class="s2">&quot;timeline&quot;</span>:<span class="w"> </span><span class="m">1</span>,
+<span class="w">  </span><span class="s2">&quot;replication&quot;</span>:<span class="w"> </span><span class="o">[</span>
+<span class="w">    </span><span class="o">{</span>
+<span class="w">      </span><span class="s2">&quot;usename&quot;</span>:<span class="w"> </span><span class="s2">&quot;replicator&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;application_name&quot;</span>:<span class="w"> </span><span class="s2">&quot;patroni2&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;client_addr&quot;</span>:<span class="w"> </span><span class="s2">&quot;10.89.0.6&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;state&quot;</span>:<span class="w"> </span><span class="s2">&quot;streaming&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;sync_state&quot;</span>:<span class="w"> </span><span class="s2">&quot;async&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;sync_priority&quot;</span>:<span class="w"> </span><span class="m">0</span>
+<span class="w">    </span><span class="o">}</span>,
+<span class="w">    </span><span class="o">{</span>
+<span class="w">      </span><span class="s2">&quot;usename&quot;</span>:<span class="w"> </span><span class="s2">&quot;replicator&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;application_name&quot;</span>:<span class="w"> </span><span class="s2">&quot;patroni3&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;client_addr&quot;</span>:<span class="w"> </span><span class="s2">&quot;10.89.0.2&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;state&quot;</span>:<span class="w"> </span><span class="s2">&quot;streaming&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;sync_state&quot;</span>:<span class="w"> </span><span class="s2">&quot;async&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;sync_priority&quot;</span>:<span class="w"> </span><span class="m">0</span>
+<span class="w">    </span><span class="o">}</span>
+<span class="w">  </span><span class="o">]</span>,
+<span class="w">  </span><span class="s2">&quot;pause&quot;</span>:<span class="w"> </span>true,
+<span class="w">  </span><span class="s2">&quot;dcs_last_seen&quot;</span>:<span class="w"> </span><span class="m">1724874295</span>,
+<span class="w">  </span><span class="s2">&quot;tags&quot;</span>:<span class="w"> </span><span class="o">{</span>
+<span class="w">    </span><span class="s2">&quot;clonefrom&quot;</span>:<span class="w"> </span><span class="nb">true</span>
+<span class="w">  </span><span class="o">}</span>,
+<span class="w">  </span><span class="s2">&quot;database_system_identifier&quot;</span>:<span class="w"> </span><span class="s2">&quot;7268616322854375442&quot;</span>,
+<span class="w">  </span><span class="s2">&quot;patroni&quot;</span>:<span class="w"> </span><span class="o">{</span>
+<span class="w">    </span><span class="s2">&quot;version&quot;</span>:<span class="w"> </span><span class="s2">&quot;4.0.0&quot;</span>,
+<span class="w">    </span><span class="s2">&quot;scope&quot;</span>:<span class="w"> </span><span class="s2">&quot;demo&quot;</span>,
+<span class="w">    </span><span class="s2">&quot;name&quot;</span>:<span class="w"> </span><span class="s2">&quot;patroni1&quot;</span>
+<span class="w">  </span><span class="o">}</span>
+<span class="o">}</span>
+</pre></div>
+</div>
+<p>Retrieve the Patroni metrics in Prometheus format through the <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/metrics</span></code> endpoint.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$<span class="w"> </span>curl<span class="w"> </span>http://localhost:8008/metrics
+
+<span class="c1"># HELP patroni_version Patroni semver without periods. \</span>
+<span class="c1"># TYPE patroni_version gauge</span>
+patroni_version<span class="o">{</span><span class="nv">scope</span><span class="o">=</span><span class="s2">&quot;batman&quot;</span>,name<span class="o">=</span><span class="s2">&quot;patroni1&quot;</span><span class="o">}</span><span class="w"> </span><span class="m">040000</span>
+<span class="c1"># HELP patroni_postgres_running Value is 1 if Postgres is running, 0 otherwise.</span>
+<span class="c1"># TYPE patroni_postgres_running gauge</span>
+patroni_postgres_running<span class="o">{</span><span class="nv">scope</span><span class="o">=</span><span class="s2">&quot;batman&quot;</span>,name<span class="o">=</span><span class="s2">&quot;patroni1&quot;</span><span class="o">}</span><span class="w"> </span><span class="m">1</span>
+<span class="c1"># HELP patroni_postmaster_start_time Epoch seconds since Postgres started.</span>
+<span class="c1"># TYPE patroni_postmaster_start_time gauge</span>
+patroni_postmaster_start_time<span class="o">{</span><span class="nv">scope</span><span class="o">=</span><span class="s2">&quot;batman&quot;</span>,name<span class="o">=</span><span class="s2">&quot;patroni1&quot;</span><span class="o">}</span><span class="w"> </span><span class="m">1724873966</span>.352526
+<span class="c1"># HELP patroni_primary Value is 1 if this node is the leader, 0 otherwise.</span>
+<span class="c1"># TYPE patroni_primary gauge</span>
+patroni_primary<span class="o">{</span><span class="nv">scope</span><span class="o">=</span><span class="s2">&quot;batman&quot;</span>,name<span class="o">=</span><span class="s2">&quot;patroni1&quot;</span><span class="o">}</span><span class="w"> </span><span class="m">1</span>
+<span class="c1"># HELP patroni_xlog_location Current location of the Postgres transaction log, 0 if this node is not the leader.</span>
+<span class="c1"># TYPE patroni_xlog_location counter</span>
+patroni_xlog_location<span class="o">{</span><span class="nv">scope</span><span class="o">=</span><span class="s2">&quot;batman&quot;</span>,name<span class="o">=</span><span class="s2">&quot;patroni1&quot;</span><span class="o">}</span><span class="w"> </span><span class="m">22320573386952</span>
+<span class="c1"># HELP patroni_standby_leader Value is 1 if this node is the standby_leader, 0 otherwise.</span>
+<span class="c1"># TYPE patroni_standby_leader gauge</span>
+patroni_standby_leader<span class="o">{</span><span class="nv">scope</span><span class="o">=</span><span class="s2">&quot;batman&quot;</span>,name<span class="o">=</span><span class="s2">&quot;patroni1&quot;</span><span class="o">}</span><span class="w"> </span><span class="m">0</span>
+<span class="c1"># HELP patroni_replica Value is 1 if this node is a replica, 0 otherwise.</span>
+<span class="c1"># TYPE patroni_replica gauge</span>
+patroni_replica<span class="o">{</span><span class="nv">scope</span><span class="o">=</span><span class="s2">&quot;batman&quot;</span>,name<span class="o">=</span><span class="s2">&quot;patroni1&quot;</span><span class="o">}</span><span class="w"> </span><span class="m">0</span>
+<span class="c1"># HELP patroni_sync_standby Value is 1 if this node is a sync standby replica, 0 otherwise.</span>
+<span class="c1"># TYPE patroni_sync_standby gauge</span>
+patroni_sync_standby<span class="o">{</span><span class="nv">scope</span><span class="o">=</span><span class="s2">&quot;batman&quot;</span>,name<span class="o">=</span><span class="s2">&quot;patroni1&quot;</span><span class="o">}</span><span class="w"> </span><span class="m">0</span>
+<span class="c1"># HELP patroni_quorum_standby Value is 1 if this node is a quorum standby replica, 0 otherwise.</span>
+<span class="c1"># TYPE patroni_quorum_standby gauge</span>
+patroni_quorum_standby<span class="o">{</span><span class="nv">scope</span><span class="o">=</span><span class="s2">&quot;batman&quot;</span>,name<span class="o">=</span><span class="s2">&quot;patroni1&quot;</span><span class="o">}</span><span class="w"> </span><span class="m">0</span>
+<span class="c1"># HELP patroni_xlog_received_location Current location of the received Postgres transaction log, 0 if this node is not a replica.</span>
+<span class="c1"># TYPE patroni_xlog_received_location counter</span>
+patroni_xlog_received_location<span class="o">{</span><span class="nv">scope</span><span class="o">=</span><span class="s2">&quot;batman&quot;</span>,name<span class="o">=</span><span class="s2">&quot;patroni1&quot;</span><span class="o">}</span><span class="w"> </span><span class="m">0</span>
+<span class="c1"># HELP patroni_xlog_replayed_location Current location of the replayed Postgres transaction log, 0 if this node is not a replica.</span>
+<span class="c1"># TYPE patroni_xlog_replayed_location counter</span>
+patroni_xlog_replayed_location<span class="o">{</span><span class="nv">scope</span><span class="o">=</span><span class="s2">&quot;batman&quot;</span>,name<span class="o">=</span><span class="s2">&quot;patroni1&quot;</span><span class="o">}</span><span class="w"> </span><span class="m">0</span>
+<span class="c1"># HELP patroni_xlog_replayed_timestamp Current timestamp of the replayed Postgres transaction log, 0 if null.</span>
+<span class="c1"># TYPE patroni_xlog_replayed_timestamp gauge</span>
+patroni_xlog_replayed_timestamp<span class="o">{</span><span class="nv">scope</span><span class="o">=</span><span class="s2">&quot;batman&quot;</span>,name<span class="o">=</span><span class="s2">&quot;patroni1&quot;</span><span class="o">}</span><span class="w"> </span><span class="m">0</span>
+<span class="c1"># HELP patroni_xlog_paused Value is 1 if the Postgres xlog is paused, 0 otherwise.</span>
+<span class="c1"># TYPE patroni_xlog_paused gauge</span>
+patroni_xlog_paused<span class="o">{</span><span class="nv">scope</span><span class="o">=</span><span class="s2">&quot;batman&quot;</span>,name<span class="o">=</span><span class="s2">&quot;patroni1&quot;</span><span class="o">}</span><span class="w"> </span><span class="m">0</span>
+<span class="c1"># HELP patroni_postgres_streaming Value is 1 if Postgres is streaming, 0 otherwise.</span>
+<span class="c1"># TYPE patroni_postgres_streaming gauge</span>
+patroni_postgres_streaming<span class="o">{</span><span class="nv">scope</span><span class="o">=</span><span class="s2">&quot;batman&quot;</span>,name<span class="o">=</span><span class="s2">&quot;patroni1&quot;</span><span class="o">}</span><span class="w"> </span><span class="m">1</span>
+<span class="c1"># HELP patroni_postgres_in_archive_recovery Value is 1 if Postgres is replicating from archive, 0 otherwise.</span>
+<span class="c1"># TYPE patroni_postgres_in_archive_recovery gauge</span>
+patroni_postgres_in_archive_recovery<span class="o">{</span><span class="nv">scope</span><span class="o">=</span><span class="s2">&quot;batman&quot;</span>,name<span class="o">=</span><span class="s2">&quot;patroni1&quot;</span><span class="o">}</span><span class="w"> </span><span class="m">0</span>
+<span class="c1"># HELP patroni_postgres_server_version Version of Postgres (if running), 0 otherwise.</span>
+<span class="c1"># TYPE patroni_postgres_server_version gauge</span>
+patroni_postgres_server_version<span class="o">{</span><span class="nv">scope</span><span class="o">=</span><span class="s2">&quot;batman&quot;</span>,name<span class="o">=</span><span class="s2">&quot;patroni1&quot;</span><span class="o">}</span><span class="w"> </span><span class="m">160004</span>
+<span class="c1"># HELP patroni_cluster_unlocked Value is 1 if the cluster is unlocked, 0 if locked.</span>
+<span class="c1"># TYPE patroni_cluster_unlocked gauge</span>
+patroni_cluster_unlocked<span class="o">{</span><span class="nv">scope</span><span class="o">=</span><span class="s2">&quot;batman&quot;</span>,name<span class="o">=</span><span class="s2">&quot;patroni1&quot;</span><span class="o">}</span><span class="w"> </span><span class="m">0</span>
+<span class="c1"># HELP patroni_postgres_timeline Postgres timeline of this node (if running), 0 otherwise.</span>
+<span class="c1"># TYPE patroni_postgres_timeline counter</span>
+patroni_failsafe_mode_is_active<span class="o">{</span><span class="nv">scope</span><span class="o">=</span><span class="s2">&quot;batman&quot;</span>,name<span class="o">=</span><span class="s2">&quot;patroni1&quot;</span><span class="o">}</span><span class="w"> </span><span class="m">0</span>
+<span class="c1"># HELP patroni_postgres_timeline Postgres timeline of this node (if running), 0 otherwise.</span>
+<span class="c1"># TYPE patroni_postgres_timeline counter</span>
+patroni_postgres_timeline<span class="o">{</span><span class="nv">scope</span><span class="o">=</span><span class="s2">&quot;batman&quot;</span>,name<span class="o">=</span><span class="s2">&quot;patroni1&quot;</span><span class="o">}</span><span class="w"> </span><span class="m">24</span>
+<span class="c1"># HELP patroni_dcs_last_seen Epoch timestamp when DCS was last contacted successfully by Patroni.</span>
+<span class="c1"># TYPE patroni_dcs_last_seen gauge</span>
+patroni_dcs_last_seen<span class="o">{</span><span class="nv">scope</span><span class="o">=</span><span class="s2">&quot;batman&quot;</span>,name<span class="o">=</span><span class="s2">&quot;patroni1&quot;</span><span class="o">}</span><span class="w"> </span><span class="m">1724874235</span>
+<span class="c1"># HELP patroni_pending_restart Value is 1 if the node needs a restart, 0 otherwise.</span>
+<span class="c1"># TYPE patroni_pending_restart gauge</span>
+patroni_pending_restart<span class="o">{</span><span class="nv">scope</span><span class="o">=</span><span class="s2">&quot;batman&quot;</span>,name<span class="o">=</span><span class="s2">&quot;patroni1&quot;</span><span class="o">}</span><span class="w"> </span><span class="m">1</span>
+<span class="c1"># HELP patroni_is_paused Value is 1 if auto failover is disabled, 0 otherwise.</span>
+<span class="c1"># TYPE patroni_is_paused gauge</span>
+patroni_is_paused<span class="o">{</span><span class="nv">scope</span><span class="o">=</span><span class="s2">&quot;batman&quot;</span>,name<span class="o">=</span><span class="s2">&quot;patroni1&quot;</span><span class="o">}</span><span class="w"> </span><span class="m">1</span>
+<span class="c1"># HELP patroni_postgres_state Numeric representation of Postgres state.</span>
+<span class="c1"># Values: 0=initdb, 1=initdb_failed, 2=custom_bootstrap, 3=custom_bootstrap_failed, 4=creating_replica, 5=running, 6=starting, 7=bootstrap_starting, 8=start_failed, 9=restarting, 10=restart_failed, 11=stopping, 12=stopped, 13=stop_failed, 14=crashed</span>
+<span class="c1"># TYPE patroni_postgres_state gauge</span>
+patroni_postgres_state<span class="o">{</span><span class="nv">scope</span><span class="o">=</span><span class="s2">&quot;batman&quot;</span>,name<span class="o">=</span><span class="s2">&quot;patroni1&quot;</span><span class="o">}</span><span class="w"> </span><span class="m">5</span>
+</pre></div>
+</div>
+<section id="postgresql-state-values">
+<h3>PostgreSQL State Values</h3>
+<p>The <code class="docutils literal notranslate"><span class="pre">patroni_postgres_state</span></code> metric provides a numeric representation of the current PostgreSQL instance state. This is useful for monitoring and alerting systems that need to track state changes over time. The numeric values are generated using the <code class="docutils literal notranslate"><span class="pre">PostgresqlState.get_metrics_description()</span></code> static method.</p>
+<table class="docutils align-default" id="id4">
+<caption><span class="caption-text">PostgreSQL State Values</span></caption>
+<colgroup>
+<col style="width: 12.5%" />
+<col style="width: 25.0%" />
+<col style="width: 62.5%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Value</p></th>
+<th class="head"><p>State Name</p></th>
+<th class="head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>0</p></td>
+<td><p>initdb</p></td>
+<td><p>Initializing new cluster</p></td>
+</tr>
+<tr class="row-odd"><td><p>1</p></td>
+<td><p>initdb_failed</p></td>
+<td><p>Initialization of new cluster failed</p></td>
+</tr>
+<tr class="row-even"><td><p>2</p></td>
+<td><p>custom_bootstrap</p></td>
+<td><p>Running custom bootstrap script</p></td>
+</tr>
+<tr class="row-odd"><td><p>3</p></td>
+<td><p>custom_bootstrap_failed</p></td>
+<td><p>Custom bootstrap script failed</p></td>
+</tr>
+<tr class="row-even"><td><p>4</p></td>
+<td><p>creating_replica</p></td>
+<td><p>Creating replica from primary</p></td>
+</tr>
+<tr class="row-odd"><td><p>5</p></td>
+<td><p>running</p></td>
+<td><p>PostgreSQL is running normally</p></td>
+</tr>
+<tr class="row-even"><td><p>6</p></td>
+<td><p>starting</p></td>
+<td><p>PostgreSQL is starting up</p></td>
+</tr>
+<tr class="row-odd"><td><p>7</p></td>
+<td><p>bootstrap_starting</p></td>
+<td><p>Starting after custom bootstrap</p></td>
+</tr>
+<tr class="row-even"><td><p>8</p></td>
+<td><p>start_failed</p></td>
+<td><p>PostgreSQL start failed</p></td>
+</tr>
+<tr class="row-odd"><td><p>9</p></td>
+<td><p>restarting</p></td>
+<td><p>PostgreSQL is restarting</p></td>
+</tr>
+<tr class="row-even"><td><p>10</p></td>
+<td><p>restart_failed</p></td>
+<td><p>PostgreSQL restart failed</p></td>
+</tr>
+<tr class="row-odd"><td><p>11</p></td>
+<td><p>stopping</p></td>
+<td><p>PostgreSQL is stopping</p></td>
+</tr>
+<tr class="row-even"><td><p>12</p></td>
+<td><p>stopped</p></td>
+<td><p>PostgreSQL is stopped</p></td>
+</tr>
+<tr class="row-odd"><td><p>13</p></td>
+<td><p>stop_failed</p></td>
+<td><p>PostgreSQL stop failed</p></td>
+</tr>
+<tr class="row-even"><td><p>14</p></td>
+<td><p>crashed</p></td>
+<td><p>PostgreSQL has crashed</p></td>
+</tr>
+</tbody>
+</table>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>These numeric values are fixed and will never change to maintain backward compatibility with existing monitoring systems. If new states are added in the future, they will be assigned new numeric values without changing existing ones.</p>
+</div>
+</section>
+</section>
+<section id="cluster-status-endpoints">
+<h2>Cluster status endpoints</h2>
+<ul class="simple">
+<li><p>The <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/cluster</span></code> endpoint generates a JSON document describing the current cluster topology and state:</p></li>
+</ul>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$<span class="w"> </span>curl<span class="w"> </span>-s<span class="w"> </span>http://localhost:8008/cluster<span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>.
+<span class="o">{</span>
+<span class="w">  </span><span class="s2">&quot;members&quot;</span>:<span class="w"> </span><span class="o">[</span>
+<span class="w">    </span><span class="o">{</span>
+<span class="w">      </span><span class="s2">&quot;name&quot;</span>:<span class="w"> </span><span class="s2">&quot;patroni1&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;role&quot;</span>:<span class="w"> </span><span class="s2">&quot;leader&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;state&quot;</span>:<span class="w"> </span><span class="s2">&quot;running&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;api_url&quot;</span>:<span class="w"> </span><span class="s2">&quot;http://10.89.0.4:8008/patroni&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;host&quot;</span>:<span class="w"> </span><span class="s2">&quot;10.89.0.4&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;port&quot;</span>:<span class="w"> </span><span class="m">5432</span>,
+<span class="w">      </span><span class="s2">&quot;timeline&quot;</span>:<span class="w"> </span><span class="m">5</span>,
+<span class="w">      </span><span class="s2">&quot;tags&quot;</span>:<span class="w"> </span><span class="o">{</span>
+<span class="w">        </span><span class="s2">&quot;clonefrom&quot;</span>:<span class="w"> </span><span class="nb">true</span>
+<span class="w">      </span><span class="o">}</span>
+<span class="w">    </span><span class="o">}</span>,
+<span class="w">    </span><span class="o">{</span>
+<span class="w">      </span><span class="s2">&quot;name&quot;</span>:<span class="w"> </span><span class="s2">&quot;patroni2&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;role&quot;</span>:<span class="w"> </span><span class="s2">&quot;replica&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;state&quot;</span>:<span class="w"> </span><span class="s2">&quot;streaming&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;api_url&quot;</span>:<span class="w"> </span><span class="s2">&quot;http://10.89.0.6:8008/patroni&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;host&quot;</span>:<span class="w"> </span><span class="s2">&quot;10.89.0.6&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;port&quot;</span>:<span class="w"> </span><span class="m">5433</span>,
+<span class="w">      </span><span class="s2">&quot;timeline&quot;</span>:<span class="w"> </span><span class="m">5</span>,
+<span class="w">      </span><span class="s2">&quot;tags&quot;</span>:<span class="w"> </span><span class="o">{</span>
+<span class="w">        </span><span class="s2">&quot;clonefrom&quot;</span>:<span class="w"> </span><span class="nb">true</span>
+<span class="w">      </span><span class="o">}</span>,
+<span class="w">      </span><span class="s2">&quot;receive_lag&quot;</span>:<span class="w"> </span><span class="m">0</span>,
+<span class="w">      </span><span class="s2">&quot;receive_lsn&quot;</span>:<span class="w"> </span><span class="s2">&quot;0/4000060&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;replay_lag&quot;</span>:<span class="w"> </span><span class="m">0</span>,
+<span class="w">      </span><span class="s2">&quot;replay_lsn&quot;</span>:<span class="w"> </span><span class="s2">&quot;0/4000060&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;lag&quot;</span>:<span class="w"> </span><span class="m">0</span>,
+<span class="w">      </span><span class="s2">&quot;lsn&quot;</span>:<span class="w"> </span><span class="s2">&quot;0/4000060&quot;</span>
+<span class="w">    </span><span class="o">}</span>
+<span class="w">  </span><span class="o">]</span>,
+<span class="w">  </span><span class="s2">&quot;scope&quot;</span>:<span class="w"> </span><span class="s2">&quot;demo&quot;</span>,
+<span class="w">  </span><span class="s2">&quot;scheduled_switchover&quot;</span>:<span class="w"> </span><span class="o">{</span>
+<span class="w">    </span><span class="s2">&quot;at&quot;</span>:<span class="w"> </span><span class="s2">&quot;2023-09-24T10:36:00+02:00&quot;</span>,
+<span class="w">    </span><span class="s2">&quot;from&quot;</span>:<span class="w"> </span><span class="s2">&quot;patroni1&quot;</span>,
+<span class="w">    </span><span class="s2">&quot;to&quot;</span>:<span class="w"> </span><span class="s2">&quot;patroni3&quot;</span>
+<span class="w">  </span><span class="o">}</span>
+<span class="o">}</span>
+</pre></div>
+</div>
+<ul class="simple">
+<li><p>The <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/history</span></code> endpoint provides a view on the history of cluster switchovers/failovers. The format is very similar to the content of history files in the <code class="docutils literal notranslate"><span class="pre">pg_wal</span></code> directory. The only difference is the timestamp field showing when the new timeline was created.</p></li>
+</ul>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$<span class="w"> </span>curl<span class="w"> </span>-s<span class="w"> </span>http://localhost:8008/history<span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>.
+<span class="o">[</span>
+<span class="w">  </span><span class="o">[</span>
+<span class="w">    </span><span class="m">1</span>,
+<span class="w">    </span><span class="m">25623960</span>,
+<span class="w">    </span><span class="s2">&quot;no recovery target specified&quot;</span>,
+<span class="w">    </span><span class="s2">&quot;2019-09-23T16:57:57+02:00&quot;</span>
+<span class="w">  </span><span class="o">]</span>,
+<span class="w">  </span><span class="o">[</span>
+<span class="w">    </span><span class="m">2</span>,
+<span class="w">    </span><span class="m">25624344</span>,
+<span class="w">    </span><span class="s2">&quot;no recovery target specified&quot;</span>,
+<span class="w">    </span><span class="s2">&quot;2019-09-24T09:22:33+02:00&quot;</span>
+<span class="w">  </span><span class="o">]</span>,
+<span class="w">  </span><span class="o">[</span>
+<span class="w">    </span><span class="m">3</span>,
+<span class="w">    </span><span class="m">25624752</span>,
+<span class="w">    </span><span class="s2">&quot;no recovery target specified&quot;</span>,
+<span class="w">    </span><span class="s2">&quot;2019-09-24T09:26:15+02:00&quot;</span>
+<span class="w">  </span><span class="o">]</span>,
+<span class="w">  </span><span class="o">[</span>
+<span class="w">    </span><span class="m">4</span>,
+<span class="w">    </span><span class="m">50331856</span>,
+<span class="w">    </span><span class="s2">&quot;no recovery target specified&quot;</span>,
+<span class="w">    </span><span class="s2">&quot;2019-09-24T09:35:52+02:00&quot;</span>
+<span class="w">  </span><span class="o">]</span>
+<span class="o">]</span>
+</pre></div>
+</div>
+</section>
+<section id="config-endpoint">
+<span id="id1"></span><h2>Config endpoint</h2>
+<p><code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/config</span></code>: Get the current version of the dynamic configuration:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$<span class="w"> </span>curl<span class="w"> </span>-s<span class="w"> </span>http://localhost:8008/config<span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>.
+<span class="o">{</span>
+<span class="w">  </span><span class="s2">&quot;ttl&quot;</span>:<span class="w"> </span><span class="m">30</span>,
+<span class="w">  </span><span class="s2">&quot;loop_wait&quot;</span>:<span class="w"> </span><span class="m">10</span>,
+<span class="w">  </span><span class="s2">&quot;retry_timeout&quot;</span>:<span class="w"> </span><span class="m">10</span>,
+<span class="w">  </span><span class="s2">&quot;maximum_lag_on_failover&quot;</span>:<span class="w"> </span><span class="m">1048576</span>,
+<span class="w">  </span><span class="s2">&quot;postgresql&quot;</span>:<span class="w"> </span><span class="o">{</span>
+<span class="w">    </span><span class="s2">&quot;use_slots&quot;</span>:<span class="w"> </span>true,
+<span class="w">    </span><span class="s2">&quot;use_pg_rewind&quot;</span>:<span class="w"> </span>true,
+<span class="w">    </span><span class="s2">&quot;parameters&quot;</span>:<span class="w"> </span><span class="o">{</span>
+<span class="w">      </span><span class="s2">&quot;hot_standby&quot;</span>:<span class="w"> </span><span class="s2">&quot;on&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;wal_level&quot;</span>:<span class="w"> </span><span class="s2">&quot;hot_standby&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;max_wal_senders&quot;</span>:<span class="w"> </span><span class="m">5</span>,
+<span class="w">      </span><span class="s2">&quot;max_replication_slots&quot;</span>:<span class="w"> </span><span class="m">5</span>,
+<span class="w">      </span><span class="s2">&quot;max_connections&quot;</span>:<span class="w"> </span><span class="s2">&quot;100&quot;</span>
+<span class="w">    </span><span class="o">}</span>
+<span class="w">  </span><span class="o">}</span>
+<span class="o">}</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">PATCH</span> <span class="pre">/config</span></code>: Change the existing configuration.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$<span class="w"> </span>curl<span class="w"> </span>-s<span class="w"> </span>-XPATCH<span class="w"> </span>-d<span class="w"> </span><span class="se">\</span>
+<span class="w">        </span><span class="s1">&#39;{&quot;loop_wait&quot;:5,&quot;ttl&quot;:20,&quot;postgresql&quot;:{&quot;parameters&quot;:{&quot;max_connections&quot;:&quot;101&quot;}}}&#39;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">        </span>http://localhost:8008/config<span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>.
+<span class="o">{</span>
+<span class="w">  </span><span class="s2">&quot;ttl&quot;</span>:<span class="w"> </span><span class="m">20</span>,
+<span class="w">  </span><span class="s2">&quot;loop_wait&quot;</span>:<span class="w"> </span><span class="m">5</span>,
+<span class="w">  </span><span class="s2">&quot;maximum_lag_on_failover&quot;</span>:<span class="w"> </span><span class="m">1048576</span>,
+<span class="w">  </span><span class="s2">&quot;retry_timeout&quot;</span>:<span class="w"> </span><span class="m">10</span>,
+<span class="w">  </span><span class="s2">&quot;postgresql&quot;</span>:<span class="w"> </span><span class="o">{</span>
+<span class="w">    </span><span class="s2">&quot;use_slots&quot;</span>:<span class="w"> </span>true,
+<span class="w">    </span><span class="s2">&quot;use_pg_rewind&quot;</span>:<span class="w"> </span>true,
+<span class="w">    </span><span class="s2">&quot;parameters&quot;</span>:<span class="w"> </span><span class="o">{</span>
+<span class="w">      </span><span class="s2">&quot;hot_standby&quot;</span>:<span class="w"> </span><span class="s2">&quot;on&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;wal_level&quot;</span>:<span class="w"> </span><span class="s2">&quot;hot_standby&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;max_wal_senders&quot;</span>:<span class="w"> </span><span class="m">5</span>,
+<span class="w">      </span><span class="s2">&quot;max_replication_slots&quot;</span>:<span class="w"> </span><span class="m">5</span>,
+<span class="w">      </span><span class="s2">&quot;max_connections&quot;</span>:<span class="w"> </span><span class="s2">&quot;101&quot;</span>
+<span class="w">    </span><span class="o">}</span>
+<span class="w">  </span><span class="o">}</span>
+<span class="o">}</span>
+</pre></div>
+</div>
+<p>The above REST API call patches the existing configuration and returns the new configuration.</p>
+<p>Let’s check that the node processed this configuration. First of all it should start printing log lines every 5 seconds (loop_wait=5). The change of “max_connections” requires a restart, so the “pending_restart” flag should be exposed:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$<span class="w"> </span>curl<span class="w"> </span>-s<span class="w"> </span>http://localhost:8008/patroni<span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>.
+<span class="o">{</span>
+<span class="w">  </span><span class="s2">&quot;database_system_identifier&quot;</span>:<span class="w"> </span><span class="s2">&quot;6287881213849985952&quot;</span>,
+<span class="w">  </span><span class="s2">&quot;postmaster_start_time&quot;</span>:<span class="w"> </span><span class="s2">&quot;2024-08-28 19:39:26.352526+00:00&quot;</span>,
+<span class="w">  </span><span class="s2">&quot;xlog&quot;</span>:<span class="w"> </span><span class="o">{</span>
+<span class="w">    </span><span class="s2">&quot;location&quot;</span>:<span class="w"> </span><span class="m">2197818976</span>
+<span class="w">  </span><span class="o">}</span>,
+<span class="w">  </span><span class="s2">&quot;timeline&quot;</span>:<span class="w"> </span><span class="m">1</span>,
+<span class="w">  </span><span class="s2">&quot;dcs_last_seen&quot;</span>:<span class="w"> </span><span class="m">1724874545</span>,
+<span class="w">  </span><span class="s2">&quot;database_system_identifier&quot;</span>:<span class="w"> </span><span class="s2">&quot;7408277255830290455&quot;</span>,
+<span class="w">  </span><span class="s2">&quot;pending_restart&quot;</span>:<span class="w"> </span>true,
+<span class="w">  </span><span class="s2">&quot;pending_restart_reason&quot;</span>:<span class="w"> </span><span class="o">{</span>
+<span class="w">    </span><span class="s2">&quot;max_connections&quot;</span>:<span class="w"> </span><span class="o">{</span>
+<span class="w">      </span><span class="s2">&quot;old_value&quot;</span>:<span class="w"> </span><span class="s2">&quot;100&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;new_value&quot;</span>:<span class="w"> </span><span class="s2">&quot;101&quot;</span>
+<span class="w">    </span><span class="o">}</span>
+<span class="w">  </span><span class="o">}</span>,
+<span class="w">  </span><span class="s2">&quot;patroni&quot;</span>:<span class="w"> </span><span class="o">{</span>
+<span class="w">    </span><span class="s2">&quot;version&quot;</span>:<span class="w"> </span><span class="s2">&quot;4.0.0&quot;</span>,
+<span class="w">    </span><span class="s2">&quot;scope&quot;</span>:<span class="w"> </span><span class="s2">&quot;batman&quot;</span>,
+<span class="w">    </span><span class="s2">&quot;name&quot;</span>:<span class="w"> </span><span class="s2">&quot;patroni1&quot;</span>
+<span class="w">  </span><span class="o">}</span>,
+<span class="w">  </span><span class="s2">&quot;state&quot;</span>:<span class="w"> </span><span class="s2">&quot;running&quot;</span>,
+<span class="w">  </span><span class="s2">&quot;role&quot;</span>:<span class="w"> </span><span class="s2">&quot;primary&quot;</span>,
+<span class="w">  </span><span class="s2">&quot;server_version&quot;</span>:<span class="w"> </span><span class="m">160004</span>
+<span class="o">}</span>
+</pre></div>
+</div>
+<p>Removing parameters:</p>
+<p>If you want to remove (reset) some setting just patch it with <code class="docutils literal notranslate"><span class="pre">null</span></code>:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$<span class="w"> </span>curl<span class="w"> </span>-s<span class="w"> </span>-XPATCH<span class="w"> </span>-d<span class="w"> </span><span class="se">\</span>
+<span class="w">        </span><span class="s1">&#39;{&quot;postgresql&quot;:{&quot;parameters&quot;:{&quot;max_connections&quot;:null}}}&#39;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">        </span>http://localhost:8008/config<span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>.
+<span class="o">{</span>
+<span class="w">  </span><span class="s2">&quot;ttl&quot;</span>:<span class="w"> </span><span class="m">20</span>,
+<span class="w">  </span><span class="s2">&quot;loop_wait&quot;</span>:<span class="w"> </span><span class="m">5</span>,
+<span class="w">  </span><span class="s2">&quot;retry_timeout&quot;</span>:<span class="w"> </span><span class="m">10</span>,
+<span class="w">  </span><span class="s2">&quot;maximum_lag_on_failover&quot;</span>:<span class="w"> </span><span class="m">1048576</span>,
+<span class="w">  </span><span class="s2">&quot;postgresql&quot;</span>:<span class="w"> </span><span class="o">{</span>
+<span class="w">    </span><span class="s2">&quot;use_slots&quot;</span>:<span class="w"> </span>true,
+<span class="w">    </span><span class="s2">&quot;use_pg_rewind&quot;</span>:<span class="w"> </span>true,
+<span class="w">    </span><span class="s2">&quot;parameters&quot;</span>:<span class="w"> </span><span class="o">{</span>
+<span class="w">      </span><span class="s2">&quot;hot_standby&quot;</span>:<span class="w"> </span><span class="s2">&quot;on&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;unix_socket_directories&quot;</span>:<span class="w"> </span><span class="s2">&quot;.&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;wal_level&quot;</span>:<span class="w"> </span><span class="s2">&quot;hot_standby&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;max_wal_senders&quot;</span>:<span class="w"> </span><span class="m">5</span>,
+<span class="w">      </span><span class="s2">&quot;max_replication_slots&quot;</span>:<span class="w"> </span><span class="m">5</span>
+<span class="w">    </span><span class="o">}</span>
+<span class="w">  </span><span class="o">}</span>
+<span class="o">}</span>
+</pre></div>
+</div>
+<p>The above call removes <code class="docutils literal notranslate"><span class="pre">postgresql.parameters.max_connections</span></code> from the dynamic configuration.</p>
+<p><code class="docutils literal notranslate"><span class="pre">PUT</span> <span class="pre">/config</span></code>: It’s also possible to perform the full rewrite of an existing dynamic configuration unconditionally:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$<span class="w"> </span>curl<span class="w"> </span>-s<span class="w"> </span>-XPUT<span class="w"> </span>-d<span class="w"> </span><span class="se">\</span>
+<span class="w">        </span><span class="s1">&#39;{&quot;maximum_lag_on_failover&quot;:1048576,&quot;retry_timeout&quot;:10,&quot;postgresql&quot;:{&quot;use_slots&quot;:true,&quot;use_pg_rewind&quot;:true,&quot;parameters&quot;:{&quot;hot_standby&quot;:&quot;on&quot;,&quot;wal_level&quot;:&quot;hot_standby&quot;,&quot;unix_socket_directories&quot;:&quot;.&quot;,&quot;max_wal_senders&quot;:5}},&quot;loop_wait&quot;:3,&quot;ttl&quot;:20}&#39;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">        </span>http://localhost:8008/config<span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>.
+<span class="o">{</span>
+<span class="w">  </span><span class="s2">&quot;ttl&quot;</span>:<span class="w"> </span><span class="m">20</span>,
+<span class="w">  </span><span class="s2">&quot;maximum_lag_on_failover&quot;</span>:<span class="w"> </span><span class="m">1048576</span>,
+<span class="w">  </span><span class="s2">&quot;retry_timeout&quot;</span>:<span class="w"> </span><span class="m">10</span>,
+<span class="w">  </span><span class="s2">&quot;postgresql&quot;</span>:<span class="w"> </span><span class="o">{</span>
+<span class="w">    </span><span class="s2">&quot;use_slots&quot;</span>:<span class="w"> </span>true,
+<span class="w">    </span><span class="s2">&quot;parameters&quot;</span>:<span class="w"> </span><span class="o">{</span>
+<span class="w">      </span><span class="s2">&quot;hot_standby&quot;</span>:<span class="w"> </span><span class="s2">&quot;on&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;unix_socket_directories&quot;</span>:<span class="w"> </span><span class="s2">&quot;.&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;wal_level&quot;</span>:<span class="w"> </span><span class="s2">&quot;hot_standby&quot;</span>,
+<span class="w">      </span><span class="s2">&quot;max_wal_senders&quot;</span>:<span class="w"> </span><span class="m">5</span>
+<span class="w">    </span><span class="o">}</span>,
+<span class="w">    </span><span class="s2">&quot;use_pg_rewind&quot;</span>:<span class="w"> </span><span class="nb">true</span>
+<span class="w">  </span><span class="o">}</span>,
+<span class="w">  </span><span class="s2">&quot;loop_wait&quot;</span>:<span class="w"> </span><span class="m">3</span>
+<span class="o">}</span>
+</pre></div>
+</div>
+</section>
+<section id="switchover-and-failover-endpoints">
+<h2>Switchover and failover endpoints</h2>
+<section id="switchover">
+<span id="switchover-api"></span><h3>Switchover</h3>
+<p><code class="docutils literal notranslate"><span class="pre">/switchover</span></code> endpoint only works when the cluster is healthy (there is a leader). It also allows to schedule a switchover at a given time.</p>
+<p>When calling <code class="docutils literal notranslate"><span class="pre">/switchover</span></code> endpoint a candidate can be specified but is not required, in contrast to <code class="docutils literal notranslate"><span class="pre">/failover</span></code> endpoint. If a candidate is not provided, all the eligible nodes of the cluster will participate in the leader race after the leader stepped down.</p>
+<p>In the JSON body of the <code class="docutils literal notranslate"><span class="pre">POST</span></code> request you must specify the <code class="docutils literal notranslate"><span class="pre">leader</span></code> field. The <code class="docutils literal notranslate"><span class="pre">candidate</span></code> and the <code class="docutils literal notranslate"><span class="pre">scheduled_at</span></code> fields are optional and can be used to schedule a switchover at a specific time.</p>
+<p>Depending on the situation, requests might return different HTTP status codes and bodies. Status code <strong>200</strong> is returned when the switchover or failover successfully completed. If the switchover was successfully scheduled, Patroni will return HTTP status code <strong>202</strong>. In case something went wrong, the error status code (one of <strong>400</strong>, <strong>412</strong>, or <strong>503</strong>) will be returned with some details in the response body.</p>
+<p><code class="docutils literal notranslate"><span class="pre">DELETE</span> <span class="pre">/switchover</span></code> can be used to delete the currently scheduled switchover.</p>
+<p><strong>Example:</strong> perform a switchover to any healthy standby</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$<span class="w"> </span>curl<span class="w"> </span>-s<span class="w"> </span>http://localhost:8008/switchover<span class="w"> </span>-XPOST<span class="w"> </span>-d<span class="w"> </span><span class="s1">&#39;{&quot;leader&quot;:&quot;postgresql1&quot;}&#39;</span>
+Successfully<span class="w"> </span>switched<span class="w"> </span>over<span class="w"> </span>to<span class="w"> </span><span class="s2">&quot;postgresql2&quot;</span>
+</pre></div>
+</div>
+<p><strong>Example:</strong> perform a switchover to a specific node</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$<span class="w"> </span>curl<span class="w"> </span>-s<span class="w"> </span>http://localhost:8008/switchover<span class="w"> </span>-XPOST<span class="w"> </span>-d<span class="w"> </span><span class="se">\</span>
+<span class="w">        </span><span class="s1">&#39;{&quot;leader&quot;:&quot;postgresql1&quot;,&quot;candidate&quot;:&quot;postgresql2&quot;}&#39;</span>
+Successfully<span class="w"> </span>switched<span class="w"> </span>over<span class="w"> </span>to<span class="w"> </span><span class="s2">&quot;postgresql2&quot;</span>
+</pre></div>
+</div>
+<p><strong>Example:</strong> schedule a switchover from the leader to any other healthy standby in the cluster at a specific time.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$<span class="w"> </span>curl<span class="w"> </span>-s<span class="w"> </span>http://localhost:8008/switchover<span class="w"> </span>-XPOST<span class="w"> </span>-d<span class="w"> </span><span class="se">\</span>
+<span class="w">        </span><span class="s1">&#39;{&quot;leader&quot;:&quot;postgresql0&quot;,&quot;scheduled_at&quot;:&quot;2019-09-24T12:00+00&quot;}&#39;</span>
+Switchover<span class="w"> </span>scheduled
+</pre></div>
+</div>
+</section>
+<section id="failover">
+<h3>Failover</h3>
+<p><code class="docutils literal notranslate"><span class="pre">/failover</span></code> endpoint can be used to perform a manual failover when there are no healthy nodes (e.g. to an asynchronous standby if all synchronous standbys are not healthy enough to promote). However there is no requirement for a cluster not to have leader - failover can also be run on a healthy cluster.</p>
+<p>In the JSON body of the <code class="docutils literal notranslate"><span class="pre">POST</span></code> request you must specify the <code class="docutils literal notranslate"><span class="pre">candidate</span></code> field. If the <code class="docutils literal notranslate"><span class="pre">leader</span></code> field is specified, a switchover is triggered instead.</p>
+<p><strong>Example:</strong></p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$<span class="w"> </span>curl<span class="w"> </span>-s<span class="w"> </span>http://localhost:8008/failover<span class="w"> </span>-XPOST<span class="w"> </span>-d<span class="w"> </span><span class="s1">&#39;{&quot;candidate&quot;:&quot;postgresql1&quot;}&#39;</span>
+Successfully<span class="w"> </span>failed<span class="w"> </span>over<span class="w"> </span>to<span class="w"> </span><span class="s2">&quot;postgresql1&quot;</span>
+</pre></div>
+</div>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p><a class="reference internal" href="#failover-healthcheck"><span class="std std-ref">Be very careful</span></a> when using this endpoint, as this can cause data loss in certain situations. In most cases, <a class="reference internal" href="#switchover-api"><span class="std std-ref">the switchover endpoint</span></a> satisfies the administrator’s needs.</p>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/switchover</span></code> and <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/failover</span></code> endpoints are used by <a class="reference internal" href="patronictl.xhtml#patronictl-switchover"><span class="std std-ref">patronictl switchover</span></a> and <a class="reference internal" href="patronictl.xhtml#patronictl-failover"><span class="std std-ref">patronictl failover</span></a>, respectively.</p>
+<p><code class="docutils literal notranslate"><span class="pre">DELETE</span> <span class="pre">/switchover</span></code> is used by <a class="reference internal" href="patronictl.xhtml#patronictl-flush-parameters"><span class="std std-ref">patronictl flush cluster-name switchover</span></a>.</p>
+<table class="docutils align-default" id="id5">
+<caption><span class="caption-text">Failover/Switchover comparison</span></caption>
+<colgroup>
+<col style="width: 33.3%" />
+<col style="width: 33.3%" />
+<col style="width: 33.3%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"></th>
+<th class="head"><p>Failover</p></th>
+<th class="head"><p>Switchover</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Requires leader specified</p></td>
+<td><p>no</p></td>
+<td><p>yes</p></td>
+</tr>
+<tr class="row-odd"><td><p>Requires candidate specified</p></td>
+<td><p>yes</p></td>
+<td><p>no</p></td>
+</tr>
+<tr class="row-even"><td><p>Can be run in pause</p></td>
+<td><p>yes</p></td>
+<td><p>yes (only to a specific candidate)</p></td>
+</tr>
+<tr class="row-odd"><td><p>Can be scheduled</p></td>
+<td><p>no</p></td>
+<td><p>yes (if not in pause)</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="healthy-standby">
+<span id="failover-healthcheck"></span><h3>Healthy standby</h3>
+<p>There are a couple of checks that a member of a cluster should pass to be able to participate in the leader race during a switchover or to become a leader as a failover/switchover candidate:</p>
+<ul class="simple">
+<li><p>be reachable via Patroni API;</p></li>
+<li><p>not have <code class="docutils literal notranslate"><span class="pre">nofailover</span></code> tag set to <code class="docutils literal notranslate"><span class="pre">true</span></code>;</p></li>
+<li><p>have watchdog fully functional (if required by the configuration);</p></li>
+<li><p>in case of a switchover in a healthy cluster or an automatic failover, not exceed maximum replication lag (<code class="docutils literal notranslate"><span class="pre">maximum_lag_on_failover</span></code> <a class="reference internal" href="dynamic_configuration.xhtml#dynamic-configuration"><span class="std std-ref">configuration parameter</span></a>);</p></li>
+<li><p>in case of a switchover in a healthy cluster or an automatic failover, not have a timeline number smaller than the cluster timeline if <code class="docutils literal notranslate"><span class="pre">check_timeline</span></code> <a class="reference internal" href="dynamic_configuration.xhtml#dynamic-configuration"><span class="std std-ref">configuration parameter</span></a> is set to <code class="docutils literal notranslate"><span class="pre">true</span></code>;</p></li>
+<li><p>in <a class="reference internal" href="replication_modes.xhtml#synchronous-mode"><span class="std std-ref">synchronous mode</span></a>:</p>
+<ul>
+<li><p>In case of a switchover (both with and without a candidate): be listed in the <code class="docutils literal notranslate"><span class="pre">/sync</span></code> key members;</p></li>
+<li><p>For a failover in both healthy and unhealthy clusters, this check is omitted.</p></li>
+</ul>
+</li>
+</ul>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<dl class="simple">
+<dt>In case of a manual failover in a cluster without a leader, a candidate will be allowed to promote even if:</dt><dd><ul class="simple">
+<li><p>it is not in the <code class="docutils literal notranslate"><span class="pre">/sync</span></code> key members when synchronous mode is enabled;</p></li>
+<li><p>its lag exceeds the maximum replication lag allowed;</p></li>
+<li><p>it has the timeline number smaller than the last known cluster timeline.</p></li>
+</ul>
+</dd>
+</dl>
+</div>
+</section>
+</section>
+<section id="restart-endpoint">
+<span id="id2"></span><h2>Restart endpoint</h2>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/restart</span></code>: You can restart Postgres on the specific node by performing the <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/restart</span></code> call. In the JSON body of <code class="docutils literal notranslate"><span class="pre">POST</span></code> request it is possible to optionally specify some restart conditions:</p>
+<ul>
+<li><p><strong>restart_pending</strong>: boolean, if set to <code class="docutils literal notranslate"><span class="pre">true</span></code> Patroni will restart PostgreSQL only when restart is pending in order to apply some changes in the PostgreSQL config.</p></li>
+<li><p><strong>role</strong>: perform restart only if the current role of the node matches with the role from the POST request.</p></li>
+<li><p><strong>postgres_version</strong>: perform restart only if the current version of postgres is smaller than specified in the POST request.</p></li>
+<li><p><strong>timeout</strong>: how long we should wait before PostgreSQL starts accepting connections. Overrides <code class="docutils literal notranslate"><span class="pre">primary_start_timeout</span></code>.</p></li>
+<li><p><strong>schedule</strong>: timestamp with time zone, schedule the restart somewhere in the future.</p></li>
+</ul>
+</li>
+<li><p><code class="docutils literal notranslate"><span class="pre">DELETE</span> <span class="pre">/restart</span></code>: delete the scheduled restart</p></li>
+</ul>
+<p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/restart</span></code> and <code class="docutils literal notranslate"><span class="pre">DELETE</span> <span class="pre">/restart</span></code> endpoints are used by <a class="reference internal" href="patronictl.xhtml#patronictl-restart"><span class="std std-ref">patronictl restart</span></a> and <a class="reference internal" href="patronictl.xhtml#patronictl-flush-parameters"><span class="std std-ref">patronictl flush cluster-name restart</span></a> respectively.</p>
+</section>
+<section id="reload-endpoint">
+<span id="id3"></span><h2>Reload endpoint</h2>
+<p>The <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/reload</span></code> call will order Patroni to re-read and apply the configuration file. This is the equivalent of sending the <code class="docutils literal notranslate"><span class="pre">SIGHUP</span></code> signal to the Patroni process. In case you changed some of the Postgres parameters which require a restart (like <strong>shared_buffers</strong>), you still have to explicitly do the restart of Postgres by either calling the <code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/restart</span></code> endpoint or with the help of <a class="reference internal" href="patronictl.xhtml#patronictl-restart"><span class="std std-ref">patronictl restart</span></a>.</p>
+<p>The reload endpoint is used by <a class="reference internal" href="patronictl.xhtml#patronictl-reload"><span class="std std-ref">patronictl reload</span></a>.</p>
+</section>
+<section id="reinitialize-endpoint">
+<h2>Reinitialize endpoint</h2>
+<p><code class="docutils literal notranslate"><span class="pre">POST</span> <span class="pre">/reinitialize</span></code>: reinitialize the PostgreSQL data directory on the specified node. It is allowed to be executed only on replicas. Once called, it will remove the data directory and start <code class="docutils literal notranslate"><span class="pre">pg_basebackup</span></code> or some alternative <a class="reference internal" href="replica_bootstrap.xhtml#custom-replica-creation"><span class="std std-ref">replica creation method</span></a>.</p>
+<p>The call might fail if Patroni is in a loop trying to recover (restart) a failed Postgres. In order to overcome this problem one can specify <code class="docutils literal notranslate"><span class="pre">{&quot;force&quot;:true}</span></code> in the request body.</p>
+<p>You can specify {“from-leader”:true} in the request body to directly get basebackup from leader node. This is useful when executing reinit during all replica nodes fail.</p>
+<p>The reinitialize endpoint is used by <a class="reference internal" href="patronictl.xhtml#patronictl-reinit"><span class="std std-ref">patronictl reinit</span></a>.</p>
+</section>
+</section>
+
+
+            <div class="clearer"></div>
+          </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+  </body>
+</html>

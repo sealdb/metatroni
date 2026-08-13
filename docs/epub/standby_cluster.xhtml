@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Standby cluster</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="_static/epub.css" />
+    <link rel="stylesheet" type="text/css" href="_static/github_style.css" />
+    <link rel="stylesheet" type="text/css" href="_static/custom.css" /> 
+  </head><body>
+
+    <div class="document">
+      <div class="documentwrapper">
+          <div class="body" role="main">
+            
+  <section id="standby-cluster">
+<span id="id1"></span><h1>Standby cluster</h1>
+<p>Patroni also support running cascading replication to a remote datacenter
+(region) using a feature that is called “standby cluster”. This type of
+clusters has:</p>
+<ul class="simple">
+<li><p>“standby leader”, that behaves pretty much like a regular cluster leader,
+except it replicates from a remote node.</p></li>
+<li><p>cascade replicas, that are replicating from standby leader.</p></li>
+</ul>
+<p>Standby leader holds and updates a leader lock in DCS. If the leader lock
+expires, cascade replicas will perform an election to choose another leader
+from the standbys.</p>
+<p>There is no further relationship between the standby cluster and the primary
+cluster it replicates from, in particular, they must not share the same DCS
+scope if they use the same DCS. They do not know anything else from each other
+apart from replication information. Also, the standby cluster is not being
+displayed in <a class="reference internal" href="patronictl.xhtml#patronictl-list"><span class="std std-ref">patronictl list</span></a> or <a class="reference internal" href="patronictl.xhtml#patronictl-topology"><span class="std std-ref">patronictl topology</span></a> output on the
+primary cluster.</p>
+<p>For the sake of flexibility, you can specify methods of creating a replica and
+recovery WAL records when a cluster is in the “standby mode” by providing
+<a class="reference internal" href="replica_bootstrap.xhtml#custom-replica-creation"><span class="std std-ref">create_replica_methods</span></a> key in
+<cite>standby_cluster</cite> section. It is distinct from creating replicas, when cluster
+is detached and functions as a normal cluster, which is controlled by
+<cite>create_replica_methods</cite> in <cite>postgresql</cite> section. Both “standby” and “normal”
+<cite>create_replica_methods</cite> reference  keys in <cite>postgresql</cite> section.</p>
+<p>To configure such cluster you need to specify the section <code class="docutils literal notranslate"><span class="pre">standby_cluster</span></code>
+in a patroni configuration:</p>
+<div class="highlight-YAML notranslate"><div class="highlight"><pre><span></span><span class="nt">bootstrap</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">dcs</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">standby_cluster</span><span class="p">:</span>
+<span class="w">            </span><span class="nt">host</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1.2.3.4</span>
+<span class="w">            </span><span class="nt">port</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5432</span>
+<span class="w">            </span><span class="nt">primary_slot_name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">patroni</span>
+<span class="w">            </span><span class="nt">create_replica_methods</span><span class="p">:</span>
+<span class="w">            </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">basebackup</span>
+</pre></div>
+</div>
+<p><strong>MySQL</strong> uses the same DCS <code class="docutils literal notranslate"><span class="pre">standby_cluster</span></code> keys (<code class="docutils literal notranslate"><span class="pre">host</span></code>, <code class="docutils literal notranslate"><span class="pre">port</span></code>,
+optional <code class="docutils literal notranslate"><span class="pre">create_replica_methods</span></code>), but bootstrap is a <strong>full clone</strong> of the
+remote primary (default <code class="docutils literal notranslate"><span class="pre">xtrabackup</span></code> then <code class="docutils literal notranslate"><span class="pre">mysqldump</span></code>) followed by GTID
+streaming (<code class="docutils literal notranslate"><span class="pre">MASTER_AUTO_POSITION=1</span></code>). Do not set PostgreSQL-only keys such as
+<code class="docutils literal notranslate"><span class="pre">restore_command</span></code> or <code class="docutils literal notranslate"><span class="pre">primary_slot_name</span></code> for MySQL. Example:</p>
+<div class="highlight-YAML notranslate"><div class="highlight"><pre><span></span><span class="nt">bootstrap</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">dcs</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">standby_cluster</span><span class="p">:</span>
+<span class="w">            </span><span class="nt">host</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">primary-site.example</span>
+<span class="w">            </span><span class="nt">port</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3306</span>
+<span class="w">            </span><span class="nt">create_replica_methods</span><span class="p">:</span>
+<span class="w">            </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">xtrabackup</span>
+<span class="w">            </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">mysqldump</span>
+</pre></div>
+</div>
+<p>Note, that these options will be applied only once during cluster bootstrap,
+and the only way to change them afterwards is through DCS.</p>
+<p>Patroni expects to find <cite>postgresql.conf</cite> or <cite>postgresql.conf.backup</cite> in PGDATA
+of the remote primary and will not start if it does not find it after a
+basebackup. If the remote primary keeps its <cite>postgresql.conf</cite> elsewhere, it is
+your responsibility to copy it to PGDATA.</p>
+<p>If you use replication slots on the standby cluster, you must also create the
+corresponding replication slot on the primary cluster.  It will not be done
+automatically by the standby cluster implementation.  You can use Patroni’s
+permanent replication slots feature on the primary cluster to maintain a
+replication slot with the same name as <code class="docutils literal notranslate"><span class="pre">primary_slot_name</span></code>, or its default
+value if <code class="docutils literal notranslate"><span class="pre">primary_slot_name</span></code> is not provided.</p>
+<p>In case the remote site doesn’t provide a single endpoint that connects to a
+primary, one could list all hosts of the source cluster in the
+<code class="docutils literal notranslate"><span class="pre">standby_cluster.host</span></code> section.  When <code class="docutils literal notranslate"><span class="pre">standby_cluster.host</span></code> contains
+multiple hosts separated by commas, Patroni will:</p>
+<ul class="simple">
+<li><p>add <code class="docutils literal notranslate"><span class="pre">target_session_attrs=read-write</span></code> to the <code class="docutils literal notranslate"><span class="pre">primary_conninfo</span></code> on the
+standby leader node.</p></li>
+<li><p>use <code class="docutils literal notranslate"><span class="pre">target_session_attrs=read-write</span></code> when trying to determine whether we
+need to run <code class="docutils literal notranslate"><span class="pre">pg_rewind</span></code> or when executing <code class="docutils literal notranslate"><span class="pre">pg_rewind</span></code> on all nodes of the
+standby cluster.</p></li>
+<li><p>It is important to note that for <code class="docutils literal notranslate"><span class="pre">pg_rewind</span></code> to operate successfully,
+either the cluster must be initialized with <code class="docutils literal notranslate"><span class="pre">data</span> <span class="pre">page</span> <span class="pre">checksums</span></code>
+(<code class="docutils literal notranslate"><span class="pre">--data-checksums</span></code> option for <code class="docutils literal notranslate"><span class="pre">initdb</span></code>) and/or <code class="docutils literal notranslate"><span class="pre">wal_log_hints</span></code> must be set to <code class="docutils literal notranslate"><span class="pre">on</span></code>.
+Otherwise, <code class="docutils literal notranslate"><span class="pre">pg_rewind</span></code> will not function properly.</p></li>
+</ul>
+<p>There is also a possibility to replicate the standby cluster from another
+standby cluster or from a standby member of the primary cluster: for that, you
+need to define a single host in the <code class="docutils literal notranslate"><span class="pre">standby_cluster.host</span></code> section. However,
+you need to beware that in this case <code class="docutils literal notranslate"><span class="pre">pg_rewind</span></code> will fail to execute on the
+standby cluster.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<blockquote>
+<div><p>Member names (the <code class="docutils literal notranslate"><span class="pre">name</span></code> field in each node’s Patroni configuration) must
+be unique across the primary cluster and all standby clusters connected to it.</p>
+</div></blockquote>
+<p>Patroni sets <code class="docutils literal notranslate"><span class="pre">synchronous_standby_names</span></code> on the primary using member names,
+which also become the <code class="docutils literal notranslate"><span class="pre">application_name</span></code> of each replication connection in
+<code class="docutils literal notranslate"><span class="pre">pg_stat_replication</span></code>. If a standby cluster node shares the same name as a
+primary cluster member, PostgreSQL will see two connections with identical
+<code class="docutils literal notranslate"><span class="pre">application_name</span></code> values. This ambiguity can cause PostgreSQL to satisfy
+the synchronous replication requirement using the standby cluster’s connection
+instead of the intended primary cluster member, leading PostgreSQL to prematurely
+acknowledge transactions as synchronously committed when they are not durable on the
+correct standby.</p>
+<p>This is a silent failure — replication continues and no errors are logged, but
+the cluster is effectively operating without a valid synchronous standby, which
+is a potential data loss scenario if the primary fails.</p>
+</div>
+</section>
+
+
+            <div class="clearer"></div>
+          </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+  </body>
+</html>

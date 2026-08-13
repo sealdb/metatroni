@@ -1,14 +1,15 @@
 .. _mysql:
 
-==============================
+================
 MySQL 高可用支持
-==============================
+================
 
 .. warning::
 
-   MySQL 支持目前正处于积极开发阶段，**尚不建议用于生产环境**。
+   Metatroni 的 MySQL 支持目前正处于积极开发阶段，**尚不建议用于生产环境**\。
 
-本章介绍 Patroni 的 MySQL 后端：它如何融入 HA 循环、replication 模式如何工作，以及如何部署和运维一个集群。
+本章介绍 Metatroni 的 MySQL 后端——在 **完整 PostgreSQL/Patroni 能力之外的增强**\：
+它如何融入共享 HA 循环、replication 模式如何工作，以及如何部署和运维集群。
 
 .. toctree::
    :maxdepth: 2
@@ -20,17 +21,17 @@ MySQL 高可用支持
 你能获得什么
 ============
 
-使用 ``database.type: mysql`` 时，每个节点运行 Patroni + ``mysqld``。Patroni：
+使用 ``database.type: mysql`` 时，每个节点运行 Patroni + ``mysqld``\。Patroni：
 
 - 在 DCS（etcd、Consul、ZooKeeper……）中持有/竞争 **leader lease**
 - 监控 MySQL 健康状态，并将状态（包括 GTID）发布到 DCS
-- 管理 **异步 GTID**、**semi-sync** 或 **Group Replication (MGR)**
-- 通过 ``xtrabackup``（优先）或 ``mysqldump`` 克隆 replica
-- 支持 **standby cluster**（全量克隆 + GTID 级联；非 WAL 归档）
+- 管理 **异步 GTID**\、**semi-sync** 或 **Group Replication (MGR)**
+- 通过 ``xtrabackup``\（优先）或 ``mysqldump`` 克隆 replica
+- 支持 **standby cluster**\（全量克隆 + GTID 级联；非 WAL 归档）
 - 提供常用的 REST API 和 ``patronictl`` 接口
 
 快速开始
-===========
+========
 
 .. code-block:: shell
 
@@ -45,7 +46,7 @@ MySQL 高可用支持
     haproxy -f deploy/mysql-ha/haproxy.cfg -db   # optional :5000 / :5001
 
 继续阅读
-=========
+========
 
 .. list-table::
    :header-rows: 1

@@ -1,14 +1,14 @@
 .. _mysql_mechanisms:
 
-=================================
+===================
 MySQL HA 机制与流程
-=================================
+===================
 
-本页说明 MySQL 后端在 Patroni 的 HA 循环中的 **行为机制**：failover、demote/rejoin、
+本页说明 MySQL 后端在 Patroni 的 HA 循环中的 **行为机制**\：failover、demote/rejoin、
 半同步 quorum、MGR 多数派丢失选举、克隆（clone）以及 GTID 分叉暂停。
 
 HA 控制循环（共享 + MySQL 钩子）
-=====================================
+================================
 
 每隔 ``loop_wait`` 秒，每个 Patroni 大约执行以下操作：
 
@@ -45,7 +45,7 @@ HA 控制循环（共享 + MySQL 钩子）
 - ``mgr_gtid_fork`` → pause + read-only（详见下文）
 
 异步 / 半同步：failover 流程
-====================================
+============================
 
 正常路径下，当 primary 的 lease 过期时自动 failover：
 
@@ -68,7 +68,7 @@ HA 控制循环（共享 + MySQL 钩子）
         │               │                   │   AUTO_POSITION=1 │
 
 ``promote`` / ``follow`` （异步 GTID）
----------------------------------------
+--------------------------------------
 
 .. code-block:: text
 
@@ -91,9 +91,9 @@ HA 控制循环（共享 + MySQL 钩子）
       └─ role = replica
 
 降级并重新加入（旧 primary 回归）
-=====================================
+=================================
 
-**不存在** ``pg_rewind``。``Ha._demote_mysql`` 会让 ``mysqld`` 保持运行：
+**不存在** ``pg_rewind``\。``Ha._demote_mysql`` 会让 ``mysqld`` 保持运行：
 
 .. code-block:: text
 
@@ -125,7 +125,7 @@ HA 控制循环（共享 + MySQL 钩子）
         │  streaming      │                   │
 
 半同步 quorum 安全机制
-=======================
+======================
 
 与 xenon 强一致性对齐：
 
@@ -133,7 +133,7 @@ HA 控制循环（共享 + MySQL 钩子）
 - ``wait_no_slave = ON``
 - 3 个及以上节点：等待超时 ``10**18`` 毫秒（实际上不会降级为异步）
 - 等待计数 ``(N-1)//2``
-- 启动时：source 插件保持 **OFF**，直到 Patroni 在 primary 上启用它
+- 启动时：source 插件保持 **OFF**\，直到 Patroni 在 primary 上启用它
 
 锁持有者在每个 HA 周期中：
 
@@ -169,7 +169,7 @@ HA 控制循环（共享 + MySQL 钩子）
        └────────────┘  └─────────────────┘
 
 MGR：稳态
-=================
+=========
 
 当设置了 ``group_replication_group_name`` 且本地成员处于 ONLINE 状态时：
 
@@ -180,15 +180,15 @@ MGR：稳态
       ├─ role PRIMARY  → role=mgr_primary, set_read_write
       └─ role SECONDARY → role=mgr_secondary, set_read_only
 
-配置了 MGR 时，Patroni **不会** 驱动异步 ``CHANGE MASTER``。
+配置了 MGR 时，Patroni **不会** 驱动异步 ``CHANGE MASTER``\。
 
 MGR：多数派丢失时的 GTID 选举
-================================
+=============================
 
 当本地 MGR 状态为空（group 宕机 / 多数派丢失）时：
 
 流程图
----------
+------
 
 .. code-block:: text
 
@@ -225,7 +225,7 @@ MGR：多数派丢失时的 GTID 选举
                                                    └───────────────────────┘
 
 流程（赢家单独 bootstrap，其余节点重新加入）
-------------------------------------------------
+--------------------------------------------
 
 .. code-block:: text
 
@@ -249,17 +249,17 @@ MGR：多数派丢失时的 GTID 选举
         │ group size = 3 ONLINE │
 
 重新加入的正确性
-------------------
+----------------
 
 ``rejoin_mgr_group`` 仅在本地状态变为 ``ONLINE`` 或
 ``RECOVERING`` 后才返回成功。针对 DCS 中 **过期/失效** 的
 ``mgr_primary`` 直接执行 ``START GROUP_REPLICATION`` 必须失败，这样 GTID 赢家仍能 bootstrap。
 
 DCS 中过期的 ``role=primary`` （多数派丢失后遗留的异步角色）会被
-``_find_mgr_primary_member`` **忽略**；只有 ``mgr_primary`` 才算数。
+``_find_mgr_primary_member`` **忽略**\；只有 ``mgr_primary`` 才算数。
 
 GTID 分叉（不可比较的集合）
-=============================
+===========================
 
 当两个最大的 GTID 集合各自包含对方所没有的事务时：
 
@@ -275,10 +275,10 @@ GTID 分叉（不可比较的集合）
       └─ publish fork on member key / REST until group healthy
 
 运维恢复：修复或重建分歧成员，然后执行
-``patronictl resume``。
+``patronictl resume``\。
 
 克隆 / bootstrap
-=================
+================
 
 数据目录为空时：
 
@@ -299,9 +299,9 @@ GTID 分叉（不可比较的集合）
 xtrabackup 说明：
 
 - Major.minor 必须与 donor 一致
-- 恢复完成后，会移除 donor 的 ``auto.cnf``，从而生成新的 ``server_uuid``
+- 恢复完成后，会移除 donor 的 ``auto.cnf``\，从而生成新的 ``server_uuid``
 
 Pause 交互
-=================
+==========
 
 ``patronictl pause`` （或在 GTID 分叉时自动 pause）会在保持 MySQL 运行的同时停止自动 failover。可在模式切换、高风险维护以及分叉修复后使用。

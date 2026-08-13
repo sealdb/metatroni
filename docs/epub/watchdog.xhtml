@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Watchdog support</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="_static/epub.css" />
+    <link rel="stylesheet" type="text/css" href="_static/github_style.css" />
+    <link rel="stylesheet" type="text/css" href="_static/custom.css" /> 
+  </head><body>
+
+    <div class="document">
+      <div class="documentwrapper">
+          <div class="body" role="main">
+            
+  <section id="watchdog-support">
+<span id="watchdog"></span><h1>Watchdog support</h1>
+<p>Having multiple PostgreSQL servers running as primary can result in transactions lost due to diverging timelines. This situation is also called a split-brain problem. To avoid split-brain Patroni needs to ensure PostgreSQL will not accept any transaction commits after leader key expires in the DCS. Under normal circumstances Patroni will try to achieve this by stopping PostgreSQL when leader lock update fails for any reason. However, this may fail to happen due to various reasons:</p>
+<ul class="simple">
+<li><p>Patroni has crashed due to a bug, out-of-memory condition or by being accidentally killed by a system administrator.</p></li>
+<li><p>Shutting down PostgreSQL is too slow.</p></li>
+<li><p>Patroni does not get to run due to high load on the system, the VM being paused by the hypervisor, or other infrastructure issues.</p></li>
+</ul>
+<p>To guarantee correct behavior under these conditions Patroni supports watchdog devices. Watchdog devices are software or hardware mechanisms that will reset the whole system when they do not get a keepalive heartbeat within a specified timeframe. This adds an additional layer of fail safe in case usual Patroni split-brain protection mechanisms fail.</p>
+<p>Patroni will try to activate the watchdog before promoting PostgreSQL to primary. If watchdog activation fails and watchdog mode is <code class="docutils literal notranslate"><span class="pre">required</span></code> then the node will refuse to become leader. When deciding to participate in leader election Patroni will also check that watchdog configuration will allow it to become leader at all. After demoting PostgreSQL (for example due to a manual failover) Patroni will disable the watchdog again. Watchdog will also be disabled while Patroni is in paused state.</p>
+<p>By default Patroni will set up the watchdog to expire 5 seconds before TTL expires. With the default setup of <code class="docutils literal notranslate"><span class="pre">loop_wait=10</span></code> and <code class="docutils literal notranslate"><span class="pre">ttl=30</span></code> this gives HA loop at least 15 seconds (<code class="docutils literal notranslate"><span class="pre">ttl</span></code> - <code class="docutils literal notranslate"><span class="pre">safety_margin</span></code> - <code class="docutils literal notranslate"><span class="pre">loop_wait</span></code>) to complete before the system gets forcefully reset. By default accessing DCS is configured to time out after 10 seconds. This means that when DCS is unavailable, for example due to network issues, Patroni and PostgreSQL will have at least 5 seconds (<code class="docutils literal notranslate"><span class="pre">ttl</span></code> - <code class="docutils literal notranslate"><span class="pre">safety_margin</span></code> - <code class="docutils literal notranslate"><span class="pre">loop_wait</span></code> - <code class="docutils literal notranslate"><span class="pre">retry_timeout</span></code>) to come to a state where all client connections are terminated.</p>
+<p>Safety margin is the amount of time that Patroni reserves for time between leader key update and watchdog keepalive. Patroni will try to send a keepalive immediately after confirmation of leader key update. If Patroni process is suspended for extended amount of time at exactly the right moment the keepalive may be delayed for more than the safety margin without triggering the watchdog. This results in a window of time where watchdog will not trigger before leader key expiration, invalidating the guarantee. To be absolutely sure that watchdog will trigger under all circumstances set up the watchdog to expire after half of TTL by setting <code class="docutils literal notranslate"><span class="pre">safety_margin</span></code> to -1 to set watchdog timeout to <code class="docutils literal notranslate"><span class="pre">ttl</span> <span class="pre">//</span> <span class="pre">2</span></code>. If you need this guarantee you probably should increase <code class="docutils literal notranslate"><span class="pre">ttl</span></code> and/or reduce <code class="docutils literal notranslate"><span class="pre">loop_wait</span></code> and <code class="docutils literal notranslate"><span class="pre">retry_timeout</span></code>.</p>
+<p>Currently watchdogs are only supported using Linux watchdog device interface.</p>
+<section id="setting-up-software-watchdog-on-linux">
+<h2>Setting up software watchdog on Linux</h2>
+<p>Default Patroni configuration will try to use <code class="docutils literal notranslate"><span class="pre">/dev/watchdog</span></code> on Linux if it is accessible to Patroni. For most use cases using software watchdog built into the Linux kernel is secure enough.</p>
+<p>To enable software watchdog issue the following commands as root before starting Patroni:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>modprobe<span class="w"> </span>softdog
+<span class="c1"># Replace postgres with the user you will be running patroni under</span>
+chown<span class="w"> </span>postgres<span class="w"> </span>/dev/watchdog
+</pre></div>
+</div>
+<p>For testing it may be helpful to disable rebooting by adding <code class="docutils literal notranslate"><span class="pre">soft_noboot=1</span></code> to the modprobe command line. In this case the watchdog will just log a line in kernel ring buffer, visible via <cite>dmesg</cite>.</p>
+<p>Patroni will log information about the watchdog when it is successfully enabled.</p>
+</section>
+</section>
+
+
+            <div class="clearer"></div>
+          </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+  </body>
+</html>

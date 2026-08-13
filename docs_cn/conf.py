@@ -76,7 +76,7 @@ source_suffix = '.rst'
 master_doc = 'index'
 
 # General information about the project.
-project = 'Patroni'
+project = 'Metatroni'
 copyright = '2025 Compose, Zalando SE, Patroni Contributors'
 author = 'Patroni Contributors'
 

@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Metatroni: HA with ZooKeeper, etcd or Consul (based on Patroni)</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="_static/epub.css" />
+    <link rel="stylesheet" type="text/css" href="_static/github_style.css" />
+    <link rel="stylesheet" type="text/css" href="_static/custom.css" /> 
+  </head><body>
+
+    <div class="document">
+      <div class="documentwrapper">
+          <div class="body" role="main">
+            
+  <section id="metatroni-ha-with-zookeeper-etcd-or-consul-based-on-patroni">
+<h1>Metatroni: HA with ZooKeeper, etcd or Consul (based on Patroni)</h1>
+<img alt="_images/patroni-logo.png" src="_images/patroni-logo.png" style="width: 128px; height: 128px;" />
+<p><strong>Metatroni</strong> is a self-developed enhancement of Patroni:</p>
+<ol class="arabic simple">
+<li><p><strong>Fully includes</strong> all original Patroni capabilities.</p></li>
+<li><p><strong>Additionally supports MySQL high availability</strong> (<code class="docutils literal notranslate"><span class="pre">database.type:</span> <span class="pre">mysql</span></code>).</p></li>
+<li><p>Supports <strong>ZooKeeper</strong>, <strong>etcd</strong>, or <strong>Consul</strong> (and other DCS backends
+Patroni already supports).</p></li>
+</ol>
+<p>Shared Patroni behaviour is documented throughout this manual; MySQL guides
+start at <a class="reference internal" href="mysql.xhtml#mysql"><span class="std std-ref">MySQL high-availability support</span></a>.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>Running Patroni/Metatroni on <strong>memory-restricted systems with Python 3.11+</strong></p>
+</div>
+<hr class="docutils" />
+<p>If you run Patroni on a system with strict memory limits, for example with <code class="docutils literal notranslate"><span class="pre">vm.overcommit_memory=2</span></code> (recommended for PostgreSQL), and use Python 3.11 or newer, you may observe unexpected behavior:</p>
+<ul class="simple">
+<li><p>Patroni appears healthy</p></li>
+<li><p>PostgreSQL continues to run</p></li>
+<li><p>Patroni <strong>REST API becomes unresponsive</strong></p></li>
+<li><p>The operating system reports that Patroni is listening on the REST API port</p></li>
+<li><p>Patroni logs look normal; however, following messages may appear once: <code class="docutils literal notranslate"><span class="pre">Exception</span> <span class="pre">ignored</span> <span class="pre">in</span> <span class="pre">thread</span> <span class="pre">started</span> <span class="pre">by:</span> <span class="pre">&lt;object</span> <span class="pre">repr()</span> <span class="pre">failed&gt;</span></code>, <code class="docutils literal notranslate"><span class="pre">MemoryError</span></code></p></li>
+<li><p>Kernel logs may contain messages such as   <code class="docutils literal notranslate"><span class="pre">not</span> <span class="pre">enough</span> <span class="pre">memory</span> <span class="pre">for</span> <span class="pre">the</span> <span class="pre">allocation</span></code></p></li>
+</ul>
+<p>This behavior is caused by a <a class="reference external" href="https://github.com/python/cpython/issues/140746">bug in Python 3.11+</a><span class="link-target"> [https://github.com/python/cpython/issues/140746]</span>.
+Under strict memory conditions, starting a new thread may hang indefinitely when there is not enough free memory.</p>
+</section>
+<section id="recommended-solution">
+<h1>Recommended solution</h1>
+<p>Recent Patroni releases (4.1.1+, 4.0.8+) reduce the impact of this issue by starting all required threads early during startup, before the system is under memory pressure.</p>
+</section>
+<section id="additional-recommendations-linux-glibc">
+<h1>Additional recommendations (Linux, glibc)</h1>
+<p>When running with <code class="docutils literal notranslate"><span class="pre">vm.overcommit_memory=2</span></code> (recommended for PostgreSQL), we also recommend starting Patroni with the following environment variables configured:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">MALLOC_ARENA_MAX=1</span></code> - reduces the amount of virtual memory allocated by glibc for multi-threaded
+applications</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">PG_MALLOC_ARENA_MAX=</span></code> - resets the value of <code class="docutils literal notranslate"><span class="pre">MALLOC_ARENA_MAX</span></code> for PostgreSQL processes started by Patroni.</p></li>
+</ul>
+<p>In addition, you may tune the following Patroni configuration parameters:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">thread_stack_size</span></code> - stack size used for threads started by Patroni. Lowering this value reduces memory usage of the Patroni process. The default value set by Patroni is <code class="docutils literal notranslate"><span class="pre">512kB</span></code>. Increase <code class="docutils literal notranslate"><span class="pre">thread_stack_size</span></code> if Patroni experience stack-related crashes; otherwise the default value is sufficient.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">thread_pool_size</span></code> - size of the thread pool used by Patroni for asynchronous tasks and REST API communication with other members during leader race or failsafe checks. The default value is <code class="docutils literal notranslate"><span class="pre">5</span></code>, which is sufficient for three-node clusters.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">restapi.thread_pool_size</span></code> - size of the thread pool used to process REST API requests. The default value is <code class="docutils literal notranslate"><span class="pre">5</span></code>, allowing up to five parallel REST API requests. Note that requests involving SQL queries are effectively serialized because a single database connection is used, so increasing this value typically provides no benefit.</p></li>
+</ul>
+</section>
+<hr class="docutils" />
+<section id="introduction">
+<h1>Introduction</h1>
+<p>Patroni is a template for high availability (HA) PostgreSQL solutions using Python. For maximum accessibility, Patroni supports a variety of distributed configuration stores like <a class="reference external" href="https://zookeeper.apache.org/">ZooKeeper</a><span class="link-target"> [https://zookeeper.apache.org/]</span>, <a class="reference external" href="https://github.com/coreos/etcd">etcd</a><span class="link-target"> [https://github.com/coreos/etcd]</span>, <a class="reference external" href="https://github.com/hashicorp/consul">Consul</a><span class="link-target"> [https://github.com/hashicorp/consul]</span> or <a class="reference external" href="https://kubernetes.io">Kubernetes</a><span class="link-target"> [https://kubernetes.io]</span>. Database engineers, DBAs, DevOps engineers, and SREs who are looking to quickly deploy HA PostgreSQL in datacenters — or anywhere else — will hopefully find it useful.</p>
+<p>We call Patroni a “template” because it is far from being a one-size-fits-all or plug-and-play replication system. It will have its own caveats. Use wisely. There are many ways to run high availability with PostgreSQL; for a list, see the <a class="reference external" href="https://wiki.postgresql.org/wiki/Replication,_Clustering,_and_Connection_Pooling">PostgreSQL Documentation</a><span class="link-target"> [https://wiki.postgresql.org/wiki/Replication,_Clustering,_and_Connection_Pooling]</span>.</p>
+<p>Currently supported PostgreSQL versions: 9.3 to 18.</p>
+<p><strong>Note to Citus users</strong>: Starting from 3.0 Patroni nicely integrates with the <a class="reference external" href="https://github.com/citusdata/citus">Citus</a><span class="link-target"> [https://github.com/citusdata/citus]</span> database extension to Postgres. Please check the <a class="reference internal" href="citus.xhtml#citus"><span class="std std-ref">Citus support page</span></a> in the Patroni documentation for more info about how to use Patroni high availability together with a Citus distributed cluster.</p>
+<p><strong>Note to Kubernetes users</strong>: Patroni can run natively on top of Kubernetes. Take a look at the <a class="reference internal" href="kubernetes.xhtml#kubernetes"><span class="std std-ref">Kubernetes</span></a> chapter of the Patroni documentation.</p>
+<p><strong>Note to MySQL users</strong>: This fork can manage MySQL HA (async GTID, semi-sync, and MGR) via <code class="docutils literal notranslate"><span class="pre">database.type:</span> <span class="pre">mysql</span></code>. See the <a class="reference internal" href="mysql.xhtml#mysql"><span class="std std-ref">MySQL</span></a> chapter. Support is still under active development.</p>
+<div class="toctree-wrapper compound">
+<p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="README.xhtml">Introduction</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="README.xhtml#development-status">Development Status</a></li>
+<li class="toctree-l2"><a class="reference internal" href="README.xhtml#technical-requirements-installation">Technical Requirements/Installation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="README.xhtml#planning-the-number-of-postgresql-nodes">Planning the Number of PostgreSQL Nodes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="README.xhtml#running-and-configuring">Running and Configuring</a></li>
+<li class="toctree-l2"><a class="reference internal" href="README.xhtml#yaml-configuration">YAML Configuration</a></li>
+<li class="toctree-l2"><a class="reference internal" href="README.xhtml#environment-configuration">Environment Configuration</a></li>
+<li class="toctree-l2"><a class="reference internal" href="README.xhtml#replication-choices">Replication Choices</a></li>
+<li class="toctree-l2"><a class="reference internal" href="README.xhtml#applications-should-not-use-superusers">Applications Should Not Use Superusers</a></li>
+<li class="toctree-l2"><a class="reference internal" href="README.xhtml#testing-your-ha-solution">Testing Your HA Solution</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="installation.xhtml">Installation</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="installation.xhtml#pre-requirements-for-mac-os">Pre-requirements for Mac OS</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.xhtml#psycopg">Psycopg</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.xhtml#general-installation-for-pip">General installation for pip</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.xhtml#package-installation-on-linux">Package installation on Linux</a></li>
+<li class="toctree-l2"><a class="reference internal" href="installation.xhtml#upgrading">Upgrading</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="patroni_configuration.xhtml">Patroni configuration</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="patroni_configuration.xhtml#important-rules">Important rules</a></li>
+<li class="toctree-l2"><a class="reference internal" href="patroni_configuration.xhtml#configuration-generation-and-validation">Configuration generation and validation</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="rest_api.xhtml">Patroni REST API</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="rest_api.xhtml#health-check-endpoints">Health check endpoints</a></li>
+<li class="toctree-l2"><a class="reference internal" href="rest_api.xhtml#monitoring-endpoint">Monitoring endpoint</a></li>
+<li class="toctree-l2"><a class="reference internal" href="rest_api.xhtml#cluster-status-endpoints">Cluster status endpoints</a></li>
+<li class="toctree-l2"><a class="reference internal" href="rest_api.xhtml#config-endpoint">Config endpoint</a></li>
+<li class="toctree-l2"><a class="reference internal" href="rest_api.xhtml#switchover-and-failover-endpoints">Switchover and failover endpoints</a></li>
+<li class="toctree-l2"><a class="reference internal" href="rest_api.xhtml#restart-endpoint">Restart endpoint</a></li>
+<li class="toctree-l2"><a class="reference internal" href="rest_api.xhtml#reload-endpoint">Reload endpoint</a></li>
+<li class="toctree-l2"><a class="reference internal" href="rest_api.xhtml#reinitialize-endpoint">Reinitialize endpoint</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="patronictl.xhtml">patronictl</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="patronictl.xhtml#configuration">Configuration</a></li>
+<li class="toctree-l2"><a class="reference internal" href="patronictl.xhtml#usage">Usage</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="replica_bootstrap.xhtml">Replica imaging and bootstrap</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="replica_bootstrap.xhtml#bootstrap">Bootstrap</a></li>
+<li class="toctree-l2"><a class="reference internal" href="replica_bootstrap.xhtml#building-replicas">Building replicas</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="replication_modes.xhtml">Replication modes</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="replication_modes.xhtml#asynchronous-mode-durability">Asynchronous mode durability</a></li>
+<li class="toctree-l2"><a class="reference internal" href="replication_modes.xhtml#postgresql-synchronous-replication">PostgreSQL synchronous replication</a></li>
+<li class="toctree-l2"><a class="reference internal" href="replication_modes.xhtml#synchronous-mode">Synchronous mode</a></li>
+<li class="toctree-l2"><a class="reference internal" href="replication_modes.xhtml#synchronous-replication-factor">Synchronous Replication Factor</a></li>
+<li class="toctree-l2"><a class="reference internal" href="replication_modes.xhtml#maximum-lag-on-synchronous-node">Maximum lag on synchronous node</a></li>
+<li class="toctree-l2"><a class="reference internal" href="replication_modes.xhtml#synchronous-mode-implementation">Synchronous mode implementation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="replication_modes.xhtml#quorum-commit-mode">Quorum commit mode</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="standby_cluster.xhtml">Standby cluster</a></li>
+<li class="toctree-l1"><a class="reference internal" href="watchdog.xhtml">Watchdog support</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="watchdog.xhtml#setting-up-software-watchdog-on-linux">Setting up software watchdog on Linux</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="pause.xhtml">Pause/Resume mode for the cluster</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="pause.xhtml#the-goal">The goal</a></li>
+<li class="toctree-l2"><a class="reference internal" href="pause.xhtml#the-implementation">The implementation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="pause.xhtml#user-guide">User guide</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="dcs_failsafe_mode.xhtml">DCS Failsafe Mode</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="dcs_failsafe_mode.xhtml#the-problem">The problem</a></li>
+<li class="toctree-l2"><a class="reference internal" href="dcs_failsafe_mode.xhtml#reasons-for-the-current-implementation">Reasons for the current implementation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="dcs_failsafe_mode.xhtml#id2">DCS Failsafe Mode</a></li>
+<li class="toctree-l2"><a class="reference internal" href="dcs_failsafe_mode.xhtml#low-level-implementation-details">Low-level implementation details</a></li>
+<li class="toctree-l2"><a class="reference internal" href="dcs_failsafe_mode.xhtml#f-a-q">F.A.Q.</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="kubernetes.xhtml">Using Patroni with Kubernetes</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="kubernetes.xhtml#use-endpoints">Use Endpoints</a></li>
+<li class="toctree-l2"><a class="reference internal" href="kubernetes.xhtml#use-configmaps">Use ConfigMaps</a></li>
+<li class="toctree-l2"><a class="reference internal" href="kubernetes.xhtml#configuration">Configuration</a></li>
+<li class="toctree-l2"><a class="reference internal" href="kubernetes.xhtml#examples">Examples</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="citus.xhtml">Citus support</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="citus.xhtml#tl-dr">TL;DR</a></li>
+<li class="toctree-l2"><a class="reference internal" href="citus.xhtml#patronictl">patronictl</a></li>
+<li class="toctree-l2"><a class="reference internal" href="citus.xhtml#citus-worker-switchover">Citus worker switchover</a></li>
+<li class="toctree-l2"><a class="reference internal" href="citus.xhtml#secondary-nodes">Secondary nodes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="citus.xhtml#peek-into-dcs">Peek into DCS</a></li>
+<li class="toctree-l2"><a class="reference internal" href="citus.xhtml#citus-on-kubernetes">Citus on Kubernetes</a></li>
+<li class="toctree-l2"><a class="reference internal" href="citus.xhtml#citus-upgrades-and-postgresql-major-upgrades">Citus upgrades and PostgreSQL major upgrades</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="mysql.xhtml">MySQL high-availability support</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="mysql_architecture.xhtml">MySQL architecture and model</a></li>
+<li class="toctree-l2"><a class="reference internal" href="mysql_mechanisms.xhtml">MySQL HA mechanisms and sequences</a></li>
+<li class="toctree-l2"><a class="reference internal" href="mysql_ops.xhtml">MySQL operations and FAQ</a></li>
+<li class="toctree-l2"><a class="reference internal" href="mysql.xhtml#what-you-get">What you get</a></li>
+<li class="toctree-l2"><a class="reference internal" href="mysql.xhtml#quick-start">Quick start</a></li>
+<li class="toctree-l2"><a class="reference internal" href="mysql.xhtml#read-next">Read next</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="existing_data.xhtml">Convert a Standalone to a Patroni Cluster</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="existing_data.xhtml#procedure">Procedure</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="existing_data.xhtml#major-upgrade-of-postgresql-version">Major Upgrade of PostgreSQL Version</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="existing_data.xhtml#faq">FAQ</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="tools_integration.xhtml">Integration with other tools</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="tools_integration.xhtml#barman">Barman</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="security.xhtml">Security Considerations</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="security.xhtml#protecting-dcs">Protecting DCS</a></li>
+<li class="toctree-l2"><a class="reference internal" href="security.xhtml#protecting-the-rest-api">Protecting the REST API</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="ha_multi_dc.xhtml">HA multi datacenter</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="ha_multi_dc.xhtml#synchronous-replication">Synchronous Replication</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ha_multi_dc.xhtml#asynchronous-replication">Asynchronous Replication</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ha_multi_dc.xhtml#mysql-standby-sites">MySQL standby sites</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="faq.xhtml">FAQ</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="faq.xhtml#comparison-with-other-ha-solutions">Comparison with other HA solutions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="faq.xhtml#dcs">DCS</a></li>
+<li class="toctree-l2"><a class="reference internal" href="faq.xhtml#patronictl">patronictl</a></li>
+<li class="toctree-l2"><a class="reference internal" href="faq.xhtml#configuration">Configuration</a></li>
+<li class="toctree-l2"><a class="reference internal" href="faq.xhtml#postgres-management">Postgres management</a></li>
+<li class="toctree-l2"><a class="reference internal" href="faq.xhtml#concepts-and-requirements">Concepts and requirements</a></li>
+<li class="toctree-l2"><a class="reference internal" href="faq.xhtml#automatic-failover">Automatic failover</a></li>
+<li class="toctree-l2"><a class="reference internal" href="faq.xhtml#bootstrapping-and-standbys-creation">Bootstrapping and standbys creation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="faq.xhtml#monitoring">Monitoring</a></li>
+<li class="toctree-l2"><a class="reference internal" href="faq.xhtml#mysql-backend">MySQL backend</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="releases.xhtml">Release notes</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-4-1-3">Version 4.1.3</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-4-1-2">Version 4.1.2</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-4-1-1">Version 4.1.1</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-4-1-0">Version 4.1.0</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-4-0-7">Version 4.0.7</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-4-0-6">Version 4.0.6</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-4-0-5">Version 4.0.5</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-4-0-4">Version 4.0.4</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-4-0-3">Version 4.0.3</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-4-0-2">Version 4.0.2</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-4-0-1">Version 4.0.1</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-4-0-0">Version 4.0.0</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-3-3-2">Version 3.3.2</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-3-3-1">Version 3.3.1</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-3-3-0">Version 3.3.0</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-3-2-2">Version 3.2.2</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-3-2-1">Version 3.2.1</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-3-2-0">Version 3.2.0</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-3-1-2">Version 3.1.2</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-3-1-1">Version 3.1.1</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-3-1-0">Version 3.1.0</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-3-0-4">Version 3.0.4</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-3-0-3">Version 3.0.3</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-3-0-2">Version 3.0.2</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-3-0-1">Version 3.0.1</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-3-0-0">Version 3.0.0</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-2-1-7">Version 2.1.7</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-2-1-6">Version 2.1.6</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-2-1-5">Version 2.1.5</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-2-1-4">Version 2.1.4</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-2-1-3">Version 2.1.3</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-2-1-2">Version 2.1.2</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-2-1-1">Version 2.1.1</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-2-1-0">Version 2.1.0</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-2-0-2">Version 2.0.2</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-2-0-1">Version 2.0.1</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-2-0-0">Version 2.0.0</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-1-6-5">Version 1.6.5</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-1-6-4">Version 1.6.4</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-1-6-3">Version 1.6.3</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-1-6-2">Version 1.6.2</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-1-6-1">Version 1.6.1</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-1-6-0">Version 1.6.0</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-1-5-6">Version 1.5.6</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-1-5-5">Version 1.5.5</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-1-5-4">Version 1.5.4</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-1-5-3">Version 1.5.3</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-1-5-2">Version 1.5.2</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-1-5-1">Version 1.5.1</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-1-5-0">Version 1.5.0</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-1-4-6">Version 1.4.6</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-1-4-5">Version 1.4.5</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-1-4-4">Version 1.4.4</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-1-4-3">Version 1.4.3</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-1-4-2">Version 1.4.2</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-1-4-1">Version 1.4.1</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-1-4">Version 1.4</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-1-3-6">Version 1.3.6</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-1-3-5">Version 1.3.5</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-1-3-4">Version 1.3.4</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-1-3-3">Version 1.3.3</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-1-3-2">Version 1.3.2</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-1-3-1">Version 1.3.1</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-1-3">Version 1.3</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-1-2">Version 1.2</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-1-1">Version 1.1</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-1-0">Version 1.0</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-0-90">Version 0.90</a></li>
+<li class="toctree-l2"><a class="reference internal" href="releases.xhtml#version-0-80">Version 0.80</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="CONTRIBUTING.xhtml">Contributing</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="contributing_guidelines.xhtml">Contributing guidelines</a></li>
+</ul>
+</li>
+</ul>
+</div>
+</section>
+<section id="indices-and-tables">
+<h1>Indices and tables</h1>
+<ul class="simple">
+<li><p><a class="reference internal" href="genindex.xhtml"><span class="std std-ref">Index</span></a></p></li>
+<li><p><a class="reference internal" href="search.xhtml"><span class="std std-ref">Search Page</span></a></p></li>
+</ul>
+</section>
+
+
+            <div class="clearer"></div>
+          </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+  </body>
+</html>

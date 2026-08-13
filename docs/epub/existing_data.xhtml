@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Convert a Standalone to a Patroni Cluster</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="_static/epub.css" />
+    <link rel="stylesheet" type="text/css" href="_static/github_style.css" />
+    <link rel="stylesheet" type="text/css" href="_static/custom.css" /> 
+  </head><body>
+
+    <div class="document">
+      <div class="documentwrapper">
+          <div class="body" role="main">
+            
+  <section id="convert-a-standalone-to-a-patroni-cluster">
+<span id="existing-data"></span><h1>Convert a Standalone to a Patroni Cluster</h1>
+<p>This section describes the process for converting a standalone PostgreSQL instance into a Patroni cluster.</p>
+<p>To deploy a Patroni cluster without using a pre-existing PostgreSQL instance, see <a class="reference internal" href="README.xhtml#running-configuring"><span class="std std-ref">Running and Configuring</span></a> instead.</p>
+<section id="procedure">
+<h2>Procedure</h2>
+<p>You can find below an overview of steps for converting an existing Postgres cluster to a Patroni managed cluster. In the steps we assume all nodes that are part of the existing cluster are currently up and running, and that you <em>do not</em> intend to change Postgres configuration while the migration is ongoing. The steps:</p>
+<ol class="arabic">
+<li><p>Create the Postgres users as explained for <a class="reference internal" href="yaml_configuration.xhtml#postgresql-settings"><span class="std std-ref">authentication</span></a> section of the Patroni configuration. You can find sample SQL commands to create the users in the code block below, in which you need to replace the usernames and passwords as per your environment. If you already have the relevant users, then you can skip this step.</p>
+<div class="highlight-sql notranslate"><div class="highlight"><pre><span></span><span class="c1">-- Patroni superuser</span>
+<span class="c1">-- Replace PATRONI_SUPERUSER_USERNAME and PATRONI_SUPERUSER_PASSWORD accordingly</span>
+<span class="k">CREATE</span><span class="w"> </span><span class="k">USER</span><span class="w"> </span><span class="n">PATRONI_SUPERUSER_USERNAME</span><span class="w"> </span><span class="k">WITH</span><span class="w"> </span><span class="n">SUPERUSER</span><span class="w"> </span><span class="k">ENCRYPTED</span><span class="w"> </span><span class="n">PASSWORD</span><span class="w"> </span><span class="s1">&#39;PATRONI_SUPERUSER_PASSWORD&#39;</span><span class="p">;</span>
+
+<span class="c1">-- Patroni replication user</span>
+<span class="c1">-- Replace PATRONI_REPLICATION_USERNAME and PATRONI_REPLICATION_PASSWORD accordingly</span>
+<span class="k">CREATE</span><span class="w"> </span><span class="k">USER</span><span class="w"> </span><span class="n">PATRONI_REPLICATION_USERNAME</span><span class="w"> </span><span class="k">WITH</span><span class="w"> </span><span class="n">REPLICATION</span><span class="w"> </span><span class="k">ENCRYPTED</span><span class="w"> </span><span class="n">PASSWORD</span><span class="w"> </span><span class="s1">&#39;PATRONI_REPLICATION_PASSWORD&#39;</span><span class="p">;</span>
+
+<span class="c1">-- Patroni rewind user, if you intend to enable use_pg_rewind in your Patroni configuration</span>
+<span class="c1">-- Replace PATRONI_REWIND_USERNAME and PATRONI_REWIND_PASSWORD accordingly</span>
+<span class="k">CREATE</span><span class="w"> </span><span class="k">USER</span><span class="w"> </span><span class="n">PATRONI_REWIND_USERNAME</span><span class="w"> </span><span class="k">WITH</span><span class="w"> </span><span class="k">ENCRYPTED</span><span class="w"> </span><span class="n">PASSWORD</span><span class="w"> </span><span class="s1">&#39;PATRONI_REWIND_PASSWORD&#39;</span><span class="p">;</span>
+<span class="k">GRANT</span><span class="w"> </span><span class="k">EXECUTE</span><span class="w"> </span><span class="k">ON</span><span class="w"> </span><span class="k">function</span><span class="w"> </span><span class="n">pg_catalog</span><span class="p">.</span><span class="n">pg_ls_dir</span><span class="p">(</span><span class="nb">text</span><span class="p">,</span><span class="w"> </span><span class="nb">boolean</span><span class="p">,</span><span class="w"> </span><span class="nb">boolean</span><span class="p">)</span><span class="w"> </span><span class="k">TO</span><span class="w"> </span><span class="n">PATRONI_REWIND_USERNAME</span><span class="p">;</span>
+<span class="k">GRANT</span><span class="w"> </span><span class="k">EXECUTE</span><span class="w"> </span><span class="k">ON</span><span class="w"> </span><span class="k">function</span><span class="w"> </span><span class="n">pg_catalog</span><span class="p">.</span><span class="n">pg_stat_file</span><span class="p">(</span><span class="nb">text</span><span class="p">,</span><span class="w"> </span><span class="nb">boolean</span><span class="p">)</span><span class="w"> </span><span class="k">TO</span><span class="w"> </span><span class="n">PATRONI_REWIND_USERNAME</span><span class="p">;</span>
+<span class="k">GRANT</span><span class="w"> </span><span class="k">EXECUTE</span><span class="w"> </span><span class="k">ON</span><span class="w"> </span><span class="k">function</span><span class="w"> </span><span class="n">pg_catalog</span><span class="p">.</span><span class="n">pg_read_binary_file</span><span class="p">(</span><span class="nb">text</span><span class="p">)</span><span class="w"> </span><span class="k">TO</span><span class="w"> </span><span class="n">PATRONI_REWIND_USERNAME</span><span class="p">;</span>
+<span class="k">GRANT</span><span class="w"> </span><span class="k">EXECUTE</span><span class="w"> </span><span class="k">ON</span><span class="w"> </span><span class="k">function</span><span class="w"> </span><span class="n">pg_catalog</span><span class="p">.</span><span class="n">pg_read_binary_file</span><span class="p">(</span><span class="nb">text</span><span class="p">,</span><span class="w"> </span><span class="nb">bigint</span><span class="p">,</span><span class="w"> </span><span class="nb">bigint</span><span class="p">,</span><span class="w"> </span><span class="nb">boolean</span><span class="p">)</span><span class="w"> </span><span class="k">TO</span><span class="w"> </span><span class="n">PATRONI_REWIND_USERNAME</span><span class="p">;</span>
+</pre></div>
+</div>
+</li>
+<li><p>Perform the following steps on all Postgres nodes. Perform all steps on one node before proceeding with the next node. Start with the primary node, then proceed with each standby node:</p>
+<ol class="arabic simple">
+<li><p>If you are running Postgres through systemd, then disable the Postgres systemd unit. This is performed as Patroni manages starting and stopping the Postgres daemon.</p></li>
+<li><p>Create a YAML configuration file for Patroni. You can use <a class="reference internal" href="patroni_configuration.xhtml#validate-generate-config"><span class="std std-ref">Patroni configuration generation and validation tooling</span></a> for that.</p>
+<ul class="simple">
+<li><p><strong>Note (specific for the primary node):</strong> If you have replication slots being used for replication between cluster members, then it is recommended that you enable <code class="docutils literal notranslate"><span class="pre">use_slots</span></code> and configure the existing replication slots as permanent via the <code class="docutils literal notranslate"><span class="pre">slots</span></code> configuration item. Be aware that Patroni automatically creates replication slots for replication between members, and drops replication slots that it does not recognize, when <code class="docutils literal notranslate"><span class="pre">use_slots</span></code> is enabled. The idea of using permanent slots here is to allow your existing slots to persist while the migration to Patroni is in progress. See <a class="reference internal" href="dynamic_configuration.xhtml#dynamic-configuration"><span class="std std-ref">Dynamic Configuration Settings</span></a> for details.</p></li>
+</ul>
+</li>
+<li><p>Start Patroni using the <code class="docutils literal notranslate"><span class="pre">patroni</span></code> systemd service unit. It automatically detects that Postgres is already running and starts monitoring the instance.</p></li>
+</ol>
+</li>
+<li><p>Hand over Postgres “start up procedure” to Patroni. In order to do that you need to restart the cluster members through <a class="reference internal" href="patronictl.xhtml#patronictl-restart-parameters"><span class="std std-ref">patronictl restart cluster-name member-name</span></a> command. For minimal downtime you might want to split this step into:</p>
+<ol class="arabic simple">
+<li><p>Immediate restart of the standby nodes.</p></li>
+<li><p>Scheduled restart of the primary node within a maintenance window.</p></li>
+</ol>
+</li>
+<li><p>If you configured permanent slots in step <code class="docutils literal notranslate"><span class="pre">1.2.</span></code>, then you should remove them from <code class="docutils literal notranslate"><span class="pre">slots</span></code> configuration through <a class="reference internal" href="patronictl.xhtml#patronictl-edit-config-parameters"><span class="std std-ref">patronictl edit-config cluster-name</span></a> command once the <code class="docutils literal notranslate"><span class="pre">restart_lsn</span></code> of the slots created by Patroni is able to catch up with the <code class="docutils literal notranslate"><span class="pre">restart_lsn</span></code> of the original slots for the corresponding members. By removing the slots from <code class="docutils literal notranslate"><span class="pre">slots</span></code> configuration you will allow Patroni to drop the original slots from your cluster once they are not needed anymore. You can find below an example query to check the <code class="docutils literal notranslate"><span class="pre">restart_lsn</span></code> of a couple slots, so you can compare them:</p>
+<div class="highlight-sql notranslate"><div class="highlight"><pre><span></span><span class="c1">-- Assume original_slot_for_member_x is the name of the slot in your original</span>
+<span class="c1">-- cluster for replicating changes to member X, and slot_for_member_x is the</span>
+<span class="c1">-- slot created by Patroni for that purpose. You need restart_lsn of</span>
+<span class="c1">-- slot_for_member_x to be &gt;= restart_lsn of original_slot_for_member_x</span>
+<span class="k">SELECT</span><span class="w"> </span><span class="n">slot_name</span><span class="p">,</span>
+<span class="w">       </span><span class="n">restart_lsn</span>
+<span class="k">FROM</span><span class="w"> </span><span class="n">pg_replication_slots</span>
+<span class="k">WHERE</span><span class="w"> </span><span class="n">slot_name</span><span class="w"> </span><span class="k">IN</span><span class="w"> </span><span class="p">(</span>
+<span class="w">    </span><span class="s1">&#39;original_slot_for_member_x&#39;</span><span class="p">,</span>
+<span class="w">    </span><span class="s1">&#39;slot_for_member_x&#39;</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+</li>
+</ol>
+</section>
+</section>
+<section id="major-upgrade-of-postgresql-version">
+<span id="major-upgrade"></span><h1>Major Upgrade of PostgreSQL Version</h1>
+<p>The only possible way to do a major upgrade currently is:</p>
+<ol class="arabic simple">
+<li><p>Stop Patroni</p></li>
+<li><p>Upgrade PostgreSQL binaries and perform <a class="reference external" href="https://www.postgresql.org/docs/current/pgupgrade.html">pg_upgrade</a><span class="link-target"> [https://www.postgresql.org/docs/current/pgupgrade.html]</span> on the primary node</p></li>
+<li><p>Update patroni.yml</p></li>
+<li><p>Remove the initialize key from DCS or wipe complete cluster state from DCS. The second one could be achieved by running <a class="reference internal" href="patronictl.xhtml#patronictl-remove-parameters"><span class="std std-ref">patronictl remove cluster-name</span></a> . It is necessary because pg_upgrade runs initdb which actually creates a new database with a new PostgreSQL system identifier.</p></li>
+<li><p>If you wiped the cluster state in the previous step, you may wish to copy patroni.dynamic.json from old data dir to the new one.  It will help you to retain some PostgreSQL parameters you had set before.</p></li>
+<li><p>Start Patroni on the primary node.</p></li>
+<li><p>Upgrade PostgreSQL binaries, update patroni.yml and wipe the data_dir on standby nodes.</p></li>
+<li><p>Start Patroni on the standby nodes and wait for the replication to complete.</p></li>
+</ol>
+<p>Running pg_upgrade on standby nodes is not supported by PostgreSQL. If you know what you are doing, you can try the rsync procedure described in <a class="reference external" href="https://www.postgresql.org/docs/current/pgupgrade.html">https://www.postgresql.org/docs/current/pgupgrade.html</a> instead of wiping data_dir on standby nodes. The safest way is however to let Patroni replicate the data for you.</p>
+<section id="faq">
+<h2>FAQ</h2>
+<ul>
+<li><p>During Patroni startup, Patroni complains that it cannot bind to the PostgreSQL port.</p>
+<p>You need to verify <code class="docutils literal notranslate"><span class="pre">listen_addresses</span></code> and <code class="docutils literal notranslate"><span class="pre">port</span></code> in <code class="docutils literal notranslate"><span class="pre">postgresql.conf</span></code> and <code class="docutils literal notranslate"><span class="pre">postgresql.listen</span></code> in <code class="docutils literal notranslate"><span class="pre">patroni.yml</span></code>. Don’t forget that <code class="docutils literal notranslate"><span class="pre">pg_hba.conf</span></code> should allow such access.</p>
+</li>
+<li><p>After asking Patroni to restart the node, PostgreSQL displays the error message <code class="docutils literal notranslate"><span class="pre">could</span> <span class="pre">not</span> <span class="pre">open</span> <span class="pre">configuration</span> <span class="pre">file</span> <span class="pre">&quot;/etc/postgresql/10/main/pg_hba.conf&quot;:</span> <span class="pre">No</span> <span class="pre">such</span> <span class="pre">file</span> <span class="pre">or</span> <span class="pre">directory</span></code></p>
+<p>It can mean various things depending on how you manage PostgreSQL configuration. If you specified <cite>postgresql.config_dir</cite>, Patroni generates the <code class="docutils literal notranslate"><span class="pre">pg_hba.conf</span></code> based on the settings in the <a class="reference internal" href="yaml_configuration.xhtml#bootstrap-settings"><span class="std std-ref">bootstrap</span></a> section only when it bootstraps a new cluster. In this scenario the <code class="docutils literal notranslate"><span class="pre">PGDATA</span></code> was not empty, therefore no bootstrap happened. This file must exist beforehand.</p>
+</li>
+</ul>
+</section>
+</section>
+
+
+            <div class="clearer"></div>
+          </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+  </body>
+</html>

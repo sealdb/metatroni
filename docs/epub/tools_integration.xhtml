@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Integration with other tools</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="_static/epub.css" />
+    <link rel="stylesheet" type="text/css" href="_static/github_style.css" />
+    <link rel="stylesheet" type="text/css" href="_static/custom.css" /> 
+  </head><body>
+
+    <div class="document">
+      <div class="documentwrapper">
+          <div class="body" role="main">
+            
+  <section id="integration-with-other-tools">
+<span id="tools-integration"></span><h1>Integration with other tools</h1>
+<p>Patroni is able to integrate with other tools in your stack. In this section you
+will find a list of examples, which although not an exhaustive list, might
+provide you with ideas on how Patroni can integrate with other tools.</p>
+<section id="barman">
+<h2>Barman</h2>
+<p>Patroni delivers an application named <code class="docutils literal notranslate"><span class="pre">patroni_barman</span></code> which has logic to
+communicate with <code class="docutils literal notranslate"><span class="pre">pg-backup-api</span></code>, so you are able to perform Barman operations
+remotely.</p>
+<p>This application currently has a couple of sub-commands: <code class="docutils literal notranslate"><span class="pre">recover</span></code> and
+<code class="docutils literal notranslate"><span class="pre">config-switch</span></code>.</p>
+<section id="patroni-barman-recover">
+<h3>patroni_barman recover</h3>
+<p>The <code class="docutils literal notranslate"><span class="pre">recover</span></code> sub-command can be used as a custom bootstrap or custom replica
+creation method. You can find more information about that in
+<a class="reference internal" href="replica_bootstrap.xhtml#replica-imaging-and-bootstrap"><span class="std std-ref">Replica imaging and bootstrap</span></a>.</p>
+</section>
+<section id="patroni-barman-config-switch">
+<h3>patroni_barman config-switch</h3>
+<p>The <code class="docutils literal notranslate"><span class="pre">config-switch</span></code> sub-command is designed to be used as an <code class="docutils literal notranslate"><span class="pre">on_role_change</span></code>
+callback in Patroni. As an example, assume you are streaming WALs from your
+current primary to your Barman host. In the event of a failover in the cluster
+you might want to start streaming WALs from the new primary. You can accomplish
+this by using <code class="docutils literal notranslate"><span class="pre">patroni_barman</span> <span class="pre">config-switch</span></code> as the <code class="docutils literal notranslate"><span class="pre">on_role_change</span></code> callback.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>That sub-command relies on the <code class="docutils literal notranslate"><span class="pre">barman</span> <span class="pre">config-switch</span></code> command, which is in
+charge of overriding the configuration of a Barman server by applying a
+pre-defined model on top of it. This command is available since Barman 3.10.
+Please consult the Barman documentation for more details.</p>
+</div>
+<p>This is an example of how you can configure Patroni to apply a configuration
+model in case this Patroni node is promoted to primary:</p>
+<div class="highlight-YAML notranslate"><div class="highlight"><pre><span></span><span class="nt">postgresql</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">callbacks</span><span class="p">:</span>
+<span class="w">        </span><span class="nt">on_role_change</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">&gt;</span>
+<span class="w">            </span><span class="no">patroni_barman</span>
+<span class="w">                </span><span class="no">--api-url YOUR_API_URL</span>
+<span class="w">                </span><span class="no">config-switch</span>
+<span class="w">                </span><span class="no">--barman-server YOUR_BARMAN_SERVER_NAME</span>
+<span class="w">                </span><span class="no">--barman-model YOUR_BARMAN_MODEL_NAME</span>
+<span class="w">                </span><span class="no">--switch-when promoted</span>
+</pre></div>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p><code class="docutils literal notranslate"><span class="pre">patroni_barman</span> <span class="pre">config-switch</span></code> requires that you have both Barman and
+<code class="docutils literal notranslate"><span class="pre">pg-backup-api</span></code> configured in the Barman host, so it can execute a remote
+<code class="docutils literal notranslate"><span class="pre">barman</span> <span class="pre">config-switch</span></code> through the backup API. Also, it requires that you
+have pre-configured Barman models to be applied. The above example uses a
+subset of the available parameters. You can get more information running
+<code class="docutils literal notranslate"><span class="pre">patroni_barman</span> <span class="pre">config-switch</span> <span class="pre">--help</span></code>, and by consulting the Barman
+documentation.</p>
+</div>
+</section>
+</section>
+</section>
+
+
+            <div class="clearer"></div>
+          </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+  </body>
+</html>

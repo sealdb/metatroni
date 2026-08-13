@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Replication modes</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="_static/epub.css" />
+    <link rel="stylesheet" type="text/css" href="_static/github_style.css" />
+    <link rel="stylesheet" type="text/css" href="_static/custom.css" /> 
+  </head><body>
+
+    <div class="document">
+      <div class="documentwrapper">
+          <div class="body" role="main">
+            
+  <section id="replication-modes">
+<span id="id1"></span><h1>Replication modes</h1>
+<p>Patroni uses PostgreSQL streaming replication. For more information about streaming replication, see the <a class="reference external" href="http://www.postgresql.org/docs/current/static/warm-standby.html#STREAMING-REPLICATION">Postgres documentation</a><span class="link-target"> [http://www.postgresql.org/docs/current/static/warm-standby.html#STREAMING-REPLICATION]</span>. By default Patroni configures PostgreSQL for asynchronous replication. Choosing your replication schema is dependent on your business considerations. Investigate both async and sync replication, as well as other HA solutions, to determine which solution is best for you.</p>
+<section id="asynchronous-mode-durability">
+<h2>Asynchronous mode durability</h2>
+<p>In asynchronous mode the cluster is allowed to lose some committed transactions to ensure availability. When the primary server fails or becomes unavailable for any other reason Patroni will automatically promote a sufficiently healthy standby to primary. Any transactions that have not been replicated to that standby remain in a “forked timeline” on the primary, and are effectively unrecoverable <a class="footnote-reference brackets" href="#id9" id="id2" role="doc-noteref"><span class="fn-bracket">[</span>1<span class="fn-bracket">]</span></a>.</p>
+<p>The amount of transactions that can be lost is controlled via <code class="docutils literal notranslate"><span class="pre">maximum_lag_on_failover</span></code> parameter. Because the primary transaction log position is not sampled in real time, in reality the amount of lost data on failover is worst case bounded by  <code class="docutils literal notranslate"><span class="pre">maximum_lag_on_failover</span></code> bytes of transaction log plus the amount that is written in the last <code class="docutils literal notranslate"><span class="pre">ttl</span></code> seconds (<code class="docutils literal notranslate"><span class="pre">loop_wait</span></code>/2 seconds in the average case). However typical steady state replication delay is well under a second.</p>
+<p>By default, when running leader elections, Patroni does not take into account the current timeline of replicas, what in some cases could be undesirable behavior. You can prevent the node not having the same timeline as a former primary become the new leader by changing the value of <code class="docutils literal notranslate"><span class="pre">check_timeline</span></code> parameter to <code class="docutils literal notranslate"><span class="pre">true</span></code>.</p>
+</section>
+<section id="postgresql-synchronous-replication">
+<h2>PostgreSQL synchronous replication</h2>
+<p>You can use Postgres’s <a class="reference external" href="http://www.postgresql.org/docs/current/static/warm-standby.html#SYNCHRONOUS-REPLICATION">synchronous replication</a><span class="link-target"> [http://www.postgresql.org/docs/current/static/warm-standby.html#SYNCHRONOUS-REPLICATION]</span> with Patroni. Synchronous replication ensures consistency across a cluster by confirming that writes are written to a secondary before returning to the connecting client with a success. The cost of synchronous replication: increased latency and reduced throughput on writes. This throughput will be entirely based on network performance.</p>
+<p>In hosted datacenter environments (like AWS, Rackspace, or any network you do not control), synchronous replication significantly increases the variability of write performance. If followers become inaccessible from the leader, the leader effectively becomes read-only.</p>
+<p>To enable a simple synchronous replication test, add the following lines to the <code class="docutils literal notranslate"><span class="pre">parameters</span></code> section of your YAML configuration files:</p>
+<div class="highlight-YAML notranslate"><div class="highlight"><pre><span></span><span class="nt">synchronous_commit</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;on&quot;</span>
+<span class="nt">synchronous_standby_names</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;*&quot;</span>
+</pre></div>
+</div>
+<p>When using PostgreSQL synchronous replication, use at least three Postgres data nodes to ensure write availability if one host fails.</p>
+<p>Using PostgreSQL synchronous replication does not guarantee zero lost transactions under all circumstances. When the primary and the secondary that is currently acting as a synchronous replica fail simultaneously a third node that might not contain all transactions will be promoted.</p>
+</section>
+<section id="synchronous-mode">
+<span id="id3"></span><h2>Synchronous mode</h2>
+<p>For use cases where losing committed transactions is not permissible you can turn on Patroni’s <code class="docutils literal notranslate"><span class="pre">synchronous_mode</span></code>. When <code class="docutils literal notranslate"><span class="pre">synchronous_mode</span></code> is turned on Patroni will not promote a standby unless it is certain that the standby contains all transactions that may have returned a successful commit status to client <a class="footnote-reference brackets" href="#id10" id="id4" role="doc-noteref"><span class="fn-bracket">[</span>2<span class="fn-bracket">]</span></a>. This means that the system may be unavailable for writes even though some servers are available. System administrators can still use manual failover commands to promote a standby even if it results in transaction loss.</p>
+<p>Turning on <code class="docutils literal notranslate"><span class="pre">synchronous_mode</span></code> does not guarantee multi node durability of commits under all circumstances. When no suitable standby is available, primary server will still accept writes, but does not guarantee their replication. When the primary fails in this mode no standby will be promoted. When the host that used to be the primary comes back it will get promoted automatically, unless system administrator performed a manual failover. This behavior makes synchronous mode usable with 2 node clusters.</p>
+<p>When <code class="docutils literal notranslate"><span class="pre">synchronous_mode</span></code> is on and a standby crashes, commits will block until next iteration of Patroni runs and switches the primary to standalone mode (worst case delay for writes <code class="docutils literal notranslate"><span class="pre">ttl</span></code> seconds, average case <code class="docutils literal notranslate"><span class="pre">loop_wait</span></code>/2 seconds). Manually shutting down or restarting a standby will not cause a commit service interruption. Standby will signal the primary to release itself from synchronous standby duties before PostgreSQL shutdown is initiated.</p>
+<p>When it is absolutely necessary to guarantee that each write is stored durably
+on at least two nodes, enable <code class="docutils literal notranslate"><span class="pre">synchronous_mode_strict</span></code> in addition to the
+<code class="docutils literal notranslate"><span class="pre">synchronous_mode</span></code>. This parameter prevents Patroni from switching off the
+synchronous replication on the primary when no synchronous standby candidates
+are available. As a downside, the primary is not be available for writes
+(unless the Postgres transaction explicitly turns off <code class="docutils literal notranslate"><span class="pre">synchronous_commit</span></code>),
+blocking all client write requests until at least one synchronous replica comes
+up.</p>
+<p>You can ensure that a standby never becomes the synchronous standby by setting <code class="docutils literal notranslate"><span class="pre">nosync</span></code> tag to true. This is recommended to set for standbys that are behind slow network connections and would cause performance degradation when becoming a synchronous standby. Setting tag <code class="docutils literal notranslate"><span class="pre">nostream</span></code> to true will also have the same effect.</p>
+<p>Synchronous mode can be switched on and off using <code class="docutils literal notranslate"><span class="pre">patronictl</span> <span class="pre">edit-config</span></code> command or via Patroni REST interface. See <a class="reference internal" href="dynamic_configuration.xhtml#dynamic-configuration"><span class="std std-ref">dynamic configuration</span></a> for instructions.</p>
+<p>Note: Because of the way synchronous replication is implemented in PostgreSQL it is still possible to lose transactions even when using <code class="docutils literal notranslate"><span class="pre">synchronous_mode_strict</span></code>. If the PostgreSQL backend is cancelled while waiting to acknowledge replication (as a result of packet cancellation due to client timeout or backend failure) transaction changes become visible for other backends. Such changes are not yet replicated and may be lost in case of standby promotion.</p>
+</section>
+<section id="synchronous-replication-factor">
+<h2>Synchronous Replication Factor</h2>
+<p>The parameter <code class="docutils literal notranslate"><span class="pre">synchronous_node_count</span></code> is used by Patroni to manage the number of synchronous standby databases. It is set to <code class="docutils literal notranslate"><span class="pre">1</span></code> by default. It has no effect when <code class="docutils literal notranslate"><span class="pre">synchronous_mode</span></code> is set to <code class="docutils literal notranslate"><span class="pre">off</span></code>. When enabled, Patroni manages the precise number of synchronous standby databases based on parameter <code class="docutils literal notranslate"><span class="pre">synchronous_node_count</span></code> and adjusts the state in DCS &amp; <code class="docutils literal notranslate"><span class="pre">synchronous_standby_names</span></code> in PostgreSQL as members join and leave. If the parameter is set to a value higher than the number of eligible nodes it will be automatically reduced by Patroni.</p>
+</section>
+<section id="maximum-lag-on-synchronous-node">
+<h2>Maximum lag on synchronous node</h2>
+<p>By default Patroni sticks to nodes that are declared as <code class="docutils literal notranslate"><span class="pre">synchronous</span></code>, according to the <code class="docutils literal notranslate"><span class="pre">pg_stat_replication</span></code> view, even when there are other nodes ahead of it. This is done to minimize the number of changes of <code class="docutils literal notranslate"><span class="pre">synchronous_standby_names</span></code>. To change this behavior one may use <code class="docutils literal notranslate"><span class="pre">maximum_lag_on_syncnode</span></code> parameter. It controls how much lag the replica can have to still be considered as “synchronous”.</p>
+<p>Patroni utilizes the max replica LSN if there is more than one standby, otherwise it will use leader’s current wal LSN. The default is <code class="docutils literal notranslate"><span class="pre">-1</span></code>, and Patroni will not take action to swap a synchronous unhealthy standby when the value is set to <code class="docutils literal notranslate"><span class="pre">0</span></code> or less. Please set the value high enough so that Patroni won’t swap synchronous standbys frequently during high transaction volume.</p>
+</section>
+<section id="synchronous-mode-implementation">
+<h2>Synchronous mode implementation</h2>
+<p>When in synchronous mode Patroni maintains synchronization state in the DCS (<code class="docutils literal notranslate"><span class="pre">/sync</span></code> key), containing the latest primary and current synchronous standby databases. This state is updated with strict ordering constraints to ensure the following invariants:</p>
+<ul class="simple">
+<li><p>A node must be marked as the latest leader whenever it can accept write transactions. Patroni crashing or PostgreSQL not shutting down can cause violations of this invariant.</p></li>
+<li><p>A node must be set as the synchronous standby in PostgreSQL as long as it is published as the synchronous standby in the <code class="docutils literal notranslate"><span class="pre">/sync</span></code> key in DCS..</p></li>
+<li><p>A node that is not the leader or current synchronous standby is not allowed to promote itself automatically.</p></li>
+</ul>
+<p>Patroni will only assign one or more synchronous standby nodes based on <code class="docutils literal notranslate"><span class="pre">synchronous_node_count</span></code> parameter to <code class="docutils literal notranslate"><span class="pre">synchronous_standby_names</span></code>.</p>
+<p>On each HA loop iteration Patroni re-evaluates synchronous standby nodes choice. If the current list of synchronous standby nodes are connected and has not requested its synchronous status to be removed it remains picked. Otherwise the cluster members available for sync that are furthest ahead in replication are picked.</p>
+<section id="example">
+<h3>Example:</h3>
+<section id="config-key-in-dcs">
+<h4><code class="docutils literal notranslate"><span class="pre">/config</span></code> key in DCS</h4>
+<div class="highlight-YAML notranslate"><div class="highlight"><pre><span></span><span class="nt">synchronous_mode</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">on</span>
+<span class="nt">synchronous_node_count</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2</span>
+<span class="nn">...</span>
+</pre></div>
+</div>
+</section>
+<section id="sync-key-in-dcs">
+<h4><code class="docutils literal notranslate"><span class="pre">/sync</span></code> key in DCS</h4>
+<div class="highlight-JSON notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;leader&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;node0&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;sync_standby&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;node1,node2&quot;</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</section>
+<section id="postgresql-conf">
+<h4>postgresql.conf</h4>
+<div class="highlight-INI notranslate"><div class="highlight"><pre><span></span><span class="na">synchronous_standby_names</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&#39;FIRST 2 (node1,node2)&#39;</span>
+</pre></div>
+</div>
+<p>In the above examples only nodes <code class="docutils literal notranslate"><span class="pre">node1</span></code> and <code class="docutils literal notranslate"><span class="pre">node2</span></code> are known to be synchronous and allowed to be automatically promoted if the primary (<code class="docutils literal notranslate"><span class="pre">node0</span></code>) fails.</p>
+</section>
+</section>
+</section>
+<section id="quorum-commit-mode">
+<span id="quorum-mode"></span><h2>Quorum commit mode</h2>
+<p>Starting from PostgreSQL v10 Patroni supports quorum-based synchronous replication.</p>
+<p>In this mode, Patroni maintains synchronization state in the DCS, containing the latest known primary, the number of nodes required for quorum, and the nodes currently eligible to vote on quorum. In steady state, the nodes voting on quorum are the leader and all synchronous standbys. This state is updated with strict ordering constraints, with regards to node promotion and <code class="docutils literal notranslate"><span class="pre">synchronous_standby_names</span></code>, to ensure that at all times any subset of voters that can achieve quorum includes at least one node with the latest successful commit.</p>
+<p>On each iteration of HA loop, Patroni re-evaluates synchronous standby choices and quorum, based on node availability and requested cluster configuration. In PostgreSQL versions above 9.6 all eligible nodes are added as synchronous standbys as soon as their replication catches up to leader.</p>
+<p>Quorum commit helps to reduce worst case latencies, even during normal operation, as a higher latency of replicating to one standby can be compensated by other standbys.</p>
+<p>The quorum-based synchronous mode could be enabled by setting <code class="docutils literal notranslate"><span class="pre">synchronous_mode</span></code> to <code class="docutils literal notranslate"><span class="pre">quorum</span></code> using <code class="docutils literal notranslate"><span class="pre">patronictl</span> <span class="pre">edit-config</span></code> command or via Patroni REST interface. See <a class="reference internal" href="dynamic_configuration.xhtml#dynamic-configuration"><span class="std std-ref">dynamic configuration</span></a> for instructions.</p>
+<p>Other parameters, like <code class="docutils literal notranslate"><span class="pre">synchronous_node_count</span></code>, <code class="docutils literal notranslate"><span class="pre">maximum_lag_on_syncnode</span></code>, and <code class="docutils literal notranslate"><span class="pre">synchronous_mode_strict</span></code> continue to work the same way as with <code class="docutils literal notranslate"><span class="pre">synchronous_mode=on</span></code>.</p>
+<section id="id5">
+<h3>Example:</h3>
+<section id="id6">
+<h4><code class="docutils literal notranslate"><span class="pre">/config</span></code> key in DCS</h4>
+<div class="highlight-YAML notranslate"><div class="highlight"><pre><span></span><span class="nt">synchronous_mode</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">quorum</span>
+<span class="nt">synchronous_node_count</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2</span>
+<span class="nn">...</span>
+</pre></div>
+</div>
+</section>
+<section id="id7">
+<h4><code class="docutils literal notranslate"><span class="pre">/sync</span></code> key in DCS</h4>
+<div class="highlight-JSON notranslate"><div class="highlight"><pre><span></span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;leader&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;node0&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;sync_standby&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;node1,node2,node3&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;quorum&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</section>
+<section id="id8">
+<h4>postgresql.conf</h4>
+<div class="highlight-INI notranslate"><div class="highlight"><pre><span></span><span class="na">synchronous_standby_names</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&#39;ANY 2 (node1,node2,node3)&#39;</span>
+</pre></div>
+</div>
+<p>If the primary (<code class="docutils literal notranslate"><span class="pre">node0</span></code>) failed, in the above example two of the <code class="docutils literal notranslate"><span class="pre">node1</span></code>, <code class="docutils literal notranslate"><span class="pre">node2</span></code>, <code class="docutils literal notranslate"><span class="pre">node3</span></code> will have the latest transaction received, but we don’t know which ones. To figure out whether the node <code class="docutils literal notranslate"><span class="pre">node1</span></code> has received the latest transaction, we need to compare its LSN with the LSN on <strong>at least</strong> one node (<code class="docutils literal notranslate"><span class="pre">quorum=1</span></code> in the <code class="docutils literal notranslate"><span class="pre">/sync</span></code> key) among <code class="docutils literal notranslate"><span class="pre">node2</span></code> and <code class="docutils literal notranslate"><span class="pre">node3</span></code>. If <code class="docutils literal notranslate"><span class="pre">node1</span></code> isn’t behind of at least one of them, we can guarantee that there will be no user visible data loss if <code class="docutils literal notranslate"><span class="pre">node1</span></code> is promoted.</p>
+<aside class="footnote-list brackets">
+<aside class="footnote brackets" id="id9" role="doc-footnote">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id2">1</a><span class="fn-bracket">]</span></span>
+<p>The data is still there, but recovering it requires a manual recovery effort by data recovery specialists. When Patroni is allowed to rewind with <code class="docutils literal notranslate"><span class="pre">use_pg_rewind</span></code> the forked timeline will be automatically erased to rejoin the failed primary with the cluster. However, for <code class="docutils literal notranslate"><span class="pre">use_pg_rewind</span></code> to function properly, either the cluster must be initialized with <code class="docutils literal notranslate"><span class="pre">data</span> <span class="pre">page</span> <span class="pre">checksums</span></code> (<code class="docutils literal notranslate"><span class="pre">--data-checksums</span></code> option for <code class="docutils literal notranslate"><span class="pre">initdb</span></code>) and/or <code class="docutils literal notranslate"><span class="pre">wal_log_hints</span></code> must be set to <code class="docutils literal notranslate"><span class="pre">on</span></code>.</p>
+</aside>
+<aside class="footnote brackets" id="id10" role="doc-footnote">
+<span class="label"><span class="fn-bracket">[</span><a role="doc-backlink" href="#id4">2</a><span class="fn-bracket">]</span></span>
+<p>Clients can change the behavior per transaction using PostgreSQL’s <code class="docutils literal notranslate"><span class="pre">synchronous_commit</span></code> setting. Transactions with <code class="docutils literal notranslate"><span class="pre">synchronous_commit</span></code> values of <code class="docutils literal notranslate"><span class="pre">off</span></code> and <code class="docutils literal notranslate"><span class="pre">local</span></code> may be lost on fail over, but will not be blocked by replication delays.</p>
+</aside>
+</aside>
+</section>
+</section>
+</section>
+</section>
+
+
+            <div class="clearer"></div>
+          </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+  </body>
+</html>

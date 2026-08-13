@@ -1,0 +1,1586 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>patronictl</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="_static/epub.css" />
+    <link rel="stylesheet" type="text/css" href="_static/github_style.css" />
+    <link rel="stylesheet" type="text/css" href="_static/custom.css" /> 
+  </head><body>
+
+    <div class="document">
+      <div class="documentwrapper">
+          <div class="body" role="main">
+            
+  <section id="patronictl">
+<span id="id1"></span><h1>patronictl</h1>
+<p>Patroni has a command-line interface named <code class="docutils literal notranslate"><span class="pre">patronictl</span></code>, which is used basically to interact with Patroni’s REST API and with the DCS. It is intended to make it easier to perform operations in the cluster, and can easily be used by humans or scripts.</p>
+<section id="configuration">
+<span id="patronictl-configuration"></span><h2>Configuration</h2>
+<p><code class="docutils literal notranslate"><span class="pre">patronictl</span></code> uses 3 sections of the configuration:</p>
+<ul class="simple">
+<li><p><strong>ctl</strong>: how to authenticate against the Patroni REST API, and how to validate the server identity. Refer to <a class="reference internal" href="yaml_configuration.xhtml#patronictl-settings"><span class="std std-ref">ctl settings</span></a> for more details;</p></li>
+<li><p><strong>restapi</strong>: how to authenticate against the Patroni REST API, and how to validate the server identity. Only used if <code class="docutils literal notranslate"><span class="pre">ctl</span></code> configuration is not enough. <code class="docutils literal notranslate"><span class="pre">patronictl</span></code> is mainly interested in <code class="docutils literal notranslate"><span class="pre">restapi.authentication</span></code> section (in case <code class="docutils literal notranslate"><span class="pre">ctl.authentication</span></code> is missing) and <code class="docutils literal notranslate"><span class="pre">restapi.cafile</span></code> setting (in case <code class="docutils literal notranslate"><span class="pre">ctl.cacert</span></code> is missing). Refer to <a class="reference internal" href="yaml_configuration.xhtml#restapi-settings"><span class="std std-ref">REST API settings</span></a> for more details;</p></li>
+<li><p>DCS (e.g. <strong>etcd</strong>): how to contact and authenticate against the DCS used by Patroni.</p></li>
+</ul>
+<p>Those configuration options can come either from environment variables or from a configuration file. Look for the above sections in <a class="reference internal" href="ENVIRONMENT.xhtml#environment"><span class="std std-ref">Environment Configuration Settings</span></a> or <a class="reference internal" href="yaml_configuration.xhtml#yaml-configuration"><span class="std std-ref">YAML Configuration Settings</span></a> to understand how you can set the options for them through environment variables or through a configuration file.</p>
+<p>If you opt for using environment variables, it’s a straight forward approach. Patronictl will read the environment variables and use their values.</p>
+<p>If you opt for using a configuration file, you have different ways to inform <code class="docutils literal notranslate"><span class="pre">patronictl</span></code> about the file to be used. By default <code class="docutils literal notranslate"><span class="pre">patronictl</span></code> will attempt to load a configuration file named <code class="docutils literal notranslate"><span class="pre">patronictl.yaml</span></code>, which is expected to be found under either of these paths, according to your system:</p>
+<ul class="simple">
+<li><p>Mac OS X: <code class="docutils literal notranslate"><span class="pre">~/Library/Application</span> <span class="pre">Support/patroni</span></code></p></li>
+<li><p>Mac OS X (POSIX): <code class="docutils literal notranslate"><span class="pre">~/.patroni</span></code></p></li>
+<li><p>Unix: <code class="docutils literal notranslate"><span class="pre">~/.config/patroni</span></code></p></li>
+<li><p>Unix (POSIX): <code class="docutils literal notranslate"><span class="pre">~/.patroni</span></code></p></li>
+<li><p>Windows (roaming): <code class="docutils literal notranslate"><span class="pre">C:\Users\&lt;user&gt;\AppData\Roaming\patroni</span></code></p></li>
+<li><p>Windows (not roaming): <code class="docutils literal notranslate"><span class="pre">C:\Users\&lt;user&gt;\AppData\Local\patroni</span></code></p></li>
+</ul>
+<p>You can override that behavior either by:</p>
+<ul class="simple">
+<li><p>Setting the environment variable <code class="docutils literal notranslate"><span class="pre">PATRONICTL_CONFIG_FILE</span></code> with the path to a custom configuration file;</p></li>
+<li><p>Using the <code class="docutils literal notranslate"><span class="pre">-c</span></code> / <code class="docutils literal notranslate"><span class="pre">--config-file</span></code> command-line argument of <code class="docutils literal notranslate"><span class="pre">patronictl</span></code> with the path to a custom configuration file.</p></li>
+</ul>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>If you are running <code class="docutils literal notranslate"><span class="pre">patronictl</span></code> in the same host as <code class="docutils literal notranslate"><span class="pre">patroni</span></code> daemon is running, you may just use the same configuration file if it contains all the configuration sections required by <code class="docutils literal notranslate"><span class="pre">patronictl</span></code>.</p>
+</div>
+</section>
+<section id="usage">
+<span id="patronictl-usage"></span><h2>Usage</h2>
+<p><code class="docutils literal notranslate"><span class="pre">patronictl</span></code> exposes several handy operations. This section is intended to describe each of them.</p>
+<p>Before jumping into each of the sub-commands of <code class="docutils literal notranslate"><span class="pre">patronictl</span></code>, be aware that <code class="docutils literal notranslate"><span class="pre">patronictl</span></code> itself has the following command-line arguments:</p>
+<dl>
+<dt><code class="docutils literal notranslate"><span class="pre">-c</span></code> / <code class="docutils literal notranslate"><span class="pre">--config-file</span></code></dt><dd><p>As explained before, used to provide a path to a configuration file for <code class="docutils literal notranslate"><span class="pre">patronictl</span></code>.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">-d</span></code> / <code class="docutils literal notranslate"><span class="pre">--dcs-url</span></code> / <code class="docutils literal notranslate"><span class="pre">--dcs</span></code></dt><dd><p>Provide a connection string to the DCS used by Patroni.</p>
+<p>This argument can be used either to override the DCS and <code class="docutils literal notranslate"><span class="pre">namespace</span></code> settings from the <code class="docutils literal notranslate"><span class="pre">patronictl</span></code> configuration, or to define it if it’s missing in the configuration.</p>
+<p>The value should be in the format <code class="docutils literal notranslate"><span class="pre">DCS://HOST:PORT/NAMESPACE</span></code>, e.g. <code class="docutils literal notranslate"><span class="pre">etcd3://localhost:2379/service</span></code> to connect to etcd v3 running on <code class="docutils literal notranslate"><span class="pre">localhost</span></code> with Patroni cluster stored under <code class="docutils literal notranslate"><span class="pre">service</span></code> namespace. Any part that is missing in the argument value will be replaced with the value present in the configuration or with its default.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">-k</span></code> / <code class="docutils literal notranslate"><span class="pre">--insecure</span></code></dt><dd><p>Flag to bypass validation of REST API server SSL certificate.</p>
+</dd>
+</dl>
+<p>This is the synopsis for running a command from the <code class="docutils literal notranslate"><span class="pre">patronictl</span></code>:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>patronictl [ { -c | --config-file } CONFIG_FILE ]
+  [ { -d | --dcs-url | --dcs } DCS_URL ]
+  [ { -k | --insecure } ]
+  SUBCOMMAND
+</pre></div>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>This is the syntax for the synopsis:</p>
+<ul class="simple">
+<li><p>Options between square brackets are optional;</p></li>
+<li><p>Options between curly brackets represent a “choose one of set” operation;</p></li>
+<li><p>Options with <code class="docutils literal notranslate"><span class="pre">[,</span> <span class="pre">...</span> <span class="pre">]</span></code> can be specified multiple times;</p></li>
+<li><p>Things written in uppercase represent a literal that should be given a value to.</p></li>
+</ul>
+<p>We will use this same syntax when describing <code class="docutils literal notranslate"><span class="pre">patronictl</span></code> sub-commands in the following sub-sections.
+Also, when describing sub-commands in the following sub-sections, the commands’ synopsis should be seen as a replacement for the <code class="docutils literal notranslate"><span class="pre">SUBCOMMAND</span></code> in the above synopsis.</p>
+</div>
+<p>In the following sub-sections you can find a description of each command implemented by <code class="docutils literal notranslate"><span class="pre">patronictl</span></code>. For sake of example, we will use the configuration files present in the GitHub repository of Patroni (files <code class="docutils literal notranslate"><span class="pre">postgres0.yml</span></code>, <code class="docutils literal notranslate"><span class="pre">postgres1.yml</span></code> and <code class="docutils literal notranslate"><span class="pre">postgres2.yml</span></code>).</p>
+<section id="patronictl-dsn">
+<span id="id2"></span><h3>patronictl dsn</h3>
+<section id="synopsis">
+<span id="patronictl-dsn-synopsis"></span><h4>Synopsis</h4>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>dsn
+  [ CLUSTER_NAME ]
+  [ { { -r | --role } { leader | primary | standby-leader | replica | standby | any } | { -m | --member } MEMBER_NAME } ]
+  [ --group CITUS_GROUP ]
+</pre></div>
+</div>
+</section>
+<section id="description">
+<span id="patronictl-dsn-description"></span><h4>Description</h4>
+<p><code class="docutils literal notranslate"><span class="pre">patronictl</span> <span class="pre">dsn</span></code> gets the connection string for one member of the Patroni cluster.</p>
+<p>If multiple members match the parameters of this command, one of them will be chosen, prioritizing the primary node.</p>
+</section>
+<section id="parameters">
+<span id="patronictl-dsn-parameters"></span><h4>Parameters</h4>
+<dl>
+<dt><code class="docutils literal notranslate"><span class="pre">CLUSTER_NAME</span></code></dt><dd><p>Name of the Patroni cluster.</p>
+<p>If not given, <code class="docutils literal notranslate"><span class="pre">patronictl</span></code> will attempt to fetch that from the <code class="docutils literal notranslate"><span class="pre">scope</span></code> configuration, if it exists.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">-r</span></code> / <code class="docutils literal notranslate"><span class="pre">--role</span></code></dt><dd><p>Choose a member that has the given role.</p>
+<p>Role can be one of:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">leader</span></code>: the leader of either a regular Patroni cluster or a standby Patroni cluster; or</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">primary</span></code>: the leader of a regular Patroni cluster; or</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">standby-leader</span></code>: the leader of a standby Patroni cluster; or</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">replica</span></code>: a replica of a Patroni cluster; or</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">standby</span></code>: same as <code class="docutils literal notranslate"><span class="pre">replica</span></code>; or</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">any</span></code>: any role. Same as omitting this parameter; or</p></li>
+</ul>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">-m</span></code> / <code class="docutils literal notranslate"><span class="pre">--member</span></code></dt><dd><p>Choose a member of the cluster with the given name.</p>
+<p><code class="docutils literal notranslate"><span class="pre">MEMBER_NAME</span></code> is the name of the member.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--group</span></code></dt><dd><p>Choose a member that is part of the given Citus group.</p>
+<p><code class="docutils literal notranslate"><span class="pre">CITUS_GROUP</span></code> is the ID of the Citus group.</p>
+</dd>
+</dl>
+</section>
+<section id="examples">
+<span id="patronictl-dsn-examples"></span><h4>Examples</h4>
+<p>Get DSN of the primary node:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$<span class="w"> </span>patronictl<span class="w"> </span>-c<span class="w"> </span>postgres0.yml<span class="w"> </span>dsn<span class="w"> </span>batman<span class="w"> </span>-r<span class="w"> </span>primary
+<span class="nv">host</span><span class="o">=</span><span class="m">127</span>.0.0.1<span class="w"> </span><span class="nv">port</span><span class="o">=</span><span class="m">5432</span>
+</pre></div>
+</div>
+<p>Get DSN of the node named <code class="docutils literal notranslate"><span class="pre">postgresql1</span></code>:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$<span class="w"> </span>patronictl<span class="w"> </span>-c<span class="w"> </span>postgres0.yml<span class="w"> </span>dsn<span class="w"> </span>batman<span class="w"> </span>--member<span class="w"> </span>postgresql1
+<span class="nv">host</span><span class="o">=</span><span class="m">127</span>.0.0.1<span class="w"> </span><span class="nv">port</span><span class="o">=</span><span class="m">5433</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="patronictl-edit-config">
+<span id="id3"></span><h3>patronictl edit-config</h3>
+<section id="patronictl-edit-config-synopsis">
+<span id="id4"></span><h4>Synopsis</h4>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>edit-config
+  [ CLUSTER_NAME ]
+  [ --group CITUS_GROUP ]
+  [ { -q | --quiet } ]
+  [ { -s | --set } CONFIG=&quot;VALUE&quot; [, ... ] ]
+  [ { -p | --pg } PG_CONFIG=&quot;PG_VALUE&quot; [, ... ] ]
+  [ { --apply | --replace } CONFIG_FILE ]
+  [ --force ]
+</pre></div>
+</div>
+</section>
+<section id="patronictl-edit-config-description">
+<span id="id5"></span><h4>Description</h4>
+<p><code class="docutils literal notranslate"><span class="pre">patronictl</span> <span class="pre">edit-config</span></code> changes the dynamic configuration of the cluster and updates the DCS with that.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>When invoked through a TTY the command attempts to show a diff of the dynamic configuration through a pager. By default, it attempts to use either <code class="docutils literal notranslate"><span class="pre">less</span></code> or <code class="docutils literal notranslate"><span class="pre">more</span></code>. If you want a different pager, set the <code class="docutils literal notranslate"><span class="pre">PAGER</span></code> environment variable with the desired one.</p>
+</div>
+</section>
+<section id="patronictl-edit-config-parameters">
+<span id="id6"></span><h4>Parameters</h4>
+<dl>
+<dt><code class="docutils literal notranslate"><span class="pre">CLUSTER_NAME</span></code></dt><dd><p>Name of the Patroni cluster.</p>
+<p>If not given, <code class="docutils literal notranslate"><span class="pre">patronictl</span></code> will attempt to fetch that from the <code class="docutils literal notranslate"><span class="pre">scope</span></code> configuration, if it exists.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--group</span></code></dt><dd><p>Change dynamic configuration of the given Citus group.</p>
+<p>If not given, <code class="docutils literal notranslate"><span class="pre">patronictl</span></code> will attempt to fetch that from the <code class="docutils literal notranslate"><span class="pre">citus.group</span></code> configuration, if it exists.</p>
+<p><code class="docutils literal notranslate"><span class="pre">CITUS_GROUP</span></code> is the ID of the Citus group.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">-q</span></code> / <code class="docutils literal notranslate"><span class="pre">--quiet</span></code></dt><dd><p>Flag to skip showing the configuration diff.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">-s</span></code> / <code class="docutils literal notranslate"><span class="pre">--set</span></code></dt><dd><p>Set a given dynamic configuration option with a given value.</p>
+<p><code class="docutils literal notranslate"><span class="pre">CONFIG</span></code> is the name of the dynamic configuration path in the YAML tree, with levels joined by <code class="docutils literal notranslate"><span class="pre">.</span></code> .</p>
+<p><code class="docutils literal notranslate"><span class="pre">VALUE</span></code> is the value for <code class="docutils literal notranslate"><span class="pre">CONFIG</span></code>. If it is <code class="docutils literal notranslate"><span class="pre">null</span></code>, then <code class="docutils literal notranslate"><span class="pre">CONFIG</span></code> will be removed from the dynamic configuration.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">-p</span></code> / <code class="docutils literal notranslate"><span class="pre">--pg</span></code></dt><dd><p>Set a given dynamic Postgres configuration option with the given value.</p>
+<p>It is essentially a shorthand for <code class="docutils literal notranslate"><span class="pre">--s</span></code> / <code class="docutils literal notranslate"><span class="pre">--set</span></code> with <code class="docutils literal notranslate"><span class="pre">CONFIG</span></code> prepended with <code class="docutils literal notranslate"><span class="pre">postgresql.parameters.</span></code>.</p>
+<p><code class="docutils literal notranslate"><span class="pre">PG_CONFIG</span></code> is the name of the Postgres configuration to be set.</p>
+<p><code class="docutils literal notranslate"><span class="pre">PG_VALUE</span></code> is the value for <code class="docutils literal notranslate"><span class="pre">PG_CONFIG</span></code>. If it is <code class="docutils literal notranslate"><span class="pre">null</span></code>, then <code class="docutils literal notranslate"><span class="pre">PG_CONFIG</span></code> will be removed from the dynamic configuration.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--apply</span></code></dt><dd><p>Apply dynamic configuration from the given file.</p>
+<p>It is similar to specifying multiple <code class="docutils literal notranslate"><span class="pre">-s</span></code> / <code class="docutils literal notranslate"><span class="pre">--set</span></code> options, one for each configuration from <code class="docutils literal notranslate"><span class="pre">CONFIG_FILE</span></code>.</p>
+<p><code class="docutils literal notranslate"><span class="pre">CONFIG_FILE</span></code> is the path to a file containing the dynamic configuration to be applied, in YAML format. Use <code class="docutils literal notranslate"><span class="pre">-</span></code> if you want to read from <code class="docutils literal notranslate"><span class="pre">stdin</span></code>.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--replace</span></code></dt><dd><p>Replace the dynamic configuration in the DCS with the dynamic configuration specified in the given file.</p>
+<p><code class="docutils literal notranslate"><span class="pre">CONFIG_FILE</span></code> is the path to a file containing the new dynamic configuration to take effect, in YAML format. Use <code class="docutils literal notranslate"><span class="pre">-</span></code> if you want to read from <code class="docutils literal notranslate"><span class="pre">stdin</span></code>.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--force</span></code></dt><dd><p>Flag to skip confirmation prompts when changing the dynamic configuration.</p>
+<p>Useful for scripts.</p>
+</dd>
+</dl>
+</section>
+<section id="patronictl-edit-config-examples">
+<span id="id7"></span><h4>Examples</h4>
+<p>Change <code class="docutils literal notranslate"><span class="pre">max_connections</span></code> Postgres GUC:</p>
+<div class="highlight-diff notranslate"><div class="highlight"><pre><span></span>patronictl -c postgres0.yml edit-config batman --pg max_connections=&quot;150&quot; --force
+<span class="gs">---</span>
+<span class="gi">+++</span>
+<span class="gu">@@ -1,6 +1,8 @@</span>
+loop_wait: 10
+maximum_lag_on_failover: 1048576
+postgresql:
+<span class="gi">+  parameters:</span>
+<span class="gi">+    max_connections: 150</span>
+<span class="w"> </span> pg_hba:
+<span class="w"> </span> - host replication replicator 127.0.0.1/32 md5
+<span class="w"> </span> - host all all 0.0.0.0/0 md5
+
+Configuration changed
+</pre></div>
+</div>
+<p>Change <code class="docutils literal notranslate"><span class="pre">loop_wait</span></code> and <code class="docutils literal notranslate"><span class="pre">ttl</span></code> settings:</p>
+<div class="highlight-diff notranslate"><div class="highlight"><pre><span></span>patronictl -c postgres0.yml edit-config batman --set loop_wait=&quot;15&quot; --set ttl=&quot;45&quot; --force
+<span class="gs">---</span>
+<span class="gi">+++</span>
+<span class="gu">@@ -1,4 +1,4 @@</span>
+<span class="gd">-loop_wait: 10</span>
+<span class="gi">+loop_wait: 15</span>
+maximum_lag_on_failover: 1048576
+postgresql:
+<span class="w"> </span> pg_hba:
+<span class="gu">@@ -6,4 +6,4 @@</span>
+<span class="w"> </span> - host all all 0.0.0.0/0 md5
+<span class="w"> </span> use_pg_rewind: true
+retry_timeout: 10
+<span class="gd">-ttl: 30</span>
+<span class="gi">+ttl: 45</span>
+
+Configuration changed
+</pre></div>
+</div>
+<p>Remove <code class="docutils literal notranslate"><span class="pre">maximum_lag_on_failover</span></code> setting from dynamic configuration:</p>
+<div class="highlight-diff notranslate"><div class="highlight"><pre><span></span>patronictl -c postgres0.yml edit-config batman --set maximum_lag_on_failover=&quot;null&quot; --force
+<span class="gs">---</span>
+<span class="gi">+++</span>
+<span class="gu">@@ -1,5 +1,4 @@</span>
+loop_wait: 10
+<span class="gd">-maximum_lag_on_failover: 1048576</span>
+postgresql:
+<span class="w"> </span> pg_hba:
+<span class="w"> </span> - host replication replicator 127.0.0.1/32 md5
+
+Configuration changed
+</pre></div>
+</div>
+</section>
+</section>
+<section id="patronictl-failover">
+<span id="id8"></span><h3>patronictl failover</h3>
+<section id="patronictl-failover-synopsis">
+<span id="id9"></span><h4>Synopsis</h4>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>failover
+  [ CLUSTER_NAME ]
+  [ --group CITUS_GROUP ]
+  --candidate CANDIDATE_NAME
+  [ --force ]
+</pre></div>
+</div>
+</section>
+<section id="patronictl-failover-description">
+<span id="id10"></span><h4>Description</h4>
+<p><code class="docutils literal notranslate"><span class="pre">patronictl</span> <span class="pre">failover</span></code> performs a manual failover in the cluster.</p>
+<p>It is designed to be used when the cluster is not healthy, e.g.:</p>
+<ul class="simple">
+<li><p>There is no leader; or</p></li>
+<li><p>There is no synchronous standby available in a synchronous cluster.</p></li>
+</ul>
+<p>It also allows to fail over to an asynchronous node if synchronous mode is enabled.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Nothing prevents you from running <code class="docutils literal notranslate"><span class="pre">patronictl</span> <span class="pre">failover</span></code> in a healthy cluster. However, we recommend using <code class="docutils literal notranslate"><span class="pre">patronictl</span> <span class="pre">switchover</span></code> in those cases.</p>
+</div>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>Triggering a failover can cause data loss depending on how up-to-date the promoted replica is in comparison to the primary.</p>
+</div>
+</section>
+<section id="patronictl-failover-parameters">
+<span id="id11"></span><h4>Parameters</h4>
+<dl>
+<dt><code class="docutils literal notranslate"><span class="pre">CLUSTER_NAME</span></code></dt><dd><p>Name of the Patroni cluster.</p>
+<p>If not given, <code class="docutils literal notranslate"><span class="pre">patronictl</span></code> will attempt to fetch that from the <code class="docutils literal notranslate"><span class="pre">scope</span></code> configuration, if it exists.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--group</span></code></dt><dd><p>Perform a failover in the given Citus group.</p>
+<p><code class="docutils literal notranslate"><span class="pre">CITUS_GROUP</span></code> is the ID of the Citus group.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--candidate</span></code></dt><dd><p>The node to be promoted on failover.</p>
+<p><code class="docutils literal notranslate"><span class="pre">CANDIDATE_NAME</span></code> is the name of the node to be promoted.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--force</span></code></dt><dd><p>Flag to skip confirmation prompts when performing the failover.</p>
+<p>Useful for scripts.</p>
+</dd>
+</dl>
+</section>
+<section id="patronictl-failover-examples">
+<span id="id12"></span><h4>Examples</h4>
+<p>Fail over to node <code class="docutils literal notranslate"><span class="pre">postgresql2</span></code>:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$<span class="w"> </span>patronictl<span class="w"> </span>-c<span class="w"> </span>postgres0.yml<span class="w"> </span>failover<span class="w"> </span>batman<span class="w"> </span>--candidate<span class="w"> </span>postgresql2<span class="w"> </span>--force
+Current<span class="w"> </span>cluster<span class="w"> </span>topology
++<span class="w"> </span>Cluster:<span class="w"> </span>batman<span class="w"> </span><span class="o">(</span><span class="m">7277694203142172922</span><span class="o">)</span><span class="w"> </span>-+-----------+----+-------------+-----+------------+-----+
+<span class="p">|</span><span class="w"> </span>Member<span class="w">      </span><span class="p">|</span><span class="w"> </span>Host<span class="w">           </span><span class="p">|</span><span class="w"> </span>Role<span class="w">    </span><span class="p">|</span><span class="w"> </span>State<span class="w">     </span><span class="p">|</span><span class="w"> </span>TL<span class="w"> </span><span class="p">|</span><span class="w"> </span>Receive<span class="w"> </span>LSN<span class="w"> </span><span class="p">|</span><span class="w"> </span>Lag<span class="w"> </span><span class="p">|</span><span class="w"> </span>Replay<span class="w"> </span>LSN<span class="w"> </span><span class="p">|</span><span class="w"> </span>Lag<span class="w"> </span><span class="p">|</span>
++-------------+----------------+---------+-----------+----+-------------+-----+------------+-----+
+<span class="p">|</span><span class="w"> </span>postgresql0<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">127</span>.0.0.1:5432<span class="w"> </span><span class="p">|</span><span class="w"> </span>Leader<span class="w">  </span><span class="p">|</span><span class="w"> </span>running<span class="w">   </span><span class="p">|</span><span class="w">  </span><span class="m">3</span><span class="w"> </span><span class="p">|</span><span class="w">             </span><span class="p">|</span><span class="w">     </span><span class="p">|</span><span class="w">            </span><span class="p">|</span><span class="w">     </span><span class="p">|</span>
+<span class="p">|</span><span class="w"> </span>postgresql1<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">127</span>.0.0.1:5433<span class="w"> </span><span class="p">|</span><span class="w"> </span>Replica<span class="w"> </span><span class="p">|</span><span class="w"> </span>streaming<span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">3</span><span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span>/40004E8<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">0</span>/40004E8<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span>
+<span class="p">|</span><span class="w"> </span>postgresql2<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">127</span>.0.0.1:5434<span class="w"> </span><span class="p">|</span><span class="w"> </span>Replica<span class="w"> </span><span class="p">|</span><span class="w"> </span>streaming<span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">3</span><span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span>/40004E8<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">0</span>/40004E8<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span>
++-------------+----------------+---------+-----------+----+-------------+-----+------------+-----+
+<span class="m">2023</span>-09-12<span class="w"> </span><span class="m">11</span>:52:27.50978<span class="w"> </span>Successfully<span class="w"> </span>failed<span class="w"> </span>over<span class="w"> </span>to<span class="w"> </span><span class="s2">&quot;postgresql2&quot;</span>
++<span class="w"> </span>Cluster:<span class="w"> </span>batman<span class="w"> </span><span class="o">(</span><span class="m">7277694203142172922</span><span class="o">)</span><span class="w"> </span>-+---------+----+-------------+---------+------------+---------+
+<span class="p">|</span><span class="w"> </span>Member<span class="w">      </span><span class="p">|</span><span class="w"> </span>Host<span class="w">           </span><span class="p">|</span><span class="w"> </span>Role<span class="w">    </span><span class="p">|</span><span class="w"> </span>State<span class="w">   </span><span class="p">|</span><span class="w"> </span>TL<span class="w"> </span><span class="p">|</span><span class="w"> </span>Receive<span class="w"> </span>LSN<span class="w"> </span><span class="p">|</span><span class="w">     </span>Lag<span class="w"> </span><span class="p">|</span><span class="w"> </span>Replay<span class="w"> </span>LSN<span class="w"> </span><span class="p">|</span><span class="w">     </span>Lag<span class="w"> </span><span class="p">|</span>
++-------------+----------------+---------+---------+----+-------------+---------+------------+---------+
+<span class="p">|</span><span class="w"> </span>postgresql0<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">127</span>.0.0.1:5432<span class="w"> </span><span class="p">|</span><span class="w"> </span>Replica<span class="w"> </span><span class="p">|</span><span class="w"> </span>stopped<span class="w"> </span><span class="p">|</span><span class="w">    </span><span class="p">|</span><span class="w">     </span>unknown<span class="w"> </span><span class="p">|</span><span class="w"> </span>unknown<span class="w"> </span><span class="p">|</span><span class="w">    </span>unknown<span class="w"> </span><span class="p">|</span><span class="w"> </span>unknown<span class="w"> </span><span class="p">|</span>
+<span class="p">|</span><span class="w"> </span>postgresql1<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">127</span>.0.0.1:5433<span class="w"> </span><span class="p">|</span><span class="w"> </span>Replica<span class="w"> </span><span class="p">|</span><span class="w"> </span>running<span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">3</span><span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span>/4000188<span class="w"> </span><span class="p">|</span><span class="w">       </span><span class="m">0</span><span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">0</span>/4000188<span class="w"> </span><span class="p">|</span><span class="w">       </span><span class="m">0</span><span class="w"> </span><span class="p">|</span>
+<span class="p">|</span><span class="w"> </span>postgresql2<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">127</span>.0.0.1:5434<span class="w"> </span><span class="p">|</span><span class="w"> </span>Leader<span class="w">  </span><span class="p">|</span><span class="w"> </span>running<span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">3</span><span class="w"> </span><span class="p">|</span><span class="w">             </span><span class="p">|</span><span class="w">         </span><span class="p">|</span><span class="w">            </span><span class="p">|</span><span class="w">         </span><span class="p">|</span>
++-------------+----------------+---------+---------+----+-------------+---------+------------+---------+
+</pre></div>
+</div>
+</section>
+</section>
+<section id="patronictl-flush">
+<span id="id13"></span><h3>patronictl flush</h3>
+<section id="patronictl-flush-synopsis">
+<span id="id14"></span><h4>Synopsis</h4>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>flush
+  CLUSTER_NAME
+  [ MEMBER_NAME [, ... ] ]
+  { restart | switchover }
+  [ --group CITUS_GROUP ]
+  [ { -r | --role } { leader | primary | standby-leader | replica | standby | any } ]
+  [ --force ]
+</pre></div>
+</div>
+</section>
+<section id="patronictl-flush-description">
+<span id="id15"></span><h4>Description</h4>
+<p><code class="docutils literal notranslate"><span class="pre">patronictl</span> <span class="pre">flush</span></code> discards scheduled events, if any.</p>
+</section>
+<section id="patronictl-flush-parameters">
+<span id="id16"></span><h4>Parameters</h4>
+<dl>
+<dt><code class="docutils literal notranslate"><span class="pre">CLUSTER_NAME</span></code></dt><dd><p>Name of the Patroni cluster.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">MEMBER_NAME</span></code></dt><dd><p>Discard scheduled events for the given Patroni member(s).</p>
+<p>Multiple members can be specified. If no members are specified, all of them are considered.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Only used if discarding scheduled restart events.</p>
+</div>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">restart</span></code></dt><dd><p>Discard scheduled restart events.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">switchover</span></code></dt><dd><p>Discard scheduled switchover event.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--group</span></code></dt><dd><p>Discard scheduled events from the given Citus group.</p>
+<p><code class="docutils literal notranslate"><span class="pre">CITUS_GROUP</span></code> is the ID of the Citus group.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">-r</span></code> / <code class="docutils literal notranslate"><span class="pre">--role</span></code></dt><dd><p>Discard scheduled events for members that have the given role.</p>
+<p>Role can be one of:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">leader</span></code>: the leader of either a regular Patroni cluster or a standby Patroni cluster; or</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">primary</span></code>: the leader of a regular Patroni cluster; or</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">standby-leader</span></code>: the leader of a standby Patroni cluster; or</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">replica</span></code>: a replica of a Patroni cluster; or</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">standby</span></code>: same as <code class="docutils literal notranslate"><span class="pre">replica</span></code>; or</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">any</span></code>: any role. Same as omitting this parameter.</p></li>
+</ul>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Only used if discarding scheduled restart events.</p>
+</div>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--force</span></code></dt><dd><p>Flag to skip confirmation prompts when performing the flush.</p>
+<p>Useful for scripts.</p>
+</dd>
+</dl>
+</section>
+<section id="patronictl-flush-examples">
+<span id="id17"></span><h4>Examples</h4>
+<p>Discard a scheduled switchover event:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$<span class="w"> </span>patronictl<span class="w"> </span>-c<span class="w"> </span>postgres0.yml<span class="w"> </span>flush<span class="w"> </span>batman<span class="w"> </span>switchover<span class="w"> </span>--force
+Success:<span class="w"> </span>scheduled<span class="w"> </span>switchover<span class="w"> </span>deleted
+</pre></div>
+</div>
+<p>Discard scheduled restart of all standby nodes:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$<span class="w"> </span>patronictl<span class="w"> </span>-c<span class="w"> </span>postgres0.yml<span class="w"> </span>flush<span class="w"> </span>batman<span class="w"> </span>restart<span class="w"> </span>-r<span class="w"> </span>replica<span class="w"> </span>--force
++<span class="w"> </span>Cluster:<span class="w"> </span>batman<span class="w"> </span><span class="o">(</span><span class="m">7277694203142172922</span><span class="o">)</span><span class="w"> </span>-+-----------+----+-------------+-----+------------+-----+---------------------------+
+<span class="p">|</span><span class="w"> </span>Member<span class="w">      </span><span class="p">|</span><span class="w"> </span>Host<span class="w">           </span><span class="p">|</span><span class="w"> </span>Role<span class="w">    </span><span class="p">|</span><span class="w"> </span>State<span class="w">     </span><span class="p">|</span><span class="w"> </span>TL<span class="w"> </span><span class="p">|</span><span class="w"> </span>Receive<span class="w"> </span>LSN<span class="w"> </span><span class="p">|</span><span class="w"> </span>Lag<span class="w"> </span><span class="p">|</span><span class="w"> </span>Replay<span class="w"> </span>LSN<span class="w"> </span><span class="p">|</span><span class="w"> </span>Lag<span class="w"> </span><span class="p">|</span><span class="w"> </span>Scheduled<span class="w"> </span>restart<span class="w">         </span><span class="p">|</span>
++-------------+----------------+---------+-----------+----+-------------+-----+------------+-----+---------------------------+
+<span class="p">|</span><span class="w"> </span>postgresql0<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">127</span>.0.0.1:5432<span class="w"> </span><span class="p">|</span><span class="w"> </span>Leader<span class="w">  </span><span class="p">|</span><span class="w"> </span>running<span class="w">   </span><span class="p">|</span><span class="w">  </span><span class="m">5</span><span class="w"> </span><span class="p">|</span><span class="w">             </span><span class="p">|</span><span class="w">     </span><span class="p">|</span><span class="w">            </span><span class="p">|</span><span class="w">     </span><span class="p">|</span><span class="w"> </span><span class="m">2025</span>-03-23T18:00:00-03:00<span class="w"> </span><span class="p">|</span>
+<span class="p">|</span><span class="w"> </span>postgresql1<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">127</span>.0.0.1:5433<span class="w"> </span><span class="p">|</span><span class="w"> </span>Replica<span class="w"> </span><span class="p">|</span><span class="w"> </span>streaming<span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">5</span><span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span>/4000400<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">0</span>/4000400<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">2025</span>-03-23T18:00:00-03:00<span class="w"> </span><span class="p">|</span>
+<span class="p">|</span><span class="w"> </span>postgresql2<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">127</span>.0.0.1:5434<span class="w"> </span><span class="p">|</span><span class="w"> </span>Replica<span class="w"> </span><span class="p">|</span><span class="w"> </span>streaming<span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">5</span><span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span>/4000400<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">0</span>/4000400<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">2025</span>-03-23T18:00:00-03:00<span class="w"> </span><span class="p">|</span>
++-------------+----------------+---------+-----------+----+-------------+-----+------------+-----+---------------------------+
+Success:<span class="w"> </span>flush<span class="w"> </span>scheduled<span class="w"> </span>restart<span class="w"> </span><span class="k">for</span><span class="w"> </span>member<span class="w"> </span>postgresql1
+Success:<span class="w"> </span>flush<span class="w"> </span>scheduled<span class="w"> </span>restart<span class="w"> </span><span class="k">for</span><span class="w"> </span>member<span class="w"> </span>postgresql2
+</pre></div>
+</div>
+<p>Discard scheduled restart of nodes <code class="docutils literal notranslate"><span class="pre">postgresql0</span></code> and <code class="docutils literal notranslate"><span class="pre">postgresql1</span></code>:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$<span class="w"> </span>patronictl<span class="w"> </span>-c<span class="w"> </span>postgres0.yml<span class="w"> </span>flush<span class="w"> </span>batman<span class="w"> </span>postgresql0<span class="w"> </span>postgresql1<span class="w"> </span>restart<span class="w"> </span>--force
++<span class="w"> </span>Cluster:<span class="w"> </span>batman<span class="w"> </span><span class="o">(</span><span class="m">7277694203142172922</span><span class="o">)</span><span class="w"> </span>-+-----------+----+-------------+-----+------------+-----+---------------------------+
+<span class="p">|</span><span class="w"> </span>Member<span class="w">      </span><span class="p">|</span><span class="w"> </span>Host<span class="w">           </span><span class="p">|</span><span class="w"> </span>Role<span class="w">    </span><span class="p">|</span><span class="w"> </span>State<span class="w">     </span><span class="p">|</span><span class="w"> </span>TL<span class="w"> </span><span class="p">|</span><span class="w"> </span>Receive<span class="w"> </span>LSN<span class="w"> </span><span class="p">|</span><span class="w"> </span>Lag<span class="w"> </span><span class="p">|</span><span class="w"> </span>Replay<span class="w"> </span>LSN<span class="w"> </span><span class="p">|</span><span class="w"> </span>Lag<span class="w"> </span><span class="p">|</span><span class="w"> </span>Scheduled<span class="w"> </span>restart<span class="w">         </span><span class="p">|</span>
++-------------+----------------+---------+-----------+----+-------------+-----+------------+-----+---------------------------+
+<span class="p">|</span><span class="w"> </span>postgresql0<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">127</span>.0.0.1:5432<span class="w"> </span><span class="p">|</span><span class="w"> </span>Leader<span class="w">  </span><span class="p">|</span><span class="w"> </span>running<span class="w">   </span><span class="p">|</span><span class="w">  </span><span class="m">5</span><span class="w"> </span><span class="p">|</span><span class="w">             </span><span class="p">|</span><span class="w">     </span><span class="p">|</span><span class="w">            </span><span class="p">|</span><span class="w">     </span><span class="p">|</span><span class="w"> </span><span class="m">2025</span>-03-23T18:00:00-03:00<span class="w"> </span><span class="p">|</span>
+<span class="p">|</span><span class="w"> </span>postgresql1<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">127</span>.0.0.1:5433<span class="w"> </span><span class="p">|</span><span class="w"> </span>Replica<span class="w"> </span><span class="p">|</span><span class="w"> </span>streaming<span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">5</span><span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span>/4000400<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">0</span>/4000400<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">2025</span>-03-23T18:00:00-03:00<span class="w"> </span><span class="p">|</span>
+<span class="p">|</span><span class="w"> </span>postgresql2<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">127</span>.0.0.1:5434<span class="w"> </span><span class="p">|</span><span class="w"> </span>Replica<span class="w"> </span><span class="p">|</span><span class="w"> </span>streaming<span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">5</span><span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span>/4000400<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">0</span>/4000400<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">2025</span>-03-23T18:00:00-03:00<span class="w"> </span><span class="p">|</span>
++-------------+----------------+---------+-----------+----+-------------+-----+------------+-----+---------------------------+
+Success:<span class="w"> </span>flush<span class="w"> </span>scheduled<span class="w"> </span>restart<span class="w"> </span><span class="k">for</span><span class="w"> </span>member<span class="w"> </span>postgresql0
+Success:<span class="w"> </span>flush<span class="w"> </span>scheduled<span class="w"> </span>restart<span class="w"> </span><span class="k">for</span><span class="w"> </span>member<span class="w"> </span>postgresql1
+</pre></div>
+</div>
+</section>
+</section>
+<section id="patronictl-history">
+<span id="id18"></span><h3>patronictl history</h3>
+<section id="patronictl-history-synopsis">
+<span id="id19"></span><h4>Synopsis</h4>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>history
+  [ CLUSTER_NAME ]
+  [ --group CITUS_GROUP ]
+  [ { -f | --format } { pretty | tsv | json | yaml } ]
+</pre></div>
+</div>
+</section>
+<section id="patronictl-history-description">
+<span id="id20"></span><h4>Description</h4>
+<p><code class="docutils literal notranslate"><span class="pre">patronictl</span> <span class="pre">history</span></code> shows a history of failover and switchover events from the cluster, if any.</p>
+<p>The following information is included in the output:</p>
+<dl class="simple">
+<dt><code class="docutils literal notranslate"><span class="pre">TL</span></code></dt><dd><p>Postgres timeline at which the event occurred.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">LSN</span></code></dt><dd><p>Postgres LSN at which the event occurred.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">Reason</span></code></dt><dd><p>Reason fetched from the Postgres <code class="docutils literal notranslate"><span class="pre">.history</span></code> file.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">Timestamp</span></code></dt><dd><p>Time when the event occurred.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">New</span> <span class="pre">Leader</span></code></dt><dd><p>Patroni member that has been promoted during the event.</p>
+</dd>
+</dl>
+</section>
+<section id="patronictl-history-parameters">
+<span id="id21"></span><h4>Parameters</h4>
+<dl>
+<dt><code class="docutils literal notranslate"><span class="pre">CLUSTER_NAME</span></code></dt><dd><p>Name of the Patroni cluster.</p>
+<p>If not given, <code class="docutils literal notranslate"><span class="pre">patronictl</span></code> will attempt to fetch that from the <code class="docutils literal notranslate"><span class="pre">scope</span></code> configuration, if it exists.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--group</span></code></dt><dd><p>Show history of events from the given Citus group.</p>
+<p><code class="docutils literal notranslate"><span class="pre">CITUS_GROUP</span></code> is the ID of the Citus group.</p>
+<p>If not given, <code class="docutils literal notranslate"><span class="pre">patronictl</span></code> will attempt to fetch that from the <code class="docutils literal notranslate"><span class="pre">citus.group</span></code> configuration, if it exists.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">-f</span></code> / <code class="docutils literal notranslate"><span class="pre">--format</span></code></dt><dd><p>How to format the list of events in the output.</p>
+<p>Format can be one of:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">pretty</span></code>: prints history as a pretty table; or</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">tsv</span></code>: prints history as tabular information, with columns delimited by <code class="docutils literal notranslate"><span class="pre">\t</span></code>; or</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">json</span></code>: prints history in JSON format; or</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">yaml</span></code>: prints history in YAML format.</p></li>
+</ul>
+<p>The default is <code class="docutils literal notranslate"><span class="pre">pretty</span></code>.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--force</span></code></dt><dd><p>Flag to skip confirmation prompts when performing the flush.</p>
+<p>Useful for scripts.</p>
+</dd>
+</dl>
+</section>
+<section id="patronictl-history-examples">
+<span id="id22"></span><h4>Examples</h4>
+<p>Show the history of events:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$<span class="w"> </span>patronictl<span class="w"> </span>-c<span class="w"> </span>postgres0.yml<span class="w"> </span><span class="nb">history</span><span class="w"> </span>batman
++----+----------+------------------------------+----------------------------------+-------------+
+<span class="p">|</span><span class="w"> </span>TL<span class="w"> </span><span class="p">|</span><span class="w">      </span>LSN<span class="w"> </span><span class="p">|</span><span class="w"> </span>Reason<span class="w">                       </span><span class="p">|</span><span class="w"> </span>Timestamp<span class="w">                        </span><span class="p">|</span><span class="w"> </span>New<span class="w"> </span>Leader<span class="w">  </span><span class="p">|</span>
++----+----------+------------------------------+----------------------------------+-------------+
+<span class="p">|</span><span class="w">  </span><span class="m">1</span><span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">24392648</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>no<span class="w"> </span>recovery<span class="w"> </span>target<span class="w"> </span>specified<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">2023</span>-09-11T22:11:27.125527+00:00<span class="w"> </span><span class="p">|</span><span class="w"> </span>postgresql0<span class="w"> </span><span class="p">|</span>
+<span class="p">|</span><span class="w">  </span><span class="m">2</span><span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">50331864</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>no<span class="w"> </span>recovery<span class="w"> </span>target<span class="w"> </span>specified<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">2023</span>-09-12T11:34:03.148097+00:00<span class="w"> </span><span class="p">|</span><span class="w"> </span>postgresql0<span class="w"> </span><span class="p">|</span>
+<span class="p">|</span><span class="w">  </span><span class="m">3</span><span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">83886704</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>no<span class="w"> </span>recovery<span class="w"> </span>target<span class="w"> </span>specified<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">2023</span>-09-12T11:52:26.948134+00:00<span class="w"> </span><span class="p">|</span><span class="w"> </span>postgresql2<span class="w"> </span><span class="p">|</span>
+<span class="p">|</span><span class="w">  </span><span class="m">4</span><span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">83887280</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>no<span class="w"> </span>recovery<span class="w"> </span>target<span class="w"> </span>specified<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">2023</span>-09-12T11:53:09.620136+00:00<span class="w"> </span><span class="p">|</span><span class="w"> </span>postgresql0<span class="w"> </span><span class="p">|</span>
++----+----------+------------------------------+----------------------------------+-------------+
+</pre></div>
+</div>
+<p>Show the history of events in YAML format:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$<span class="w"> </span>patronictl<span class="w"> </span>-c<span class="w"> </span>postgres0.yml<span class="w"> </span><span class="nb">history</span><span class="w"> </span>batman<span class="w"> </span>-f<span class="w"> </span>yaml
+-<span class="w"> </span>LSN:<span class="w"> </span><span class="m">24392648</span>
+<span class="w">  </span>New<span class="w"> </span>Leader:<span class="w"> </span>postgresql0
+<span class="w">  </span>Reason:<span class="w"> </span>no<span class="w"> </span>recovery<span class="w"> </span>target<span class="w"> </span>specified
+<span class="w">  </span>TL:<span class="w"> </span><span class="m">1</span>
+<span class="w">  </span>Timestamp:<span class="w"> </span><span class="s1">&#39;2023-09-11T22:11:27.125527+00:00&#39;</span>
+-<span class="w"> </span>LSN:<span class="w"> </span><span class="m">50331864</span>
+<span class="w">  </span>New<span class="w"> </span>Leader:<span class="w"> </span>postgresql0
+<span class="w">  </span>Reason:<span class="w"> </span>no<span class="w"> </span>recovery<span class="w"> </span>target<span class="w"> </span>specified
+<span class="w">  </span>TL:<span class="w"> </span><span class="m">2</span>
+<span class="w">  </span>Timestamp:<span class="w"> </span><span class="s1">&#39;2023-09-12T11:34:03.148097+00:00&#39;</span>
+-<span class="w"> </span>LSN:<span class="w"> </span><span class="m">83886704</span>
+<span class="w">  </span>New<span class="w"> </span>Leader:<span class="w"> </span>postgresql2
+<span class="w">  </span>Reason:<span class="w"> </span>no<span class="w"> </span>recovery<span class="w"> </span>target<span class="w"> </span>specified
+<span class="w">  </span>TL:<span class="w"> </span><span class="m">3</span>
+<span class="w">  </span>Timestamp:<span class="w"> </span><span class="s1">&#39;2023-09-12T11:52:26.948134+00:00&#39;</span>
+-<span class="w"> </span>LSN:<span class="w"> </span><span class="m">83887280</span>
+<span class="w">  </span>New<span class="w"> </span>Leader:<span class="w"> </span>postgresql0
+<span class="w">  </span>Reason:<span class="w"> </span>no<span class="w"> </span>recovery<span class="w"> </span>target<span class="w"> </span>specified
+<span class="w">  </span>TL:<span class="w"> </span><span class="m">4</span>
+<span class="w">  </span>Timestamp:<span class="w"> </span><span class="s1">&#39;2023-09-12T11:53:09.620136+00:00&#39;</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="patronictl-list">
+<span id="id23"></span><h3>patronictl list</h3>
+<section id="patronictl-list-synopsis">
+<span id="id24"></span><h4>Synopsis</h4>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>list
+  [ CLUSTER_NAME [, ... ] ]
+  [ --group CITUS_GROUP ]
+  [ { -e | --extended } ]
+  [ { -t | --timestamp } ]
+  [ { -f | --format } { pretty | tsv | json | yaml } ]
+  [ { -W | { -w | --watch } TIME } ]
+</pre></div>
+</div>
+</section>
+<section id="patronictl-list-description">
+<span id="id25"></span><h4>Description</h4>
+<p><code class="docutils literal notranslate"><span class="pre">patronictl</span> <span class="pre">list</span></code> shows information about Patroni cluster and its members.</p>
+<p>The following information is included in the output:</p>
+<dl>
+<dt><code class="docutils literal notranslate"><span class="pre">Cluster</span></code></dt><dd><p>Name of the Patroni cluster.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">Member</span></code></dt><dd><p>Name of the Patroni member.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">Host</span></code></dt><dd><p>Host where the member is located.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">Role</span></code></dt><dd><p>Current role of the member.</p>
+<p>Can be one among:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">Leader</span></code>: the current leader of a regular Patroni cluster; or</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">Standby</span> <span class="pre">Leader</span></code>: the current leader of a Patroni standby cluster; or</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">Sync</span> <span class="pre">Standby</span></code>: a synchronous standby of a Patroni cluster with synchronous mode enabled; or</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">Replica</span></code>: a regular standby of a Patroni cluster.</p></li>
+</ul>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">State</span></code></dt><dd><p>Current state of Postgres in the Patroni member.</p>
+<p>Some examples among the possible states:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">running</span></code>: if Postgres is currently up and running;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">streaming</span></code>: if a replica and Postgres is currently streaming WALs from the primary node;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">in</span> <span class="pre">archive</span> <span class="pre">recovery</span></code>: if a replica and Postgres is currently fetching WALs from the archive;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">stopped</span></code>: if Postgres had been shut down;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">crashed</span></code>: if Postgres has crashed.</p></li>
+</ul>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">TL</span></code></dt><dd><p>Current Postgres timeline in the Patroni member.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">Receive</span> <span class="pre">LSN</span></code></dt><dd><p>The last write-ahead log location received and synced to disk by streaming replication of the member (<code class="docutils literal notranslate"><span class="pre">pg_catalog.pg_last_(xlog|wal)_receive_(location|lsn)()</span></code>).</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">Receive</span> <span class="pre">Lag</span></code></dt><dd><p>Replication lag between the <code class="docutils literal notranslate"><span class="pre">Receive</span> <span class="pre">LSN</span></code> position of the member and its upstream in in MB.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">Replay</span> <span class="pre">LSN</span></code></dt><dd><p>The last write-ahead log location replayed during recovery of the member (<code class="docutils literal notranslate"><span class="pre">pg_catalog.pg_last_(xlog|wal)_replay_(location|lsn)()</span></code>).</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">Replay</span> <span class="pre">Lag</span></code></dt><dd><p>Replication lag between the <code class="docutils literal notranslate"><span class="pre">Replay</span> <span class="pre">LSN</span></code> position of the member and its upstream in in MB.</p>
+</dd>
+</dl>
+<p>Besides that, the following information may be included in the output:</p>
+<dl>
+<dt><code class="docutils literal notranslate"><span class="pre">System</span> <span class="pre">identifier</span></code></dt><dd><p>Postgres system identifier.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Shown in the table header.</p>
+<p>Only shown if output format is <code class="docutils literal notranslate"><span class="pre">pretty</span></code>.</p>
+</div>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">Group</span></code></dt><dd><p>Citus group ID.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Shown in the table header.</p>
+<p>Only shown if a Citus cluster.</p>
+</div>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">Pending</span> <span class="pre">restart</span></code></dt><dd><p><code class="docutils literal notranslate"><span class="pre">*</span></code> indicates that the node needs a restart for some Postgres configuration to take effect. An empty value indicates the node does not require a restart.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Shown as a member attribute.</p>
+<p>Shown if:</p>
+<ul class="simple">
+<li><p>Printing in <code class="docutils literal notranslate"><span class="pre">pretty</span></code> or <code class="docutils literal notranslate"><span class="pre">tsv</span></code> format and with extended output enabled; or</p></li>
+<li><p>If node requires a restart.</p></li>
+</ul>
+</div>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">Scheduled</span> <span class="pre">restart</span></code></dt><dd><p>Timestamp at which a restart has been scheduled for the Postgres instance managed by the Patroni member. An empty value indicates there is no scheduled restart for the member.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Shown as a member attribute.</p>
+<p>Shown if:</p>
+<ul class="simple">
+<li><p>Printing in <code class="docutils literal notranslate"><span class="pre">pretty</span></code> or <code class="docutils literal notranslate"><span class="pre">tsv</span></code> format and with extended output enabled; or</p></li>
+<li><p>If node has a scheduled restart.</p></li>
+</ul>
+</div>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">Tags</span></code></dt><dd><p>Contains tags set for the Patroni member. An empty value indicates that either no tags have been configured, or that they have been configured with default values.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Shown as a member attribute.</p>
+<p>Shown if:</p>
+<ul class="simple">
+<li><p>Printing in <code class="docutils literal notranslate"><span class="pre">pretty</span></code> or <code class="docutils literal notranslate"><span class="pre">tsv</span></code> format and with extended output enabled; or</p></li>
+<li><p>If node has any custom tags, or any default tags with non-default values.</p></li>
+</ul>
+</div>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">Scheduled</span> <span class="pre">switchover</span></code></dt><dd><p>Timestamp at which a switchover has been scheduled for the Patroni cluster, if any.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Shown in the table footer.</p>
+<p>Only shown if there is a scheduled switchover, and output format is <code class="docutils literal notranslate"><span class="pre">pretty</span></code>.</p>
+</div>
+</dd>
+</dl>
+<p><code class="docutils literal notranslate"><span class="pre">Maintenance</span> <span class="pre">mode</span></code></p>
+<blockquote>
+<div><p>If the cluster monitoring is currently paused.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Shown in the table footer.</p>
+<p>Only shown if the cluster is paused, and output format is <code class="docutils literal notranslate"><span class="pre">pretty</span></code>.</p>
+</div>
+</div></blockquote>
+</section>
+<section id="patronictl-list-parameters">
+<span id="id26"></span><h4>Parameters</h4>
+<dl>
+<dt><code class="docutils literal notranslate"><span class="pre">CLUSTER_NAME</span></code></dt><dd><p>Name of the Patroni cluster.</p>
+<p>If not given, <code class="docutils literal notranslate"><span class="pre">patronictl</span></code> will attempt to fetch that from the <code class="docutils literal notranslate"><span class="pre">scope</span></code> configuration, if it exists.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--group</span></code></dt><dd><p>Show information about members from the given Citus group.</p>
+<p><code class="docutils literal notranslate"><span class="pre">CITUS_GROUP</span></code> is the ID of the Citus group.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">-e</span></code> / <code class="docutils literal notranslate"><span class="pre">--extended</span></code></dt><dd><p>Show extended information.</p>
+<p>Force showing <code class="docutils literal notranslate"><span class="pre">Pending</span> <span class="pre">restart</span></code>, <code class="docutils literal notranslate"><span class="pre">Scheduled</span> <span class="pre">restart</span></code> and <code class="docutils literal notranslate"><span class="pre">Tags</span></code> attributes, even if their value is empty.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Only applies to <code class="docutils literal notranslate"><span class="pre">pretty</span></code> and <code class="docutils literal notranslate"><span class="pre">tsv</span></code> output formats.</p>
+</div>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">-t</span></code> / <code class="docutils literal notranslate"><span class="pre">--timestamp</span></code></dt><dd><p>Print timestamp before printing information about the cluster and its members.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">-f</span></code> / <code class="docutils literal notranslate"><span class="pre">--format</span></code></dt><dd><p>How to format the list of events in the output.</p>
+<p>Format can be one of:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">pretty</span></code>: prints history as a pretty table; or</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">tsv</span></code>: prints history as tabular information, with columns delimited by <code class="docutils literal notranslate"><span class="pre">\t</span></code>; or</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">json</span></code>: prints history in JSON format; or</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">yaml</span></code>: prints history in YAML format.</p></li>
+</ul>
+<p>The default is <code class="docutils literal notranslate"><span class="pre">pretty</span></code>.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">-W</span></code></dt><dd><p>Automatically refresh information every 2 seconds.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">-w</span></code> / <code class="docutils literal notranslate"><span class="pre">--watch</span></code></dt><dd><p>Automatically refresh information at the specified interval.</p>
+<p><code class="docutils literal notranslate"><span class="pre">TIME</span></code> is the interval between refreshes, in seconds.</p>
+</dd>
+</dl>
+</section>
+<section id="patronictl-list-examples">
+<span id="id27"></span><h4>Examples</h4>
+<p>Show information about the cluster in pretty format:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$<span class="w"> </span>patronictl<span class="w"> </span>-c<span class="w"> </span>postgres0.yml<span class="w"> </span>list<span class="w"> </span>batman
++<span class="w"> </span>Cluster:<span class="w"> </span>batman<span class="w"> </span><span class="o">(</span><span class="m">7277694203142172922</span><span class="o">)</span><span class="w"> </span>-+-----------+----+-------------+-----+------------+-----+
+<span class="p">|</span><span class="w"> </span>Member<span class="w">      </span><span class="p">|</span><span class="w"> </span>Host<span class="w">           </span><span class="p">|</span><span class="w"> </span>Role<span class="w">    </span><span class="p">|</span><span class="w"> </span>State<span class="w">     </span><span class="p">|</span><span class="w"> </span>TL<span class="w"> </span><span class="p">|</span><span class="w"> </span>Receive<span class="w"> </span>LSN<span class="w"> </span><span class="p">|</span><span class="w"> </span>Lag<span class="w"> </span><span class="p">|</span><span class="w"> </span>Replay<span class="w"> </span>LSN<span class="w"> </span><span class="p">|</span><span class="w"> </span>Lag<span class="w"> </span><span class="p">|</span>
++-------------+----------------+---------+-----------+----+-------------+-----+------------+-----+
+<span class="p">|</span><span class="w"> </span>postgresql0<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">127</span>.0.0.1:5432<span class="w"> </span><span class="p">|</span><span class="w"> </span>Leader<span class="w">  </span><span class="p">|</span><span class="w"> </span>running<span class="w">   </span><span class="p">|</span><span class="w">  </span><span class="m">5</span><span class="w"> </span><span class="p">|</span><span class="w">             </span><span class="p">|</span><span class="w">     </span><span class="p">|</span><span class="w">            </span><span class="p">|</span><span class="w">     </span><span class="p">|</span>
+<span class="p">|</span><span class="w"> </span>postgresql1<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">127</span>.0.0.1:5433<span class="w"> </span><span class="p">|</span><span class="w"> </span>Replica<span class="w"> </span><span class="p">|</span><span class="w"> </span>streaming<span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">5</span><span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span>/40004E8<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">0</span>/40004E8<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span>
+<span class="p">|</span><span class="w"> </span>postgresql2<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">127</span>.0.0.1:5434<span class="w"> </span><span class="p">|</span><span class="w"> </span>Replica<span class="w"> </span><span class="p">|</span><span class="w"> </span>streaming<span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">5</span><span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span>/40004E8<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">0</span>/40004E8<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span>
++-------------+----------------+---------+-----------+----+-------------+-----+------------+-----+
+</pre></div>
+</div>
+<p>Show information about the cluster in pretty format with extended columns:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$<span class="w"> </span>patronictl<span class="w"> </span>-c<span class="w"> </span>postgres0.yml<span class="w"> </span>list<span class="w"> </span>batman<span class="w"> </span>-e
++<span class="w"> </span>Cluster:<span class="w"> </span>batman<span class="w"> </span><span class="o">(</span><span class="m">7277694203142172922</span><span class="o">)</span><span class="w"> </span>-+-----------+----+-------------+-----+------------+-----+-----------------+------------------------+-------------------+------+
+<span class="p">|</span><span class="w"> </span>Member<span class="w">      </span><span class="p">|</span><span class="w"> </span>Host<span class="w">           </span><span class="p">|</span><span class="w"> </span>Role<span class="w">    </span><span class="p">|</span><span class="w"> </span>State<span class="w">     </span><span class="p">|</span><span class="w"> </span>TL<span class="w"> </span><span class="p">|</span><span class="w"> </span>Receive<span class="w"> </span>LSN<span class="w"> </span><span class="p">|</span><span class="w"> </span>Lag<span class="w"> </span><span class="p">|</span><span class="w"> </span>Replay<span class="w"> </span>LSN<span class="w"> </span><span class="p">|</span><span class="w"> </span>Lag<span class="w"> </span><span class="p">|</span><span class="w"> </span>Pending<span class="w"> </span>restart<span class="w"> </span><span class="p">|</span><span class="w"> </span>Pending<span class="w"> </span>restart<span class="w"> </span>reason<span class="w"> </span><span class="p">|</span><span class="w"> </span>Scheduled<span class="w"> </span>restart<span class="w"> </span><span class="p">|</span><span class="w"> </span>Tags<span class="w"> </span><span class="p">|</span>
++-------------+----------------+---------+-----------+----+-------------+-----+------------+-----+-----------------+------------------------+-------------------+------+
+<span class="p">|</span><span class="w"> </span>postgresql0<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">127</span>.0.0.1:5432<span class="w"> </span><span class="p">|</span><span class="w"> </span>Leader<span class="w">  </span><span class="p">|</span><span class="w"> </span>running<span class="w">   </span><span class="p">|</span><span class="w">  </span><span class="m">5</span><span class="w"> </span><span class="p">|</span><span class="w">             </span><span class="p">|</span><span class="w">     </span><span class="p">|</span><span class="w">            </span><span class="p">|</span><span class="w">     </span><span class="p">|</span><span class="w">                 </span><span class="p">|</span><span class="w">                        </span><span class="p">|</span><span class="w">                   </span><span class="p">|</span><span class="w">      </span><span class="p">|</span>
+<span class="p">|</span><span class="w"> </span>postgresql1<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">127</span>.0.0.1:5433<span class="w"> </span><span class="p">|</span><span class="w"> </span>Replica<span class="w"> </span><span class="p">|</span><span class="w"> </span>streaming<span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">5</span><span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span>/40004E8<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">0</span>/40004E8<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span><span class="w">                 </span><span class="p">|</span><span class="w">                        </span><span class="p">|</span><span class="w">                   </span><span class="p">|</span><span class="w">      </span><span class="p">|</span>
+<span class="p">|</span><span class="w"> </span>postgresql2<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">127</span>.0.0.1:5434<span class="w"> </span><span class="p">|</span><span class="w"> </span>Replica<span class="w"> </span><span class="p">|</span><span class="w"> </span>streaming<span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">5</span><span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span>/40004E8<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">0</span>/40004E8<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span><span class="w">                 </span><span class="p">|</span><span class="w">                        </span><span class="p">|</span><span class="w">                   </span><span class="p">|</span><span class="w">      </span><span class="p">|</span>
++-------------+----------------+---------+-----------+----+-------------+-----+------------+-----+-----------------+------------------------+-------------------+------+
+</pre></div>
+</div>
+<p>Show information about the cluster in YAML format, with timestamp of execution:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$<span class="w"> </span>patronictl<span class="w"> </span>-c<span class="w"> </span>postgres0.yml<span class="w"> </span>list<span class="w"> </span>batman<span class="w"> </span>-f<span class="w"> </span>yaml<span class="w"> </span>-t
+<span class="m">2023</span>-09-12<span class="w"> </span><span class="m">13</span>:30:48
+-<span class="w"> </span>Cluster:<span class="w"> </span>batman
+<span class="w">  </span>Host:<span class="w"> </span><span class="m">127</span>.0.0.1:5432
+<span class="w">  </span>Member:<span class="w"> </span>postgresql0
+<span class="w">  </span>Role:<span class="w"> </span>Leader
+<span class="w">  </span>State:<span class="w"> </span>running
+<span class="w">  </span>TL:<span class="w"> </span><span class="m">5</span>
+-<span class="w"> </span>Cluster:<span class="w"> </span>batman
+<span class="w">  </span>Host:<span class="w"> </span><span class="m">127</span>.0.0.1:5433
+<span class="w">  </span>Receive<span class="w"> </span>LSN:<span class="w"> </span><span class="m">0</span>/40004E8
+<span class="w">  </span>Receive<span class="w"> </span>Lag:<span class="w"> </span><span class="m">0</span>
+<span class="w">  </span>Replay<span class="w"> </span>LSN:<span class="w"> </span><span class="m">0</span>/40004E8
+<span class="w">  </span>Replay<span class="w"> </span>Lag:<span class="w"> </span><span class="m">0</span>
+<span class="w">  </span>Member:<span class="w"> </span>postgresql1
+<span class="w">  </span>Role:<span class="w"> </span>Replica
+<span class="w">  </span>State:<span class="w"> </span>streaming
+<span class="w">  </span>TL:<span class="w"> </span><span class="m">5</span>
+-<span class="w"> </span>Cluster:<span class="w"> </span>batman
+<span class="w">  </span>Host:<span class="w"> </span><span class="m">127</span>.0.0.1:5434
+<span class="w">  </span>Receive<span class="w"> </span>LSN:<span class="w"> </span><span class="m">0</span>/40004E8
+<span class="w">  </span>Receive<span class="w"> </span>Lag:<span class="w"> </span><span class="m">0</span>
+<span class="w">  </span>Replay<span class="w"> </span>LSN:<span class="w"> </span><span class="m">0</span>/40004E8
+<span class="w">  </span>Replay<span class="w"> </span>Lag:<span class="w"> </span><span class="m">0</span>
+<span class="w">  </span>Member:<span class="w"> </span>postgresql2
+<span class="w">  </span>Role:<span class="w"> </span>Replica
+<span class="w">  </span>State:<span class="w"> </span>streaming
+<span class="w">  </span>TL:<span class="w"> </span><span class="m">5</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="patronictl-pause">
+<span id="id28"></span><h3>patronictl pause</h3>
+<section id="patronictl-pause-synopsis">
+<span id="id29"></span><h4>Synopsis</h4>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>pause
+  [ CLUSTER_NAME ]
+  [ --group CITUS_GROUP ]
+  [ --wait ]
+</pre></div>
+</div>
+</section>
+<section id="patronictl-pause-description">
+<span id="id30"></span><h4>Description</h4>
+<p><code class="docutils literal notranslate"><span class="pre">patronictl</span> <span class="pre">pause</span></code> temporarily puts the Patroni cluster in maintenance mode and disables automatic failover.</p>
+</section>
+<section id="patronictl-pause-parameters">
+<span id="id31"></span><h4>Parameters</h4>
+<dl>
+<dt><code class="docutils literal notranslate"><span class="pre">CLUSTER_NAME</span></code></dt><dd><p>Name of the Patroni cluster.</p>
+<p>If not given, <code class="docutils literal notranslate"><span class="pre">patronictl</span></code> will attempt to fetch that from the <code class="docutils literal notranslate"><span class="pre">scope</span></code> configuration, if it exists.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--group</span></code></dt><dd><p>Pause the given Citus group.</p>
+<p><code class="docutils literal notranslate"><span class="pre">CITUS_GROUP</span></code> is the ID of the Citus group.</p>
+<p>If not given, <code class="docutils literal notranslate"><span class="pre">patronictl</span></code> will attempt to fetch that from the <code class="docutils literal notranslate"><span class="pre">citus.group</span></code> configuration, if it exists.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--wait</span></code></dt><dd><p>Wait until all Patroni members are paused before returning control to the caller.</p>
+</dd>
+</dl>
+</section>
+<section id="patronictl-pause-examples">
+<span id="id32"></span><h4>Examples</h4>
+<p>Put the cluster in maintenance mode, and wait until all nodes have been paused:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$<span class="w"> </span>patronictl<span class="w"> </span>-c<span class="w"> </span>postgres0.yml<span class="w"> </span>pause<span class="w"> </span>batman<span class="w"> </span>--wait
+<span class="s1">&#39;pause&#39;</span><span class="w"> </span>request<span class="w"> </span>sent,<span class="w"> </span>waiting<span class="w"> </span><span class="k">until</span><span class="w"> </span>it<span class="w"> </span>is<span class="w"> </span>recognized<span class="w"> </span>by<span class="w"> </span>all<span class="w"> </span>nodes
+Success:<span class="w"> </span>cluster<span class="w"> </span>management<span class="w"> </span>is<span class="w"> </span>paused
+</pre></div>
+</div>
+</section>
+</section>
+<section id="patronictl-query">
+<span id="id33"></span><h3>patronictl query</h3>
+<section id="patronictl-query-synopsis">
+<span id="id34"></span><h4>Synopsis</h4>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>query
+  [ CLUSTER_NAME ]
+  [ --group CITUS_GROUP ]
+  [ { { -r | --role } { leader | primary | standby-leader | replica | standby | any } | { -m | --member } MEMBER_NAME } ]
+  [ { -d | --dbname } DBNAME ]
+  [ { -U | --username } USERNAME ]
+  [ --password ]
+  [ --format { pretty | tsv | json | yaml } ]
+  [ { { -f | --file } FILE_NAME | { -c | --command } SQL_COMMAND } ]
+  [ --delimiter ]
+  [ { -W | { -w | --watch } TIME } ]
+</pre></div>
+</div>
+</section>
+<section id="patronictl-query-description">
+<span id="id35"></span><h4>Description</h4>
+<p><code class="docutils literal notranslate"><span class="pre">patronictl</span> <span class="pre">query</span></code> executes a SQL command or script against a member of the Patroni cluster.</p>
+</section>
+<section id="patronictl-query-parameters">
+<span id="id36"></span><h4>Parameters</h4>
+<dl>
+<dt><code class="docutils literal notranslate"><span class="pre">CLUSTER_NAME</span></code></dt><dd><p>Name of the Patroni cluster.</p>
+<p>If not given, <code class="docutils literal notranslate"><span class="pre">patronictl</span></code> will attempt to fetch that from the <code class="docutils literal notranslate"><span class="pre">scope</span></code> configuration, if it exists.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--group</span></code></dt><dd><p>Query the given Citus group.</p>
+<p><code class="docutils literal notranslate"><span class="pre">CITUS_GROUP</span></code> is the ID of the Citus group.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">-r</span></code> / <code class="docutils literal notranslate"><span class="pre">--role</span></code></dt><dd><p>Choose a member that has the given role.</p>
+<p>Role can be one of:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">leader</span></code>: the leader of either a regular Patroni cluster or a standby Patroni cluster; or</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">primary</span></code>: the leader of a regular Patroni cluster; or</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">standby-leader</span></code>: the leader of a standby Patroni cluster; or</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">replica</span></code>: a replica of a Patroni cluster; or</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">standby</span></code>: same as <code class="docutils literal notranslate"><span class="pre">replica</span></code>; or</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">any</span></code>: any role. Same as omitting this parameter.</p></li>
+</ul>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">-m</span></code> / <code class="docutils literal notranslate"><span class="pre">--member</span></code></dt><dd><p>Choose a member that has the given name.</p>
+<p><code class="docutils literal notranslate"><span class="pre">MEMBER_NAME</span></code> is the name of the member to be picked.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">-d</span></code> / <code class="docutils literal notranslate"><span class="pre">--dbname</span></code></dt><dd><p>Database to connect and run the query.</p>
+<p><code class="docutils literal notranslate"><span class="pre">DBNAME</span></code> is the name of the database. If not given, defaults to <code class="docutils literal notranslate"><span class="pre">USERNAME</span></code>.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">-U</span></code> / <code class="docutils literal notranslate"><span class="pre">--username</span></code></dt><dd><p>User to connect to the database.</p>
+<p><code class="docutils literal notranslate"><span class="pre">USERNAME</span></code> name of the user. If not given, defaults to the operating system user running <code class="docutils literal notranslate"><span class="pre">patronictl</span> <span class="pre">query</span></code>.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--password</span></code></dt><dd><p>Prompt for the password of the connecting user.</p>
+<p>As Patroni uses <code class="docutils literal notranslate"><span class="pre">libpq</span></code>, alternatively you can create a <code class="docutils literal notranslate"><span class="pre">~/.pgpass</span></code> file or set the <code class="docutils literal notranslate"><span class="pre">PGPASSWORD</span></code> environment variable.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--format</span></code></dt><dd><p>How to format the output of the query.</p>
+<p>Format can be one of:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">pretty</span></code>: prints query output as a pretty table; or</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">tsv</span></code>: prints query output as tabular information, with columns delimited by <code class="docutils literal notranslate"><span class="pre">\t</span></code>; or</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">json</span></code>: prints query output in JSON format; or</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">yaml</span></code>: prints query output in YAML format.</p></li>
+</ul>
+<p>The default is <code class="docutils literal notranslate"><span class="pre">tsv</span></code>.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">-f</span></code> / <code class="docutils literal notranslate"><span class="pre">--file</span></code></dt><dd><p>Use a file as source of commands to run queries.</p>
+<p><code class="docutils literal notranslate"><span class="pre">FILE_NAME</span></code> is the path to the source file.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">-c</span></code> / <code class="docutils literal notranslate"><span class="pre">--command</span></code></dt><dd><p>Run the given SQL command in the query.</p>
+<p><code class="docutils literal notranslate"><span class="pre">SQL_COMMAND</span></code> is the SQL command to be executed.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--delimiter</span></code></dt><dd><p>The delimiter when printing information in <code class="docutils literal notranslate"><span class="pre">tsv</span></code> format, or <code class="docutils literal notranslate"><span class="pre">\t</span></code> if omitted.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">-W</span></code></dt><dd><p>Automatically re-run the query every 2 seconds.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">-w</span></code> / <code class="docutils literal notranslate"><span class="pre">--watch</span></code></dt><dd><p>Automatically re-run the query at the specified interval.</p>
+<p><code class="docutils literal notranslate"><span class="pre">TIME</span></code> is the interval between re-runs, in seconds.</p>
+</dd>
+</dl>
+</section>
+<section id="patronictl-query-examples">
+<span id="id37"></span><h4>Examples</h4>
+<p>Run a SQL command as <code class="docutils literal notranslate"><span class="pre">postgres</span></code> user, and ask for its password:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$<span class="w"> </span>patronictl<span class="w"> </span>-c<span class="w"> </span>postgres0.yml<span class="w"> </span>query<span class="w"> </span>batman<span class="w"> </span>-U<span class="w"> </span>postgres<span class="w"> </span>--password<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;SELECT now()&quot;</span>
+Password:
+now
+<span class="m">2023</span>-09-12<span class="w"> </span><span class="m">18</span>:10:53.228084+00:00
+</pre></div>
+</div>
+<p>Run a SQL command as <code class="docutils literal notranslate"><span class="pre">postgres</span></code> user, and take password from <code class="docutils literal notranslate"><span class="pre">libpq</span></code> environment variable:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$<span class="w"> </span><span class="nv">PGPASSWORD</span><span class="o">=</span>patroni<span class="w"> </span>patronictl<span class="w"> </span>-c<span class="w"> </span>postgres0.yml<span class="w"> </span>query<span class="w"> </span>batman<span class="w"> </span>-U<span class="w"> </span>postgres<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;SELECT now()&quot;</span>
+now
+<span class="m">2023</span>-09-12<span class="w"> </span><span class="m">18</span>:11:37.639500+00:00
+</pre></div>
+</div>
+<p>Run a SQL command and print in <code class="docutils literal notranslate"><span class="pre">pretty</span></code> format every 2 seconds:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$<span class="w"> </span>patronictl<span class="w"> </span>-c<span class="w"> </span>postgres0.yml<span class="w"> </span>query<span class="w"> </span>batman<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;SELECT now()&quot;</span><span class="w"> </span>--format<span class="w"> </span>pretty<span class="w"> </span>-W
++----------------------------------+
+<span class="p">|</span><span class="w"> </span>now<span class="w">                              </span><span class="p">|</span>
++----------------------------------+
+<span class="p">|</span><span class="w"> </span><span class="m">2023</span>-09-12<span class="w"> </span><span class="m">18</span>:12:16.716235+00:00<span class="w"> </span><span class="p">|</span>
++----------------------------------+
++----------------------------------+
+<span class="p">|</span><span class="w"> </span>now<span class="w">                              </span><span class="p">|</span>
++----------------------------------+
+<span class="p">|</span><span class="w"> </span><span class="m">2023</span>-09-12<span class="w"> </span><span class="m">18</span>:12:18.732645+00:00<span class="w"> </span><span class="p">|</span>
++----------------------------------+
++----------------------------------+
+<span class="p">|</span><span class="w"> </span>now<span class="w">                              </span><span class="p">|</span>
++----------------------------------+
+<span class="p">|</span><span class="w"> </span><span class="m">2023</span>-09-12<span class="w"> </span><span class="m">18</span>:12:20.750573+00:00<span class="w"> </span><span class="p">|</span>
++----------------------------------+
+</pre></div>
+</div>
+<p>Run a SQL command on database <code class="docutils literal notranslate"><span class="pre">test</span></code> and print the output in YAML format:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$<span class="w"> </span>patronictl<span class="w"> </span>-c<span class="w"> </span>postgres0.yml<span class="w"> </span>query<span class="w"> </span>batman<span class="w"> </span>-d<span class="w"> </span><span class="nb">test</span><span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;SELECT now() AS column_1, &#39;test&#39; AS column_2&quot;</span><span class="w"> </span>--format<span class="w"> </span>yaml
+-<span class="w"> </span>column_1:<span class="w"> </span><span class="m">2023</span>-09-12<span class="w"> </span><span class="m">18</span>:14:22.052060+00:00
+<span class="w">  </span>column_2:<span class="w"> </span><span class="nb">test</span>
+</pre></div>
+</div>
+<p>Run a SQL command on member <code class="docutils literal notranslate"><span class="pre">postgresql2</span></code>:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$<span class="w"> </span>patronictl<span class="w"> </span>-c<span class="w"> </span>postgres0.yml<span class="w"> </span>query<span class="w"> </span>batman<span class="w"> </span>-m<span class="w"> </span>postgresql2<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;SHOW port&quot;</span>
+port
+<span class="m">5434</span>
+</pre></div>
+</div>
+<p>Run a SQL command on any of the standbys:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$<span class="w"> </span>patronictl<span class="w"> </span>-c<span class="w"> </span>postgres0.yml<span class="w"> </span>query<span class="w"> </span>batman<span class="w"> </span>-r<span class="w"> </span>replica<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;SHOW port&quot;</span>
+port
+<span class="m">5433</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="patronictl-reinit">
+<span id="id38"></span><h3>patronictl reinit</h3>
+<section id="patronictl-reinit-synopsis">
+<span id="id39"></span><h4>Synopsis</h4>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>reinit
+  CLUSTER_NAME
+  [ MEMBER_NAME [, ... ] ]
+  [ --group CITUS_GROUP ]
+  [ --wait ]
+  [ --force ]
+  [ --from-leader ]
+</pre></div>
+</div>
+</section>
+<section id="patronictl-reinit-description">
+<span id="id40"></span><h4>Description</h4>
+<p><code class="docutils literal notranslate"><span class="pre">patronictl</span> <span class="pre">reinit</span></code> rebuilds a Postgres standby instance managed by a replica member of the Patroni cluster.</p>
+</section>
+<section id="patronictl-reinit-parameters">
+<span id="id41"></span><h4>Parameters</h4>
+<dl>
+<dt><code class="docutils literal notranslate"><span class="pre">CLUSTER_NAME</span></code></dt><dd><p>Name of the Patroni cluster.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">MEMBER_NAME</span></code></dt><dd><p>Name of the replica member for which the Postgres instance will be rebuilt.</p>
+<p>Multiple replica members can be specified. If no members are specified, the command does nothing.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--group</span></code></dt><dd><p>Rebuild a replica member of the given Citus group.</p>
+<p><code class="docutils literal notranslate"><span class="pre">CITUS_GROUP</span></code> is the ID of the Citus group.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--wait</span></code></dt><dd><p>Wait until the reinitialization of the Postgres standby node(s) is finished.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--force</span></code></dt><dd><p>Flag to skip confirmation prompts when rebuilding Postgres standby instances.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--from-leader</span></code></dt><dd><p>Flag to get basebackup from leader directly.</p>
+<p>Useful for scripts.</p>
+</dd>
+</dl>
+</section>
+<section id="patronictl-reinit-examples">
+<span id="id42"></span><h4>Examples</h4>
+<p>Request a rebuild of all replica members of the Patroni cluster and immediately return control to the caller:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$<span class="w"> </span>patronictl<span class="w"> </span>-c<span class="w"> </span>postgres0.yml<span class="w"> </span>reinit<span class="w"> </span>batman<span class="w"> </span>postgresql1<span class="w"> </span>postgresql2<span class="w"> </span>--force
++<span class="w"> </span>Cluster:<span class="w"> </span>batman<span class="w"> </span><span class="o">(</span><span class="m">7277694203142172922</span><span class="o">)</span><span class="w"> </span>-+-----------+----+-------------+-----+------------+-----+
+<span class="p">|</span><span class="w"> </span>Member<span class="w">      </span><span class="p">|</span><span class="w"> </span>Host<span class="w">           </span><span class="p">|</span><span class="w"> </span>Role<span class="w">    </span><span class="p">|</span><span class="w"> </span>State<span class="w">     </span><span class="p">|</span><span class="w"> </span>TL<span class="w"> </span><span class="p">|</span><span class="w"> </span>Receive<span class="w"> </span>LSN<span class="w"> </span><span class="p">|</span><span class="w"> </span>Lag<span class="w"> </span><span class="p">|</span><span class="w"> </span>Replay<span class="w"> </span>LSN<span class="w"> </span><span class="p">|</span><span class="w"> </span>Lag<span class="w"> </span><span class="p">|</span>
++-------------+----------------+---------+-----------+----+-------------+-----+------------+-----+
+<span class="p">|</span><span class="w"> </span>postgresql0<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">127</span>.0.0.1:5432<span class="w"> </span><span class="p">|</span><span class="w"> </span>Leader<span class="w">  </span><span class="p">|</span><span class="w"> </span>running<span class="w">   </span><span class="p">|</span><span class="w">  </span><span class="m">5</span><span class="w"> </span><span class="p">|</span><span class="w">             </span><span class="p">|</span><span class="w">     </span><span class="p">|</span><span class="w">            </span><span class="p">|</span><span class="w">     </span><span class="p">|</span>
+<span class="p">|</span><span class="w"> </span>postgresql1<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">127</span>.0.0.1:5433<span class="w"> </span><span class="p">|</span><span class="w"> </span>Replica<span class="w"> </span><span class="p">|</span><span class="w"> </span>streaming<span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">5</span><span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span>/40004E8<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">0</span>/40004E8<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span>
+<span class="p">|</span><span class="w"> </span>postgresql2<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">127</span>.0.0.1:5434<span class="w"> </span><span class="p">|</span><span class="w"> </span>Replica<span class="w"> </span><span class="p">|</span><span class="w"> </span>streaming<span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">5</span><span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span>/40004E8<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">0</span>/40004E8<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span>
++-------------+----------------+---------+-----------+----+-------------+-----+------------+-----+
+Success:<span class="w"> </span>reinitialize<span class="w"> </span><span class="k">for</span><span class="w"> </span>member<span class="w"> </span>postgresql1
+Success:<span class="w"> </span>reinitialize<span class="w"> </span><span class="k">for</span><span class="w"> </span>member<span class="w"> </span>postgresql2
+</pre></div>
+</div>
+<p>Request a rebuild of <code class="docutils literal notranslate"><span class="pre">postgresql2</span></code> and wait for it to complete:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$<span class="w"> </span>patronictl<span class="w"> </span>-c<span class="w"> </span>postgres0.yml<span class="w"> </span>reinit<span class="w"> </span>batman<span class="w"> </span>postgresql2<span class="w"> </span>--wait<span class="w"> </span>--force
++<span class="w"> </span>Cluster:<span class="w"> </span>batman<span class="w"> </span><span class="o">(</span><span class="m">7277694203142172922</span><span class="o">)</span><span class="w"> </span>-+-----------+----+-------------+-----+------------+-----+
+<span class="p">|</span><span class="w"> </span>Member<span class="w">      </span><span class="p">|</span><span class="w"> </span>Host<span class="w">           </span><span class="p">|</span><span class="w"> </span>Role<span class="w">    </span><span class="p">|</span><span class="w"> </span>State<span class="w">     </span><span class="p">|</span><span class="w"> </span>TL<span class="w"> </span><span class="p">|</span><span class="w"> </span>Receive<span class="w"> </span>LSN<span class="w"> </span><span class="p">|</span><span class="w"> </span>Lag<span class="w"> </span><span class="p">|</span><span class="w"> </span>Replay<span class="w"> </span>LSN<span class="w"> </span><span class="p">|</span><span class="w"> </span>Lag<span class="w"> </span><span class="p">|</span>
++-------------+----------------+---------+-----------+----+-------------+-----+------------+-----+
+<span class="p">|</span><span class="w"> </span>postgresql0<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">127</span>.0.0.1:5432<span class="w"> </span><span class="p">|</span><span class="w"> </span>Leader<span class="w">  </span><span class="p">|</span><span class="w"> </span>running<span class="w">   </span><span class="p">|</span><span class="w">  </span><span class="m">5</span><span class="w"> </span><span class="p">|</span><span class="w">             </span><span class="p">|</span><span class="w">     </span><span class="p">|</span><span class="w">            </span><span class="p">|</span><span class="w">     </span><span class="p">|</span>
+<span class="p">|</span><span class="w"> </span>postgresql1<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">127</span>.0.0.1:5433<span class="w"> </span><span class="p">|</span><span class="w"> </span>Replica<span class="w"> </span><span class="p">|</span><span class="w"> </span>streaming<span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">5</span><span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span>/40004E8<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">0</span>/40004E8<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span>
+<span class="p">|</span><span class="w"> </span>postgresql2<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">127</span>.0.0.1:5434<span class="w"> </span><span class="p">|</span><span class="w"> </span>Replica<span class="w"> </span><span class="p">|</span><span class="w"> </span>streaming<span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">5</span><span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span>/40004E8<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">0</span>/40004E8<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span>
++-------------+----------------+---------+-----------+----+-------------+-----+------------+-----+
+Success:<span class="w"> </span>reinitialize<span class="w"> </span><span class="k">for</span><span class="w"> </span>member<span class="w"> </span>postgresql2
+Waiting<span class="w"> </span><span class="k">for</span><span class="w"> </span>reinitialize<span class="w"> </span>to<span class="w"> </span><span class="nb">complete</span><span class="w"> </span>on:<span class="w"> </span>postgresql2
+Reinitialize<span class="w"> </span>is<span class="w"> </span>completed<span class="w"> </span>on:<span class="w"> </span>postgresql2
+</pre></div>
+</div>
+<p>Request a rebuild of <code class="docutils literal notranslate"><span class="pre">postgresql2</span></code> and get basebackup from leader directly:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$<span class="w"> </span>patronictl<span class="w"> </span>-c<span class="w"> </span>postgres0.yml<span class="w"> </span>reinit<span class="w"> </span>batman<span class="w"> </span>postgresql2<span class="w"> </span>--from-leader
++<span class="w"> </span>Cluster:<span class="w"> </span>batman<span class="w"> </span><span class="o">(</span><span class="m">7277694203142172922</span><span class="o">)</span><span class="w"> </span>-+-----------+----+-------------+-----+------------+-----+
+<span class="p">|</span><span class="w"> </span>Member<span class="w">      </span><span class="p">|</span><span class="w"> </span>Host<span class="w">           </span><span class="p">|</span><span class="w"> </span>Role<span class="w">    </span><span class="p">|</span><span class="w"> </span>State<span class="w">     </span><span class="p">|</span><span class="w"> </span>TL<span class="w"> </span><span class="p">|</span><span class="w"> </span>Receive<span class="w"> </span>LSN<span class="w"> </span><span class="p">|</span><span class="w"> </span>Lag<span class="w"> </span><span class="p">|</span><span class="w"> </span>Replay<span class="w"> </span>LSN<span class="w"> </span><span class="p">|</span><span class="w"> </span>Lag<span class="w"> </span><span class="p">|</span>
++-------------+----------------+---------+-----------+----+-------------+-----+------------+-----+
+<span class="p">|</span><span class="w"> </span>postgresql0<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">127</span>.0.0.1:5432<span class="w"> </span><span class="p">|</span><span class="w"> </span>Leader<span class="w">  </span><span class="p">|</span><span class="w"> </span>running<span class="w">   </span><span class="p">|</span><span class="w">  </span><span class="m">5</span><span class="w"> </span><span class="p">|</span><span class="w">             </span><span class="p">|</span><span class="w">     </span><span class="p">|</span><span class="w">            </span><span class="p">|</span><span class="w">     </span><span class="p">|</span>
+<span class="p">|</span><span class="w"> </span>postgresql1<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">127</span>.0.0.1:5433<span class="w"> </span><span class="p">|</span><span class="w"> </span>Replica<span class="w"> </span><span class="p">|</span><span class="w"> </span>streaming<span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">5</span><span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span>/40004E8<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">0</span>/40004E8<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span>
+<span class="p">|</span><span class="w"> </span>postgresql2<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">127</span>.0.0.1:5434<span class="w"> </span><span class="p">|</span><span class="w"> </span>Replica<span class="w"> </span><span class="p">|</span><span class="w"> </span>streaming<span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">5</span><span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span>/40004E8<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">0</span>/40004E8<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span>
++-------------+----------------+---------+-----------+----+-------------+-----+------------+-----+
+Success:<span class="w"> </span>reinitialize<span class="w"> </span><span class="k">for</span><span class="w"> </span>member<span class="w"> </span>postgresql2
+</pre></div>
+</div>
+</section>
+</section>
+<section id="patronictl-reload">
+<span id="id43"></span><h3>patronictl reload</h3>
+<section id="patronictl-reload-synopsis">
+<span id="id44"></span><h4>Synopsis</h4>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>reload
+  CLUSTER_NAME
+  [ MEMBER_NAME [, ... ] ]
+  [ --group CITUS_GROUP ]
+  [ { -r | --role } { leader | primary | standby-leader | replica | standby | any } ]
+  [ --force ]
+</pre></div>
+</div>
+</section>
+<section id="patronictl-reload-description">
+<span id="id45"></span><h4>Description</h4>
+<p><code class="docutils literal notranslate"><span class="pre">patronictl</span> <span class="pre">reload</span></code> requests a reload of local configuration for one or more Patroni members.</p>
+<p>It also triggers <code class="docutils literal notranslate"><span class="pre">pg_ctl</span> <span class="pre">reload</span></code> on the managed Postgres instance, even if nothing has changed.</p>
+</section>
+<section id="patronictl-reload-parameters">
+<span id="id46"></span><h4>Parameters</h4>
+<dl>
+<dt><code class="docutils literal notranslate"><span class="pre">CLUSTER_NAME</span></code></dt><dd><p>Name of the Patroni cluster.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">MEMBER_NAME</span></code></dt><dd><p>Request a reload of local configuration for the given Patroni member(s).</p>
+<p>Multiple members can be specified. If no members are specified, all of them are considered.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--group</span></code></dt><dd><p>Request a reload of members of the given Citus group.</p>
+<p><code class="docutils literal notranslate"><span class="pre">CITUS_GROUP</span></code> is the ID of the Citus group.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">-r</span></code> / <code class="docutils literal notranslate"><span class="pre">--role</span></code></dt><dd><p>Select members that have the given role.</p>
+<p>Role can be one of:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">leader</span></code>: the leader of either a regular Patroni cluster or a standby Patroni cluster; or</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">primary</span></code>: the leader of a regular Patroni cluster; or</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">standby-leader</span></code>: the leader of a standby Patroni cluster; or</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">replica</span></code>: a replica of a Patroni cluster; or</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">standby</span></code>: same as <code class="docutils literal notranslate"><span class="pre">replica</span></code>; or</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">any</span></code>: any role. Same as omitting this parameter.</p></li>
+</ul>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--force</span></code></dt><dd><p>Flag to skip confirmation prompts when requesting a reload of the local configuration.</p>
+<p>Useful for scripts.</p>
+</dd>
+</dl>
+</section>
+<section id="patronictl-reload-examples">
+<span id="id47"></span><h4>Examples</h4>
+<p>Request a reload of the local configuration of all members of the Patroni cluster:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$<span class="w"> </span>patronictl<span class="w"> </span>-c<span class="w"> </span>postgres0.yml<span class="w"> </span>reload<span class="w"> </span>batman<span class="w"> </span>--force
++<span class="w"> </span>Cluster:<span class="w"> </span>batman<span class="w"> </span><span class="o">(</span><span class="m">7277694203142172922</span><span class="o">)</span><span class="w"> </span>-+-----------+----+-------------+-----+------------+-----+
+<span class="p">|</span><span class="w"> </span>Member<span class="w">      </span><span class="p">|</span><span class="w"> </span>Host<span class="w">           </span><span class="p">|</span><span class="w"> </span>Role<span class="w">    </span><span class="p">|</span><span class="w"> </span>State<span class="w">     </span><span class="p">|</span><span class="w"> </span>TL<span class="w"> </span><span class="p">|</span><span class="w"> </span>Receive<span class="w"> </span>LSN<span class="w"> </span><span class="p">|</span><span class="w"> </span>Lag<span class="w"> </span><span class="p">|</span><span class="w"> </span>Replay<span class="w"> </span>LSN<span class="w"> </span><span class="p">|</span><span class="w"> </span>Lag<span class="w"> </span><span class="p">|</span>
++-------------+----------------+---------+-----------+----+-------------+-----+------------+-----+
+<span class="p">|</span><span class="w"> </span>postgresql0<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">127</span>.0.0.1:5432<span class="w"> </span><span class="p">|</span><span class="w"> </span>Leader<span class="w">  </span><span class="p">|</span><span class="w"> </span>running<span class="w">   </span><span class="p">|</span><span class="w">  </span><span class="m">5</span><span class="w"> </span><span class="p">|</span><span class="w">             </span><span class="p">|</span><span class="w">     </span><span class="p">|</span><span class="w">            </span><span class="p">|</span><span class="w">     </span><span class="p">|</span>
+<span class="p">|</span><span class="w"> </span>postgresql1<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">127</span>.0.0.1:5433<span class="w"> </span><span class="p">|</span><span class="w"> </span>Replica<span class="w"> </span><span class="p">|</span><span class="w"> </span>streaming<span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">5</span><span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span>/40004E8<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">0</span>/40004E8<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span>
+<span class="p">|</span><span class="w"> </span>postgresql2<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">127</span>.0.0.1:5434<span class="w"> </span><span class="p">|</span><span class="w"> </span>Replica<span class="w"> </span><span class="p">|</span><span class="w"> </span>streaming<span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">5</span><span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span>/40004E8<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">0</span>/40004E8<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span>
++-------------+----------------+---------+-----------+----+-------------+-----+------------+-----+
+Reload<span class="w"> </span>request<span class="w"> </span>received<span class="w"> </span><span class="k">for</span><span class="w"> </span>member<span class="w"> </span>postgresql0<span class="w"> </span>and<span class="w"> </span>will<span class="w"> </span>be<span class="w"> </span>processed<span class="w"> </span>within<span class="w"> </span><span class="m">10</span><span class="w"> </span>seconds
+Reload<span class="w"> </span>request<span class="w"> </span>received<span class="w"> </span><span class="k">for</span><span class="w"> </span>member<span class="w"> </span>postgresql1<span class="w"> </span>and<span class="w"> </span>will<span class="w"> </span>be<span class="w"> </span>processed<span class="w"> </span>within<span class="w"> </span><span class="m">10</span><span class="w"> </span>seconds
+Reload<span class="w"> </span>request<span class="w"> </span>received<span class="w"> </span><span class="k">for</span><span class="w"> </span>member<span class="w"> </span>postgresql2<span class="w"> </span>and<span class="w"> </span>will<span class="w"> </span>be<span class="w"> </span>processed<span class="w"> </span>within<span class="w"> </span><span class="m">10</span><span class="w"> </span>seconds
+</pre></div>
+</div>
+</section>
+</section>
+<section id="patronictl-remove">
+<span id="id48"></span><h3>patronictl remove</h3>
+<section id="patronictl-remove-synopsis">
+<span id="id49"></span><h4>Synopsis</h4>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>remove
+  CLUSTER_NAME
+  [ --group CITUS_GROUP ]
+  [ { -f | --format } { pretty | tsv | json | yaml } ]
+</pre></div>
+</div>
+</section>
+<section id="patronictl-remove-description">
+<span id="id50"></span><h4>Description</h4>
+<p><code class="docutils literal notranslate"><span class="pre">patronictl</span> <span class="pre">remove</span></code> removes information of the cluster from the DCS.</p>
+<p>It is an interactive action.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>This operation will destroy the information of the Patroni cluster from the DCS.</p>
+</div>
+</section>
+<section id="patronictl-remove-parameters">
+<span id="id51"></span><h4>Parameters</h4>
+<dl>
+<dt><code class="docutils literal notranslate"><span class="pre">CLUSTER_NAME</span></code></dt><dd><p>Name of the Patroni cluster.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--group</span></code></dt><dd><p>Remove information about the Patroni cluster related with the given Citus group.</p>
+<p><code class="docutils literal notranslate"><span class="pre">CITUS_GROUP</span></code> is the ID of the Citus group.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">-f</span></code> / <code class="docutils literal notranslate"><span class="pre">--format</span></code></dt><dd><p>How to format the list of members in the output when prompting for confirmation.</p>
+<p>Format can be one of:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">pretty</span></code>: prints members as a pretty table; or</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">tsv</span></code>: prints members as tabular information, with columns delimited by <code class="docutils literal notranslate"><span class="pre">\t</span></code>; or</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">json</span></code>: prints members in JSON format; or</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">yaml</span></code>: prints members in YAML format.</p></li>
+</ul>
+<p>The default is <code class="docutils literal notranslate"><span class="pre">pretty</span></code>.</p>
+</dd>
+</dl>
+</section>
+<section id="patronictl-remove-examples">
+<span id="id52"></span><h4>Examples</h4>
+<p>Remove information about Patroni cluster <code class="docutils literal notranslate"><span class="pre">batman</span></code> from the DCS:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$<span class="w"> </span>patronictl<span class="w"> </span>-c<span class="w"> </span>postgres0.yml<span class="w"> </span>remove<span class="w"> </span>batman
++<span class="w"> </span>Cluster:<span class="w"> </span>batman<span class="w"> </span><span class="o">(</span><span class="m">7277694203142172922</span><span class="o">)</span><span class="w"> </span>-+-----------+----+-------------+-----+------------+-----+
+<span class="p">|</span><span class="w"> </span>Member<span class="w">      </span><span class="p">|</span><span class="w"> </span>Host<span class="w">           </span><span class="p">|</span><span class="w"> </span>Role<span class="w">    </span><span class="p">|</span><span class="w"> </span>State<span class="w">     </span><span class="p">|</span><span class="w"> </span>TL<span class="w"> </span><span class="p">|</span><span class="w"> </span>Receive<span class="w"> </span>LSN<span class="w"> </span><span class="p">|</span><span class="w"> </span>Lag<span class="w"> </span><span class="p">|</span><span class="w"> </span>Replay<span class="w"> </span>LSN<span class="w"> </span><span class="p">|</span><span class="w"> </span>Lag<span class="w"> </span><span class="p">|</span>
++-------------+----------------+---------+-----------+----+-------------+-----+------------+-----+
+<span class="p">|</span><span class="w"> </span>postgresql0<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">127</span>.0.0.1:5432<span class="w"> </span><span class="p">|</span><span class="w"> </span>Leader<span class="w">  </span><span class="p">|</span><span class="w"> </span>running<span class="w">   </span><span class="p">|</span><span class="w">  </span><span class="m">5</span><span class="w"> </span><span class="p">|</span><span class="w">             </span><span class="p">|</span><span class="w">     </span><span class="p">|</span><span class="w">            </span><span class="p">|</span><span class="w">     </span><span class="p">|</span>
+<span class="p">|</span><span class="w"> </span>postgresql1<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">127</span>.0.0.1:5433<span class="w"> </span><span class="p">|</span><span class="w"> </span>Replica<span class="w"> </span><span class="p">|</span><span class="w"> </span>streaming<span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">5</span><span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span>/40004E8<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">0</span>/40004E8<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span>
+<span class="p">|</span><span class="w"> </span>postgresql2<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">127</span>.0.0.1:5434<span class="w"> </span><span class="p">|</span><span class="w"> </span>Replica<span class="w"> </span><span class="p">|</span><span class="w"> </span>streaming<span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">5</span><span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span>/40004E8<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">0</span>/40004E8<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span>
++-------------+----------------+---------+-----------+----+-------------+-----+------------+-----+
+Please<span class="w"> </span>confirm<span class="w"> </span>the<span class="w"> </span>cluster<span class="w"> </span>name<span class="w"> </span>to<span class="w"> </span>remove:<span class="w"> </span>batman
+You<span class="w"> </span>are<span class="w"> </span>about<span class="w"> </span>to<span class="w"> </span>remove<span class="w"> </span>all<span class="w"> </span>information<span class="w"> </span><span class="k">in</span><span class="w"> </span>DCS<span class="w"> </span><span class="k">for</span><span class="w"> </span>batman,<span class="w"> </span>please<span class="w"> </span>type:<span class="w"> </span><span class="s2">&quot;Yes I am aware&quot;</span>:<span class="w"> </span>Yes<span class="w"> </span>I<span class="w"> </span>am<span class="w"> </span>aware
+This<span class="w"> </span>cluster<span class="w"> </span>currently<span class="w"> </span>is<span class="w"> </span>healthy.<span class="w"> </span>Please<span class="w"> </span>specify<span class="w"> </span>the<span class="w"> </span>leader<span class="w"> </span>name<span class="w"> </span>to<span class="w"> </span><span class="k">continue</span>:<span class="w"> </span>postgresql0
+</pre></div>
+</div>
+</section>
+</section>
+<section id="patronictl-restart">
+<span id="id53"></span><h3>patronictl restart</h3>
+<section id="patronictl-restart-synopsis">
+<span id="id54"></span><h4>Synopsis</h4>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>restart
+  CLUSTER_NAME
+  [ MEMBER_NAME [, ...] ]
+  [ --group CITUS_GROUP ]
+  [ { -r | --role } { leader | primary | standby-leader | replica | standby | any } ]
+  [ --any ]
+  [ --pg-version PG_VERSION ]
+  [ --pending ]
+  [ --timeout TIMEOUT ]
+  [ --scheduled TIMESTAMP ]
+  [ --force ]
+</pre></div>
+</div>
+</section>
+<section id="patronictl-restart-description">
+<span id="id55"></span><h4>Description</h4>
+<p><code class="docutils literal notranslate"><span class="pre">patronictl</span> <span class="pre">restart</span></code> requests a restart of the Postgres instance managed by a member of the Patroni cluster.</p>
+<p>The restart can be performed immediately or scheduled for later.</p>
+</section>
+<section id="patronictl-restart-parameters">
+<span id="id56"></span><h4>Parameters</h4>
+<dl>
+<dt><code class="docutils literal notranslate"><span class="pre">CLUSTER_NAME</span></code></dt><dd><p>Name of the Patroni cluster.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--group</span></code></dt><dd><p>Restart the Patroni cluster related with the given Citus group.</p>
+<p><code class="docutils literal notranslate"><span class="pre">CITUS_GROUP</span></code> is the ID of the Citus group.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">-r</span></code> / <code class="docutils literal notranslate"><span class="pre">--role</span></code></dt><dd><p>Choose members that have the given role.</p>
+<p>Role can be one of:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">leader</span></code>: the leader of either a regular Patroni cluster or a standby Patroni cluster; or</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">primary</span></code>: the leader of a regular Patroni cluster; or</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">standby-leader</span></code>: the leader of a standby Patroni cluster; or</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">replica</span></code>: a replica of a Patroni cluster; or</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">standby</span></code>: same as <code class="docutils literal notranslate"><span class="pre">replica</span></code>; or</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">any</span></code>: any role. Same as omitting this parameter.</p></li>
+</ul>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--any</span></code></dt><dd><p>Restart a single random node among the ones which match the given filters.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--pg-version</span></code></dt><dd><p>Select only members which version of the managed Postgres instance is older than the given version.</p>
+<p><code class="docutils literal notranslate"><span class="pre">PG_VERSION</span></code> is the Postgres version to be compared.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--pending</span></code></dt><dd><p>Select only members which are flagged as <code class="docutils literal notranslate"><span class="pre">Pending</span> <span class="pre">restart</span></code>.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--timeout</span></code></dt><dd><p>Abort the restart if it takes more than the specified timeout, and fail over to a replica if the issue is on the primary.</p>
+<p><code class="docutils literal notranslate"><span class="pre">TIMEOUT</span></code> is the amount of seconds to wait before aborting the restart.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--scheduled</span></code></dt><dd><p>Schedule a restart to occur at the given timestamp.</p>
+<p><code class="docutils literal notranslate"><span class="pre">TIMESTAMP</span></code> is the timestamp when the restart should occur. Specify it in unambiguous format, preferably with time zone. You can also use the literal <code class="docutils literal notranslate"><span class="pre">now</span></code> for the restart to be executed immediately.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--force</span></code></dt><dd><p>Flag to skip confirmation prompts when requesting the restart operations.</p>
+<p>Useful for scripts.</p>
+</dd>
+</dl>
+</section>
+<section id="patronictl-restart-examples">
+<span id="id57"></span><h4>Examples</h4>
+<p>Restart all members of the cluster immediately:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$<span class="w"> </span>patronictl<span class="w"> </span>-c<span class="w"> </span>postgres0.yml<span class="w"> </span>restart<span class="w"> </span>batman<span class="w"> </span>--force
++<span class="w"> </span>Cluster:<span class="w"> </span>batman<span class="w"> </span><span class="o">(</span><span class="m">7277694203142172922</span><span class="o">)</span><span class="w"> </span>-+-----------+----+-------------+-----+------------+-----+
+<span class="p">|</span><span class="w"> </span>Member<span class="w">      </span><span class="p">|</span><span class="w"> </span>Host<span class="w">           </span><span class="p">|</span><span class="w"> </span>Role<span class="w">    </span><span class="p">|</span><span class="w"> </span>State<span class="w">     </span><span class="p">|</span><span class="w"> </span>TL<span class="w"> </span><span class="p">|</span><span class="w"> </span>Receive<span class="w"> </span>LSN<span class="w"> </span><span class="p">|</span><span class="w"> </span>Lag<span class="w"> </span><span class="p">|</span><span class="w"> </span>Replay<span class="w"> </span>LSN<span class="w"> </span><span class="p">|</span><span class="w"> </span>Lag<span class="w"> </span><span class="p">|</span>
++-------------+----------------+---------+-----------+----+-------------+-----+------------+-----+
+<span class="p">|</span><span class="w"> </span>postgresql0<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">127</span>.0.0.1:5432<span class="w"> </span><span class="p">|</span><span class="w"> </span>Leader<span class="w">  </span><span class="p">|</span><span class="w"> </span>running<span class="w">   </span><span class="p">|</span><span class="w">  </span><span class="m">6</span><span class="w"> </span><span class="p">|</span><span class="w">             </span><span class="p">|</span><span class="w">     </span><span class="p">|</span><span class="w">            </span><span class="p">|</span><span class="w">     </span><span class="p">|</span>
+<span class="p">|</span><span class="w"> </span>postgresql1<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">127</span>.0.0.1:5433<span class="w"> </span><span class="p">|</span><span class="w"> </span>Replica<span class="w"> </span><span class="p">|</span><span class="w"> </span>streaming<span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">6</span><span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span>/40004E8<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">0</span>/40004E8<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span>
+<span class="p">|</span><span class="w"> </span>postgresql2<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">127</span>.0.0.1:5434<span class="w"> </span><span class="p">|</span><span class="w"> </span>Replica<span class="w"> </span><span class="p">|</span><span class="w"> </span>streaming<span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">6</span><span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span>/40004E8<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">0</span>/40004E8<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span>
++-------------+----------------+---------+-----------+----+-------------+-----+------------+-----+
+Success:<span class="w"> </span>restart<span class="w"> </span>on<span class="w"> </span>member<span class="w"> </span>postgresql0
+Success:<span class="w"> </span>restart<span class="w"> </span>on<span class="w"> </span>member<span class="w"> </span>postgresql1
+Success:<span class="w"> </span>restart<span class="w"> </span>on<span class="w"> </span>member<span class="w"> </span>postgresql2
+</pre></div>
+</div>
+<p>Restart a random member of the cluster immediately:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$<span class="w"> </span>patronictl<span class="w"> </span>-c<span class="w"> </span>postgres0.yml<span class="w"> </span>restart<span class="w"> </span>batman<span class="w"> </span>--any<span class="w"> </span>--force
++<span class="w"> </span>Cluster:<span class="w"> </span>batman<span class="w"> </span><span class="o">(</span><span class="m">7277694203142172922</span><span class="o">)</span><span class="w"> </span>-+-----------+----+-------------+-----+------------+-----+
+<span class="p">|</span><span class="w"> </span>Member<span class="w">      </span><span class="p">|</span><span class="w"> </span>Host<span class="w">           </span><span class="p">|</span><span class="w"> </span>Role<span class="w">    </span><span class="p">|</span><span class="w"> </span>State<span class="w">     </span><span class="p">|</span><span class="w"> </span>TL<span class="w"> </span><span class="p">|</span><span class="w"> </span>Receive<span class="w"> </span>LSN<span class="w"> </span><span class="p">|</span><span class="w"> </span>Lag<span class="w"> </span><span class="p">|</span><span class="w"> </span>Replay<span class="w"> </span>LSN<span class="w"> </span><span class="p">|</span><span class="w"> </span>Lag<span class="w"> </span><span class="p">|</span>
++-------------+----------------+---------+-----------+----+-------------+-----+------------+-----+
+<span class="p">|</span><span class="w"> </span>postgresql0<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">127</span>.0.0.1:5432<span class="w"> </span><span class="p">|</span><span class="w"> </span>Leader<span class="w">  </span><span class="p">|</span><span class="w"> </span>running<span class="w">   </span><span class="p">|</span><span class="w">  </span><span class="m">6</span><span class="w"> </span><span class="p">|</span><span class="w">             </span><span class="p">|</span><span class="w">     </span><span class="p">|</span><span class="w">            </span><span class="p">|</span><span class="w">     </span><span class="p">|</span>
+<span class="p">|</span><span class="w"> </span>postgresql1<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">127</span>.0.0.1:5433<span class="w"> </span><span class="p">|</span><span class="w"> </span>Replica<span class="w"> </span><span class="p">|</span><span class="w"> </span>streaming<span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">6</span><span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span>/40004E8<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">0</span>/40004E8<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span>
+<span class="p">|</span><span class="w"> </span>postgresql2<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">127</span>.0.0.1:5434<span class="w"> </span><span class="p">|</span><span class="w"> </span>Replica<span class="w"> </span><span class="p">|</span><span class="w"> </span>streaming<span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">6</span><span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span>/40004E8<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">0</span>/40004E8<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span>
++-------------+----------------+---------+-----------+----+-------------+-----+------------+-----+
+Success:<span class="w"> </span>restart<span class="w"> </span>on<span class="w"> </span>member<span class="w"> </span>postgresql1
+</pre></div>
+</div>
+<p>Schedule a restart to occur at <code class="docutils literal notranslate"><span class="pre">2023-09-13T18:00-03:00</span></code>:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$<span class="w"> </span>patronictl<span class="w"> </span>-c<span class="w"> </span>postgres0.yml<span class="w"> </span>restart<span class="w"> </span>batman<span class="w"> </span>--scheduled<span class="w"> </span><span class="m">2023</span>-09-13T18:00-03:00<span class="w"> </span>--force
++<span class="w"> </span>Cluster:<span class="w"> </span>batman<span class="w"> </span><span class="o">(</span><span class="m">7277694203142172922</span><span class="o">)</span><span class="w"> </span>-+-----------+----+-------------+-----+------------+-----+
+<span class="p">|</span><span class="w"> </span>Member<span class="w">      </span><span class="p">|</span><span class="w"> </span>Host<span class="w">           </span><span class="p">|</span><span class="w"> </span>Role<span class="w">    </span><span class="p">|</span><span class="w"> </span>State<span class="w">     </span><span class="p">|</span><span class="w"> </span>TL<span class="w"> </span><span class="p">|</span><span class="w"> </span>Receive<span class="w"> </span>LSN<span class="w"> </span><span class="p">|</span><span class="w"> </span>Lag<span class="w"> </span><span class="p">|</span><span class="w"> </span>Replay<span class="w"> </span>LSN<span class="w"> </span><span class="p">|</span><span class="w"> </span>Lag<span class="w"> </span><span class="p">|</span>
++-------------+----------------+---------+-----------+----+-------------+-----+------------+-----+
+<span class="p">|</span><span class="w"> </span>postgresql0<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">127</span>.0.0.1:5432<span class="w"> </span><span class="p">|</span><span class="w"> </span>Leader<span class="w">  </span><span class="p">|</span><span class="w"> </span>running<span class="w">   </span><span class="p">|</span><span class="w">  </span><span class="m">6</span><span class="w"> </span><span class="p">|</span><span class="w">             </span><span class="p">|</span><span class="w">     </span><span class="p">|</span><span class="w">            </span><span class="p">|</span><span class="w">     </span><span class="p">|</span>
+<span class="p">|</span><span class="w"> </span>postgresql1<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">127</span>.0.0.1:5433<span class="w"> </span><span class="p">|</span><span class="w"> </span>Replica<span class="w"> </span><span class="p">|</span><span class="w"> </span>streaming<span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">6</span><span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span>/40004E8<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">0</span>/40004E8<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span>
+<span class="p">|</span><span class="w"> </span>postgresql2<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">127</span>.0.0.1:5434<span class="w"> </span><span class="p">|</span><span class="w"> </span>Replica<span class="w"> </span><span class="p">|</span><span class="w"> </span>streaming<span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">6</span><span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span>/40004E8<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">0</span>/40004E8<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span>
++-------------+----------------+---------+-----------+----+-------------+-----+------------+-----+
+Success:<span class="w"> </span>restart<span class="w"> </span>scheduled<span class="w"> </span>on<span class="w"> </span>member<span class="w"> </span>postgresql0
+Success:<span class="w"> </span>restart<span class="w"> </span>scheduled<span class="w"> </span>on<span class="w"> </span>member<span class="w"> </span>postgresql1
+Success:<span class="w"> </span>restart<span class="w"> </span>scheduled<span class="w"> </span>on<span class="w"> </span>member<span class="w"> </span>postgresql2
+</pre></div>
+</div>
+</section>
+</section>
+<section id="patronictl-resume">
+<span id="id58"></span><h3>patronictl resume</h3>
+<section id="patronictl-resume-synopsis">
+<span id="id59"></span><h4>Synopsis</h4>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>resume
+  [ CLUSTER_NAME ]
+  [ --group CITUS_GROUP ]
+  [ --wait ]
+</pre></div>
+</div>
+</section>
+<section id="patronictl-resume-description">
+<span id="id60"></span><h4>Description</h4>
+<p><code class="docutils literal notranslate"><span class="pre">patronictl</span> <span class="pre">resume</span></code> takes the Patroni cluster out of maintenance mode and re-enables automatic failover.</p>
+</section>
+<section id="patronictl-resume-parameters">
+<span id="id61"></span><h4>Parameters</h4>
+<dl>
+<dt><code class="docutils literal notranslate"><span class="pre">CLUSTER_NAME</span></code></dt><dd><p>Name of the Patroni cluster.</p>
+<p>If not given, <code class="docutils literal notranslate"><span class="pre">patronictl</span></code> will attempt to fetch that from the <code class="docutils literal notranslate"><span class="pre">scope</span></code> configuration, if it exists.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--group</span></code></dt><dd><p>Resume the given Citus group.</p>
+<p><code class="docutils literal notranslate"><span class="pre">CITUS_GROUP</span></code> is the ID of the Citus group.</p>
+<p>If not given, <code class="docutils literal notranslate"><span class="pre">patronictl</span></code> will attempt to fetch that from the <code class="docutils literal notranslate"><span class="pre">citus.group</span></code> configuration, if it exists.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--wait</span></code></dt><dd><p>Wait until all Patroni members are unpaused before returning control to the caller.</p>
+</dd>
+</dl>
+</section>
+<section id="patronictl-resume-examples">
+<span id="id62"></span><h4>Examples</h4>
+<p>Put the cluster out of maintenance mode:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$<span class="w"> </span>patronictl<span class="w"> </span>-c<span class="w"> </span>postgres0.yml<span class="w"> </span>resume<span class="w"> </span>batman<span class="w"> </span>--wait
+<span class="s1">&#39;resume&#39;</span><span class="w"> </span>request<span class="w"> </span>sent,<span class="w"> </span>waiting<span class="w"> </span><span class="k">until</span><span class="w"> </span>it<span class="w"> </span>is<span class="w"> </span>recognized<span class="w"> </span>by<span class="w"> </span>all<span class="w"> </span>nodes
+Success:<span class="w"> </span>cluster<span class="w"> </span>management<span class="w"> </span>is<span class="w"> </span>resumed
+</pre></div>
+</div>
+</section>
+</section>
+<section id="patronictl-show-config">
+<span id="id63"></span><h3>patronictl show-config</h3>
+<section id="patronictl-show-config-synopsis">
+<span id="id64"></span><h4>Synopsis</h4>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>show-config
+  [ CLUSTER_NAME ]
+  [ --group CITUS_GROUP ]
+</pre></div>
+</div>
+</section>
+<section id="patronictl-show-config-description">
+<span id="id65"></span><h4>Description</h4>
+<p><code class="docutils literal notranslate"><span class="pre">patronictl</span> <span class="pre">show-config</span></code> shows the dynamic configuration of the cluster that is stored in the DCS.</p>
+</section>
+<section id="patronictl-show-config-parameters">
+<span id="id66"></span><h4>Parameters</h4>
+<dl>
+<dt><code class="docutils literal notranslate"><span class="pre">CLUSTER_NAME</span></code></dt><dd><p>Name of the Patroni cluster.</p>
+<p>If not given, <code class="docutils literal notranslate"><span class="pre">patronictl</span></code> will attempt to fetch that from the <code class="docutils literal notranslate"><span class="pre">scope</span></code> configuration, if it exists.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--group</span></code></dt><dd><p>Show dynamic configuration of the given Citus group.</p>
+<p><code class="docutils literal notranslate"><span class="pre">CITUS_GROUP</span></code> is the ID of the Citus group.</p>
+<p>If not given, <code class="docutils literal notranslate"><span class="pre">patronictl</span></code> will attempt to fetch that from the <code class="docutils literal notranslate"><span class="pre">citus.group</span></code> configuration, if it exists.</p>
+</dd>
+</dl>
+</section>
+<section id="patronictl-show-config-examples">
+<span id="id67"></span><h4>Examples</h4>
+<p>Show dynamic configuration of cluster <code class="docutils literal notranslate"><span class="pre">batman</span></code>:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$<span class="w"> </span>patronictl<span class="w"> </span>-c<span class="w"> </span>postgres0.yml<span class="w"> </span>show-config<span class="w"> </span>batman
+loop_wait:<span class="w"> </span><span class="m">10</span>
+postgresql:
+<span class="w">  </span>parameters:
+<span class="w">    </span>max_connections:<span class="w"> </span><span class="m">250</span>
+<span class="w">  </span>pg_hba:
+<span class="w">  </span>-<span class="w"> </span>host<span class="w"> </span>replication<span class="w"> </span>replicator<span class="w"> </span><span class="m">127</span>.0.0.1/32<span class="w"> </span>md5
+<span class="w">  </span>-<span class="w"> </span>host<span class="w"> </span>all<span class="w"> </span>all<span class="w"> </span><span class="m">0</span>.0.0.0/0<span class="w"> </span>md5
+<span class="w">  </span>use_pg_rewind:<span class="w"> </span><span class="nb">true</span>
+retry_timeout:<span class="w"> </span><span class="m">10</span>
+ttl:<span class="w"> </span><span class="m">30</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="patronictl-switchover">
+<span id="id68"></span><h3>patronictl switchover</h3>
+<section id="patronictl-switchover-synopsis">
+<span id="id69"></span><h4>Synopsis</h4>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>switchover
+  [ CLUSTER_NAME ]
+  [ --group CITUS_GROUP ]
+  [ { --leader | --primary } LEADER_NAME ]
+  --candidate CANDIDATE_NAME
+  [ --force ]
+</pre></div>
+</div>
+</section>
+<section id="patronictl-switchover-description">
+<span id="id70"></span><h4>Description</h4>
+<p><code class="docutils literal notranslate"><span class="pre">patronictl</span> <span class="pre">switchover</span></code> performs a switchover in the cluster.</p>
+<p>It is designed to be used when the cluster is healthy, e.g.:</p>
+<ul class="simple">
+<li><p>There is a leader;</p></li>
+<li><p>There are synchronous standbys available in a synchronous cluster.</p></li>
+</ul>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>If your cluster is unhealthy you might be interested in <code class="docutils literal notranslate"><span class="pre">patronictl</span> <span class="pre">failover</span></code> instead.</p>
+</div>
+</section>
+<section id="patronictl-switchover-parameters">
+<span id="id71"></span><h4>Parameters</h4>
+<dl>
+<dt><code class="docutils literal notranslate"><span class="pre">CLUSTER_NAME</span></code></dt><dd><p>Name of the Patroni cluster.</p>
+<p>If not given, <code class="docutils literal notranslate"><span class="pre">patronictl</span></code> will attempt to fetch that from the <code class="docutils literal notranslate"><span class="pre">scope</span></code> configuration, if it exists.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--group</span></code></dt><dd><p>Perform a switchover in the given Citus group.</p>
+<p><code class="docutils literal notranslate"><span class="pre">CITUS_GROUP</span></code> is the ID of the Citus group.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--leader</span></code> / <code class="docutils literal notranslate"><span class="pre">--primary</span></code></dt><dd><p>Indicate who is the leader to be demoted at switchover time.</p>
+<p><code class="docutils literal notranslate"><span class="pre">LEADER_NAME</span></code> should match the name of the current leader in the cluster.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--candidate</span></code></dt><dd><p>The node to be promoted on switchover, and take the primary role.</p>
+<p><code class="docutils literal notranslate"><span class="pre">CANDIDATE_NAME</span></code> is the name of the node to be promoted.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--scheduled</span></code></dt><dd><p>Schedule a switchover to occur at the given timestamp.</p>
+<p><code class="docutils literal notranslate"><span class="pre">TIMESTAMP</span></code> is the timestamp when the switchover should occur. Specify it in unambiguous format, preferably with time zone. You can also use the literal <code class="docutils literal notranslate"><span class="pre">now</span></code> for the switchover to be executed immediately.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--force</span></code></dt><dd><p>Flag to skip confirmation prompts when performing the switchover.</p>
+<p>Useful for scripts.</p>
+</dd>
+</dl>
+</section>
+<section id="patronictl-switchover-examples">
+<span id="id72"></span><h4>Examples</h4>
+<p>Switch over with node <code class="docutils literal notranslate"><span class="pre">postgresql2</span></code>:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$<span class="w"> </span>patronictl<span class="w"> </span>-c<span class="w"> </span>postgres0.yml<span class="w"> </span>switchover<span class="w"> </span>batman<span class="w"> </span>--leader<span class="w"> </span>postgresql0<span class="w"> </span>--candidate<span class="w"> </span>postgresql2<span class="w"> </span>--force
+Current<span class="w"> </span>cluster<span class="w"> </span>topology
++<span class="w"> </span>Cluster:<span class="w"> </span>batman<span class="w"> </span><span class="o">(</span><span class="m">7277694203142172922</span><span class="o">)</span><span class="w"> </span>-+-----------+----+-------------+-----+------------+-----+
+<span class="p">|</span><span class="w"> </span>Member<span class="w">      </span><span class="p">|</span><span class="w"> </span>Host<span class="w">           </span><span class="p">|</span><span class="w"> </span>Role<span class="w">    </span><span class="p">|</span><span class="w"> </span>State<span class="w">     </span><span class="p">|</span><span class="w"> </span>TL<span class="w"> </span><span class="p">|</span><span class="w"> </span>Receive<span class="w"> </span>LSN<span class="w"> </span><span class="p">|</span><span class="w"> </span>Lag<span class="w"> </span><span class="p">|</span><span class="w"> </span>Replay<span class="w"> </span>LSN<span class="w"> </span><span class="p">|</span><span class="w"> </span>Lag<span class="w"> </span><span class="p">|</span>
++-------------+----------------+---------+-----------+----+-------------+-----+------------+-----+
+<span class="p">|</span><span class="w"> </span>postgresql0<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">127</span>.0.0.1:5432<span class="w"> </span><span class="p">|</span><span class="w"> </span>Leader<span class="w">  </span><span class="p">|</span><span class="w"> </span>running<span class="w">   </span><span class="p">|</span><span class="w">  </span><span class="m">6</span><span class="w"> </span><span class="p">|</span><span class="w">             </span><span class="p">|</span><span class="w">     </span><span class="p">|</span><span class="w">            </span><span class="p">|</span><span class="w">     </span><span class="p">|</span>
+<span class="p">|</span><span class="w"> </span>postgresql1<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">127</span>.0.0.1:5433<span class="w"> </span><span class="p">|</span><span class="w"> </span>Replica<span class="w"> </span><span class="p">|</span><span class="w"> </span>streaming<span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">6</span><span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span>/40004E8<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">0</span>/40004E8<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span>
+<span class="p">|</span><span class="w"> </span>postgresql2<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">127</span>.0.0.1:5434<span class="w"> </span><span class="p">|</span><span class="w"> </span>Replica<span class="w"> </span><span class="p">|</span><span class="w"> </span>streaming<span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">6</span><span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span>/40004E8<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">0</span>/40004E8<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span>
++-------------+----------------+---------+-----------+----+-------------+-----+------------+-----+
+<span class="m">2023</span>-09-13<span class="w"> </span><span class="m">14</span>:15:23.07497<span class="w"> </span>Successfully<span class="w"> </span>switched<span class="w"> </span>over<span class="w"> </span>to<span class="w"> </span><span class="s2">&quot;postgresql2&quot;</span>
++<span class="w"> </span>Cluster:<span class="w"> </span>batman<span class="w"> </span><span class="o">(</span><span class="m">7277694203142172922</span><span class="o">)</span><span class="w"> </span>-+---------+----+-------------+---------+------------+---------+
+<span class="p">|</span><span class="w"> </span>Member<span class="w">      </span><span class="p">|</span><span class="w"> </span>Host<span class="w">           </span><span class="p">|</span><span class="w"> </span>Role<span class="w">    </span><span class="p">|</span><span class="w"> </span>State<span class="w">   </span><span class="p">|</span><span class="w"> </span>TL<span class="w"> </span><span class="p">|</span><span class="w"> </span>Receive<span class="w"> </span>LSN<span class="w"> </span><span class="p">|</span><span class="w">     </span>Lag<span class="w"> </span><span class="p">|</span><span class="w"> </span>Replay<span class="w"> </span>LSN<span class="w"> </span><span class="p">|</span><span class="w">     </span>Lag<span class="w"> </span><span class="p">|</span>
++-------------+----------------+---------+---------+----+-------------+---------+------------+---------+
+<span class="p">|</span><span class="w"> </span>postgresql0<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">127</span>.0.0.1:5432<span class="w"> </span><span class="p">|</span><span class="w"> </span>Replica<span class="w"> </span><span class="p">|</span><span class="w"> </span>stopped<span class="w"> </span><span class="p">|</span><span class="w">    </span><span class="p">|</span><span class="w">     </span>unknown<span class="w"> </span><span class="p">|</span><span class="w"> </span>unknown<span class="w"> </span><span class="p">|</span><span class="w">    </span>unknown<span class="w"> </span><span class="p">|</span><span class="w"> </span>unknown<span class="w"> </span><span class="p">|</span>
+<span class="p">|</span><span class="w"> </span>postgresql1<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">127</span>.0.0.1:5433<span class="w"> </span><span class="p">|</span><span class="w"> </span>Replica<span class="w"> </span><span class="p">|</span><span class="w"> </span>running<span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">6</span><span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span>/4000188<span class="w"> </span><span class="p">|</span><span class="w">       </span><span class="m">0</span><span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">0</span>/4000188<span class="w"> </span><span class="p">|</span><span class="w">       </span><span class="m">0</span><span class="w"> </span><span class="p">|</span>
+<span class="p">|</span><span class="w"> </span>postgresql2<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">127</span>.0.0.1:5434<span class="w"> </span><span class="p">|</span><span class="w"> </span>Leader<span class="w">  </span><span class="p">|</span><span class="w"> </span>running<span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">6</span><span class="w"> </span><span class="p">|</span><span class="w">             </span><span class="p">|</span><span class="w">         </span><span class="p">|</span><span class="w">            </span><span class="p">|</span><span class="w">         </span><span class="p">|</span>
++-------------+----------------+---------+---------+----+-------------+---------+------------+---------+
+</pre></div>
+</div>
+<p>Schedule a switchover between <code class="docutils literal notranslate"><span class="pre">postgresql0</span></code> and <code class="docutils literal notranslate"><span class="pre">postgresql2</span></code> to occur at <code class="docutils literal notranslate"><span class="pre">2023-09-13T18:00:00-03:00</span></code>:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$<span class="w"> </span>patronictl<span class="w"> </span>-c<span class="w"> </span>postgres0.yml<span class="w"> </span>switchover<span class="w"> </span>batman<span class="w"> </span>--leader<span class="w"> </span>postgresql0<span class="w"> </span>--candidate<span class="w"> </span>postgresql2<span class="w"> </span>--scheduled<span class="w"> </span><span class="m">2023</span>-09-13T18:00-03:00<span class="w"> </span>--force
+Current<span class="w"> </span>cluster<span class="w"> </span>topology
++<span class="w"> </span>Cluster:<span class="w"> </span>batman<span class="w"> </span><span class="o">(</span><span class="m">7277694203142172922</span><span class="o">)</span><span class="w"> </span>-+-----------+----+-------------+-----+------------+-----+
+<span class="p">|</span><span class="w"> </span>Member<span class="w">      </span><span class="p">|</span><span class="w"> </span>Host<span class="w">           </span><span class="p">|</span><span class="w"> </span>Role<span class="w">    </span><span class="p">|</span><span class="w"> </span>State<span class="w">     </span><span class="p">|</span><span class="w"> </span>TL<span class="w"> </span><span class="p">|</span><span class="w"> </span>Receive<span class="w"> </span>LSN<span class="w"> </span><span class="p">|</span><span class="w"> </span>Lag<span class="w"> </span><span class="p">|</span><span class="w"> </span>Replay<span class="w"> </span>LSN<span class="w"> </span><span class="p">|</span><span class="w"> </span>Lag<span class="w"> </span><span class="p">|</span>
++-------------+----------------+---------+-----------+----+-------------+-----+------------+-----+
+<span class="p">|</span><span class="w"> </span>postgresql0<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">127</span>.0.0.1:5432<span class="w"> </span><span class="p">|</span><span class="w"> </span>Leader<span class="w">  </span><span class="p">|</span><span class="w"> </span>running<span class="w">   </span><span class="p">|</span><span class="w">  </span><span class="m">8</span><span class="w"> </span><span class="p">|</span><span class="w">             </span><span class="p">|</span><span class="w">     </span><span class="p">|</span><span class="w">            </span><span class="p">|</span><span class="w">     </span><span class="p">|</span>
+<span class="p">|</span><span class="w"> </span>postgresql1<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">127</span>.0.0.1:5433<span class="w"> </span><span class="p">|</span><span class="w"> </span>Replica<span class="w"> </span><span class="p">|</span><span class="w"> </span>streaming<span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">8</span><span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span>/40004E8<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">0</span>/40004E8<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span>
+<span class="p">|</span><span class="w"> </span>postgresql2<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">127</span>.0.0.1:5434<span class="w"> </span><span class="p">|</span><span class="w"> </span>Replica<span class="w"> </span><span class="p">|</span><span class="w"> </span>streaming<span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">8</span><span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span>/40004E8<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">0</span>/40004E8<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span>
++-------------+----------------+---------+-----------+----+-------------+-----+------------+-----+
+<span class="m">2023</span>-09-13<span class="w"> </span><span class="m">14</span>:18:11.20661<span class="w"> </span>Switchover<span class="w"> </span>scheduled
++<span class="w"> </span>Cluster:<span class="w"> </span>batman<span class="w"> </span><span class="o">(</span><span class="m">7277694203142172922</span><span class="o">)</span><span class="w"> </span>-+-----------+----+-------------+-----+------------+-----+
+<span class="p">|</span><span class="w"> </span>Member<span class="w">      </span><span class="p">|</span><span class="w"> </span>Host<span class="w">           </span><span class="p">|</span><span class="w"> </span>Role<span class="w">    </span><span class="p">|</span><span class="w"> </span>State<span class="w">     </span><span class="p">|</span><span class="w"> </span>TL<span class="w"> </span><span class="p">|</span><span class="w"> </span>Receive<span class="w"> </span>LSN<span class="w"> </span><span class="p">|</span><span class="w"> </span>Lag<span class="w"> </span><span class="p">|</span><span class="w"> </span>Replay<span class="w"> </span>LSN<span class="w"> </span><span class="p">|</span><span class="w"> </span>Lag<span class="w"> </span><span class="p">|</span>
++-------------+----------------+---------+-----------+----+-------------+-----+------------+-----+
+<span class="p">|</span><span class="w"> </span>postgresql0<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">127</span>.0.0.1:5432<span class="w"> </span><span class="p">|</span><span class="w"> </span>Leader<span class="w">  </span><span class="p">|</span><span class="w"> </span>running<span class="w">   </span><span class="p">|</span><span class="w">  </span><span class="m">8</span><span class="w"> </span><span class="p">|</span><span class="w">             </span><span class="p">|</span><span class="w">     </span><span class="p">|</span><span class="w">            </span><span class="p">|</span><span class="w">     </span><span class="p">|</span>
+<span class="p">|</span><span class="w"> </span>postgresql1<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">127</span>.0.0.1:5433<span class="w"> </span><span class="p">|</span><span class="w"> </span>Replica<span class="w"> </span><span class="p">|</span><span class="w"> </span>streaming<span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">8</span><span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span>/40004E8<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">0</span>/40004E8<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span>
+<span class="p">|</span><span class="w"> </span>postgresql2<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">127</span>.0.0.1:5434<span class="w"> </span><span class="p">|</span><span class="w"> </span>Replica<span class="w"> </span><span class="p">|</span><span class="w"> </span>streaming<span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">8</span><span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span>/40004E8<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">0</span>/40004E8<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span>
++-------------+----------------+---------+-----------+----+-------------+-----+------------+-----+
+Switchover<span class="w"> </span>scheduled<span class="w"> </span>at:<span class="w"> </span><span class="m">2023</span>-09-13T18:00:00-03:00
+<span class="w">                    </span>from:<span class="w"> </span>postgresql0
+<span class="w">                    </span>to:<span class="w"> </span>postgresql2
+</pre></div>
+</div>
+</section>
+</section>
+<section id="patronictl-topology">
+<span id="id73"></span><h3>patronictl topology</h3>
+<section id="patronictl-topology-synopsis">
+<span id="id74"></span><h4>Synopsis</h4>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>topology
+  [ CLUSTER_NAME [, ... ] ]
+  [ --group CITUS_GROUP ]
+  [ { -W | { -w | --watch } TIME } ]
+</pre></div>
+</div>
+</section>
+<section id="patronictl-topology-description">
+<span id="id75"></span><h4>Description</h4>
+<p><code class="docutils literal notranslate"><span class="pre">patronictl</span> <span class="pre">topology</span></code> shows information about the Patroni cluster and its members with a tree view approach.</p>
+<p>The following information is included in the output:</p>
+<dl>
+<dt><code class="docutils literal notranslate"><span class="pre">Cluster</span></code></dt><dd><p>Name of the Patroni cluster.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Shown in the table header.</p>
+</div>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">System</span> <span class="pre">identifier</span></code></dt><dd><p>Postgres system identifier.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Shown in the table header.</p>
+</div>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">Member</span></code></dt><dd><p>Name of the Patroni member.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Information in this column is shown as a tree view of members in terms of replication connections.</p>
+</div>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">Host</span></code></dt><dd><p>Host where the member is located.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">Role</span></code></dt><dd><p>Current role of the member.</p>
+<p>Can be one among:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">Leader</span></code>: the current leader of a regular Patroni cluster; or</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">Standby</span> <span class="pre">Leader</span></code>: the current leader of a Patroni standby cluster; or</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">Sync</span> <span class="pre">Standby</span></code>: a synchronous standby of a Patroni cluster with synchronous mode enabled; or</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">Replica</span></code>: a regular standby of a Patroni cluster.</p></li>
+</ul>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">State</span></code></dt><dd><p>Current state of Postgres in the Patroni member.</p>
+<p>Some examples among the possible states:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">running</span></code>: if Postgres is currently up and running;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">streaming</span></code>: if a replica and Postgres is currently streaming WALs from the primary node;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">in</span> <span class="pre">archive</span> <span class="pre">recovery</span></code>: if a replica and Postgres is currently fetching WALs from the archive;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">stopped</span></code>: if Postgres had been shut down;</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">crashed</span></code>: if Postgres has crashed.</p></li>
+</ul>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">TL</span></code></dt><dd><p>Current Postgres timeline in the Patroni member.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">Receive</span> <span class="pre">LSN</span></code></dt><dd><p>The last write-ahead log location received and synced to disk by streaming replication of the member (<code class="docutils literal notranslate"><span class="pre">pg_catalog.pg_last_(xlog|wal)_receive_(location|lsn)()</span></code>).</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">Receive</span> <span class="pre">Lag</span></code></dt><dd><p>Replication lag between the <code class="docutils literal notranslate"><span class="pre">Receive</span> <span class="pre">LSN</span></code> position of the member and its upstream in in MB.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">Replay</span> <span class="pre">LSN</span></code></dt><dd><p>The last write-ahead log location replayed during recovery of the member (<code class="docutils literal notranslate"><span class="pre">pg_catalog.pg_last_(xlog|wal)_replay_(location|lsn)()</span></code>).</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">Replay</span> <span class="pre">Lag</span></code></dt><dd><p>Replication lag between the <code class="docutils literal notranslate"><span class="pre">Replay</span> <span class="pre">LSN</span></code> position of the member and its upstream in in MB.</p>
+</dd>
+</dl>
+<p>Besides that, the following information may be included in the output:</p>
+<dl>
+<dt><code class="docutils literal notranslate"><span class="pre">Group</span></code></dt><dd><p>Citus group ID.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Shown in the table header.</p>
+<p>Only shown if a Citus cluster.</p>
+</div>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">Pending</span> <span class="pre">restart</span></code></dt><dd><p><code class="docutils literal notranslate"><span class="pre">*</span></code> indicates the node needs a restart for some Postgres configuration to take effect. An empty value indicates the node does not require a restart.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Shown as a member attribute.</p>
+<p>Shown if node requires a restart.</p>
+</div>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">Scheduled</span> <span class="pre">restart</span></code></dt><dd><p>Timestamp at which a restart has been scheduled for the Postgres instance managed by the Patroni member. An empty value indicates there is no scheduled restart for the member.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Shown as a member attribute.</p>
+<p>Shown if node has a scheduled restart.</p>
+</div>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">Tags</span></code></dt><dd><p>Contains tags set for the Patroni member. An empty value indicates that either no tags have been configured, or that they have been configured with default values.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Shown as a member attribute.</p>
+<p>Shown if node has any custom tags, or any default tags with non-default values.</p>
+</div>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">Scheduled</span> <span class="pre">switchover</span></code></dt><dd><p>Timestamp at which a switchover has been scheduled for the Patroni cluster, if any.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Shown in the table footer.</p>
+<p>Only shown if there is a scheduled switchover.</p>
+</div>
+</dd>
+</dl>
+<p><code class="docutils literal notranslate"><span class="pre">Maintenance</span> <span class="pre">mode</span></code></p>
+<blockquote>
+<div><p>If the cluster monitoring is currently paused.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Shown in the table footer.</p>
+<p>Only shown if the cluster is paused.</p>
+</div>
+</div></blockquote>
+</section>
+<section id="patronictl-topology-parameters">
+<span id="id76"></span><h4>Parameters</h4>
+<dl>
+<dt><code class="docutils literal notranslate"><span class="pre">CLUSTER_NAME</span></code></dt><dd><p>Name of the Patroni cluster.</p>
+<p>If not given, <code class="docutils literal notranslate"><span class="pre">patronictl</span></code> will attempt to fetch that from the <code class="docutils literal notranslate"><span class="pre">scope</span></code> configuration, if it exists.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--group</span></code></dt><dd><p>Show information about members from the given Citus group.</p>
+<p><code class="docutils literal notranslate"><span class="pre">CITUS_GROUP</span></code> is the ID of the Citus group.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">-W</span></code></dt><dd><p>Automatically refresh information every 2 seconds.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">-w</span></code> / <code class="docutils literal notranslate"><span class="pre">--watch</span></code></dt><dd><p>Automatically refresh information at the specified interval.</p>
+<p><code class="docutils literal notranslate"><span class="pre">TIME</span></code> is the interval between refreshes, in seconds.</p>
+</dd>
+</dl>
+</section>
+<section id="patronictl-topology-examples">
+<span id="id77"></span><h4>Examples</h4>
+<p>Show topology of the cluster <code class="docutils literal notranslate"><span class="pre">batman</span></code> – <code class="docutils literal notranslate"><span class="pre">postgresql1</span></code> and <code class="docutils literal notranslate"><span class="pre">postgresql2</span></code> are replicating from <code class="docutils literal notranslate"><span class="pre">postgresql0</span></code>:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$<span class="w"> </span>patronictl<span class="w"> </span>-c<span class="w"> </span>postgres0.yml<span class="w"> </span>topology<span class="w"> </span>batman
++<span class="w"> </span>Cluster:<span class="w"> </span>batman<span class="w"> </span><span class="o">(</span><span class="m">7277694203142172922</span><span class="o">)</span><span class="w"> </span>---+-----------+----+-------------+-----+------------+-----+
+<span class="p">|</span><span class="w"> </span>Member<span class="w">        </span><span class="p">|</span><span class="w"> </span>Host<span class="w">           </span><span class="p">|</span><span class="w"> </span>Role<span class="w">    </span><span class="p">|</span><span class="w"> </span>State<span class="w">     </span><span class="p">|</span><span class="w"> </span>TL<span class="w"> </span><span class="p">|</span><span class="w"> </span>Receive<span class="w"> </span>LSN<span class="w"> </span><span class="p">|</span><span class="w"> </span>Lag<span class="w"> </span><span class="p">|</span><span class="w"> </span>Replay<span class="w"> </span>LSN<span class="w"> </span><span class="p">|</span><span class="w"> </span>Lag<span class="w"> </span><span class="p">|</span>
++---------------+----------------+---------+-----------+----+-------------+-----+------------+-----+
+<span class="p">|</span><span class="w"> </span>postgresql0<span class="w">   </span><span class="p">|</span><span class="w"> </span><span class="m">127</span>.0.0.1:5432<span class="w"> </span><span class="p">|</span><span class="w"> </span>Leader<span class="w">  </span><span class="p">|</span><span class="w"> </span>running<span class="w">   </span><span class="p">|</span><span class="w">  </span><span class="m">8</span><span class="w"> </span><span class="p">|</span><span class="w">             </span><span class="p">|</span><span class="w">     </span><span class="p">|</span><span class="w">            </span><span class="p">|</span><span class="w">     </span><span class="p">|</span>
+<span class="p">|</span><span class="w"> </span>+<span class="w"> </span>postgresql1<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">127</span>.0.0.1:5433<span class="w"> </span><span class="p">|</span><span class="w"> </span>Replica<span class="w"> </span><span class="p">|</span><span class="w"> </span>streaming<span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">8</span><span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span>/40004E8<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">0</span>/40004E8<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span>
+<span class="p">|</span><span class="w"> </span>+<span class="w"> </span>postgresql2<span class="w"> </span><span class="p">|</span><span class="w"> </span><span class="m">127</span>.0.0.1:5434<span class="w"> </span><span class="p">|</span><span class="w"> </span>Replica<span class="w"> </span><span class="p">|</span><span class="w"> </span>streaming<span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">8</span><span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span>/40004E8<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span><span class="w">  </span><span class="m">0</span>/40004E8<span class="w"> </span><span class="p">|</span><span class="w">   </span><span class="m">0</span><span class="w"> </span><span class="p">|</span>
++---------------+----------------+---------+-----------+----+-------------+-----+------------+-----+
+</pre></div>
+</div>
+</section>
+</section>
+<section id="patronictl-version">
+<span id="id78"></span><h3>patronictl version</h3>
+<section id="patronictl-version-synopsis">
+<span id="id79"></span><h4>Synopsis</h4>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>version
+  [ CLUSTER_NAME [, ... ] ]
+  [ MEMBER_NAME [, ... ] ]
+  [ --group CITUS_GROUP ]
+</pre></div>
+</div>
+</section>
+<section id="patronictl-version-description">
+<span id="id80"></span><h4>Description</h4>
+<p><code class="docutils literal notranslate"><span class="pre">patronictl</span> <span class="pre">version</span></code> gets the version of <code class="docutils literal notranslate"><span class="pre">patronictl</span></code> application. Besides that it may also include version information about Patroni clusters and their members.</p>
+</section>
+<section id="patronictl-version-parameters">
+<span id="id81"></span><h4>Parameters</h4>
+<dl>
+<dt><code class="docutils literal notranslate"><span class="pre">CLUSTER_NAME</span></code></dt><dd><p>Name of the Patroni cluster.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">MEMBER_NAME</span></code></dt><dd><p>Name of the member of the Patroni cluster.</p>
+</dd>
+<dt><code class="docutils literal notranslate"><span class="pre">--group</span></code></dt><dd><p>Consider a Patroni cluster with the given Citus group.</p>
+<p><code class="docutils literal notranslate"><span class="pre">CITUS_GROUP</span></code> is the ID of the Citus group.</p>
+</dd>
+</dl>
+</section>
+<section id="patronictl-version-examples">
+<span id="id82"></span><h4>Examples</h4>
+<p>Get version of <code class="docutils literal notranslate"><span class="pre">patronictl</span></code> only:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$<span class="w"> </span>patronictl<span class="w"> </span>-c<span class="w"> </span>postgres0.yml<span class="w"> </span>version
+patronictl<span class="w"> </span>version<span class="w"> </span><span class="m">4</span>.0.0
+</pre></div>
+</div>
+<p>Get version of <code class="docutils literal notranslate"><span class="pre">patronictl</span></code> and of all members of cluster <code class="docutils literal notranslate"><span class="pre">batman</span></code>:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$<span class="w"> </span>patronictl<span class="w"> </span>-c<span class="w"> </span>postgres0.yml<span class="w"> </span>version<span class="w"> </span>batman
+patronictl<span class="w"> </span>version<span class="w"> </span><span class="m">4</span>.0.0
+
+postgresql0:<span class="w"> </span>Patroni<span class="w"> </span><span class="m">4</span>.0.0<span class="w"> </span>PostgreSQL<span class="w"> </span><span class="m">16</span>.4
+postgresql1:<span class="w"> </span>Patroni<span class="w"> </span><span class="m">4</span>.0.0<span class="w"> </span>PostgreSQL<span class="w"> </span><span class="m">16</span>.4
+postgresql2:<span class="w"> </span>Patroni<span class="w"> </span><span class="m">4</span>.0.0<span class="w"> </span>PostgreSQL<span class="w"> </span><span class="m">16</span>.4
+</pre></div>
+</div>
+<p>Get version of <code class="docutils literal notranslate"><span class="pre">patronictl</span></code> and of members <code class="docutils literal notranslate"><span class="pre">postgresql1</span></code> and <code class="docutils literal notranslate"><span class="pre">postgresql2</span></code> of cluster <code class="docutils literal notranslate"><span class="pre">batman</span></code>:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>$<span class="w"> </span>patronictl<span class="w"> </span>-c<span class="w"> </span>postgres0.yml<span class="w"> </span>version<span class="w"> </span>batman<span class="w"> </span>postgresql1<span class="w"> </span>postgresql2
+patronictl<span class="w"> </span>version<span class="w"> </span><span class="m">4</span>.0.0
+
+postgresql1:<span class="w"> </span>Patroni<span class="w"> </span><span class="m">4</span>.0.0<span class="w"> </span>PostgreSQL<span class="w"> </span><span class="m">16</span>.4
+postgresql2:<span class="w"> </span>Patroni<span class="w"> </span><span class="m">4</span>.0.0<span class="w"> </span>PostgreSQL<span class="w"> </span><span class="m">16</span>.4
+</pre></div>
+</div>
+</section>
+</section>
+</section>
+</section>
+
+
+            <div class="clearer"></div>
+          </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+  </body>
+</html>

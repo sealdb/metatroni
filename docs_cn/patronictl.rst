@@ -8,13 +8,13 @@ Patroni 提供了一个名为 ``patronictl`` 的命令行界面，主要用于�
 .. _patronictl_configuration:
 
 配置
------
+----
 
 ``patronictl`` 使用配置中的 3 个部分：
 
-- **ctl**：如何针对 Patroni REST API 进行身份认证，以及如何校验服务器身份。更多详情请参阅 :ref:`ctl settings <patronictl_settings>`；
-- **restapi**：如何针对 Patroni REST API 进行身份认证，以及如何校验服务器身份。仅在 ``ctl`` 配置不足时使用。``patronictl`` 主要关注 ``restapi.authentication`` 部分（当缺少 ``ctl.authentication`` 时）以及 ``restapi.cafile`` 设置（当缺少 ``ctl.cacert`` 时）。更多详情请参阅 :ref:`REST API settings <restapi_settings>`；
-- DCS（例如 **etcd**）：如何连接 Patroni 所使用的 DCS 并针对其进行身份认证。
+- **ctl**\：如何针对 Patroni REST API 进行身份认证，以及如何校验服务器身份。更多详情请参阅 :ref:`ctl settings <patronictl_settings>`；
+- **restapi**\：如何针对 Patroni REST API 进行身份认证，以及如何校验服务器身份。仅在 ``ctl`` 配置不足时使用。``patronictl`` 主要关注 ``restapi.authentication`` 部分（当缺少 ``ctl.authentication`` 时）以及 ``restapi.cafile`` 设置（当缺少 ``ctl.cacert`` 时）。更多详情请参阅 :ref:`REST API settings <restapi_settings>`；
+- DCS（例如 **etcd**\）：如何连接 Patroni 所使用的 DCS 并针对其进行身份认证。
 
 这些配置选项既可以来自环境变量，也可以来自配置文件。请在 :ref:`Environment Configuration Settings <environment>` 或 :ref:`YAML Configuration Settings <yaml_configuration>` 中查找上述部分，以了解如何通过环境变量或配置文件为这些选项设置值。
 
@@ -31,16 +31,16 @@ Patroni 提供了一个名为 ``patronictl`` 的命令行界面，主要用于�
 
 你可以通过以下任一方式覆盖该行为：
 
-- 设置环境变量 ``PATRONICTL_CONFIG_FILE``，值为自定义配置文件的路径；
+- 设置环境变量 ``PATRONICTL_CONFIG_FILE``\，值为自定义配置文件的路径；
 - 使用 ``patronictl`` 的 ``-c``/ ``--config-file`` 命令行参数，并指定自定义配置文件的路径。
 
 .. note::
-    如果你在与 ``patroni`` 守护进程相同的宿主机上运行 ``patronictl``，只要该配置文件包含 ``patronictl`` 所需的全部配置部分，你就可以直接使用同一个配置文件。
+    如果你在与 ``patroni`` 守护进程相同的宿主机上运行 ``patronictl``\，只要该配置文件包含 ``patronictl`` 所需的全部配置部分，你就可以直接使用同一个配置文件。
 
 .. _patronictl_usage:
 
 用法
------
+----
 
 ``patronictl`` 提供了若干便捷的操作。本节将逐一介绍这些操作。
 
@@ -54,7 +54,7 @@ Patroni 提供了一个名为 ``patronictl`` 的命令行界面，主要用于�
 
     该参数既可以用于覆盖 ``patronictl`` 配置中的 DCS 和 ``namespace`` 设置，也可以在配置中缺失这些设置时对其进行定义。
 
-    该值的格式应为 ``DCS://HOST:PORT/NAMESPACE``，例如 ``etcd3://localhost:2379/service``，用于连接运行在 ``localhost`` 上的 etcd v3，此时 Patroni 集群存储在 ``service`` 命名空间下。参数值中缺失的任何部分都将替换为配置中已有的值或其默认值。
+    该值的格式应为 ``DCS://HOST:PORT/NAMESPACE``\，例如 ``etcd3://localhost:2379/service``\，用于连接运行在 ``localhost`` 上的 etcd v3，此时 Patroni 集群存储在 ``service`` 命名空间下。参数值中缺失的任何部分都将替换为配置中已有的值或其默认值。
 
 ``-k``/ ``--insecure``
     用于跳过 REST API 服务器 SSL 证书校验的标记。
@@ -80,7 +80,7 @@ Patroni 提供了一个名为 ``patronictl`` 的命令行界面，主要用于�
     在以下各小节中描述 ``patronictl`` 子命令时，我们将使用同样的语法格式。
     此外，在以下各小节中描述子命令时，各命令的语法说明应视为上述语法中 ``SUBCOMMAND`` 的替换。
 
-在以下各小节中，你可以找到 ``patronictl`` 所实现的每个命令的说明。为了举例，我们将使用 Patroni 的 GitHub 仓库中提供的配置文件（``postgres0.yml``、``postgres1.yml`` 和 ``postgres2.yml``）。
+在以下各小节中，你可以找到 ``patronictl`` 所实现的每个命令的说明。为了举例，我们将使用 Patroni 的 GitHub 仓库中提供的配置文件（``postgres0.yml``\、``postgres1.yml`` 和 ``postgres2.yml``\）。
 
 .. _patronictl_dsn:
 
@@ -90,7 +90,7 @@ patronictl dsn
 .. _patronictl_dsn_synopsis:
 
 语法
-""""""
+""""
 
 .. code:: text
 
@@ -102,7 +102,7 @@ patronictl dsn
 .. _patronictl_dsn_description:
 
 说明
-""""""""
+""""
 
 ``patronictl dsn`` 获取 Patroni 集群中某个成员的连接字符串。
 
@@ -111,7 +111,7 @@ patronictl dsn
 .. _patronictl_dsn_parameters:
 
 参数
-""""""""
+""""
 
 ``CLUSTER_NAME``
     Patroni 集群的名称。
@@ -123,12 +123,12 @@ patronictl dsn
 
     角色可以是以下之一：
 
-    - ``leader``：常规 Patroni 集群或 standby Patroni 集群的 leader；或
-    - ``primary``：常规 Patroni 集群的 leader；或
-    - ``standby-leader``：standby Patroni 集群的 leader；或
-    - ``replica``：Patroni 集群的 replica；或
-    - ``standby``：与 ``replica`` 相同；或
-    - ``any``：任意角色，等同于省略该参数；或
+    - ``leader``\：常规 Patroni 集群或 standby Patroni 集群的 leader；或
+    - ``primary``\：常规 Patroni 集群的 leader；或
+    - ``standby-leader``\：standby Patroni 集群的 leader；或
+    - ``replica``\：Patroni 集群的 replica；或
+    - ``standby``\：与 ``replica`` 相同；或
+    - ``any``\：任意角色，等同于省略该参数；或
 
 ``-m``/ ``--member``
     选择集群中具有指定名称的成员。
@@ -143,7 +143,7 @@ patronictl dsn
 .. _patronictl_dsn_examples:
 
 示例
-""""""""
+""""
 
 获取 primary 节点的 DSN：
 
@@ -167,7 +167,7 @@ patronictl edit-config
 .. _patronictl_edit_config_synopsis:
 
 语法
-""""""
+""""
 
 .. code:: text
 
@@ -183,17 +183,17 @@ patronictl edit-config
 .. _patronictl_edit_config_description:
 
 说明
-""""""""
+""""
 
 ``patronictl edit-config`` 修改集群的动态配置，并将修改后的配置更新到 DCS 中。
 
 .. note::
-    当通过 TTY 调用时，该命令会尝试通过分页器（pager）显示动态配置的 diff。默认情况下，它会尝试使用 ``less`` 或 ``more``。如果你想使用其他分页器，请通过设置 ``PAGER`` 环境变量来指定。
+    当通过 TTY 调用时，该命令会尝试通过分页器（pager）显示动态配置的 diff。默认情况下，它会尝试使用 ``less`` 或 ``more``\。如果你想使用其他分页器，请通过设置 ``PAGER`` 环境变量来指定。
 
 .. _patronictl_edit_config_parameters:
 
 参数
-""""""""
+""""
 
 ``CLUSTER_NAME``
     Patroni 集群的名称。
@@ -215,7 +215,7 @@ patronictl edit-config
 
     ``CONFIG`` 是 YAML 树中动态配置路径的名称，各级之间用 ``.`` 连接。
 
-    ``VALUE`` 是 ``CONFIG`` 的值。如果该值为 ``null``，则 ``CONFIG`` 将从动态配置中移除。
+    ``VALUE`` 是 ``CONFIG`` 的值。如果该值为 ``null``\，则 ``CONFIG`` 将从动态配置中移除。
 
 ``-p``/ ``--pg``
     以给定的值设置某个动态 Postgres 配置选项。
@@ -224,19 +224,19 @@ patronictl edit-config
 
     ``PG_CONFIG`` 是要设置的 Postgres 配置的名称。
 
-    ``PG_VALUE`` 是 ``PG_CONFIG`` 的值。如果该值为 ``null``，则 ``PG_CONFIG`` 将从动态配置中移除。
+    ``PG_VALUE`` 是 ``PG_CONFIG`` 的值。如果该值为 ``null``\，则 ``PG_CONFIG`` 将从动态配置中移除。
 
 ``--apply``
     从给定的文件应用动态配置。
 
     这类似于为 ``CONFIG_FILE`` 中的每一项配置分别指定一个 ``-s``/ ``--set`` 选项。
 
-    ``CONFIG_FILE`` 是包含要应用的动态配置的文件的路径，格式为 YAML。如果想从 ``stdin`` 读取，请使用 ``-``。
+    ``CONFIG_FILE`` 是包含要应用的动态配置的文件的路径，格式为 YAML。如果想从 ``stdin`` 读取，请使用 ``-``\。
 
 ``--replace``
     将 DCS 中的动态配置替换为指定文件中定义的动态配置。
 
-    ``CONFIG_FILE`` 是包含新的、即将生效的动态配置的文件的路径，格式为 YAML。如果想从 ``stdin`` 读取，请使用 ``-``。
+    ``CONFIG_FILE`` 是包含新的、即将生效的动态配置的文件的路径，格式为 YAML。如果想从 ``stdin`` 读取，请使用 ``-``\。
 
 ``--force``
     在修改动态配置时跳过确认提示的标记。
@@ -246,7 +246,7 @@ patronictl edit-config
 .. _patronictl_edit_config_examples:
 
 示例
-""""""""
+""""
 
 修改 ``max_connections`` Postgres GUC：
 
@@ -313,7 +313,7 @@ patronictl failover
 .. _patronictl_failover_synopsis:
 
 语法
-""""""
+""""
 
 .. code:: text
 
@@ -326,7 +326,7 @@ patronictl failover
 .. _patronictl_failover_description:
 
 说明
-""""""""
+""""
 
 ``patronictl failover`` 在集群中执行手动 failover。
 
@@ -338,7 +338,7 @@ patronictl failover
 如果启用了同步模式，它还允许 failover 到异步节点。
 
 .. note::
-    没有任何机制阻止你在健康的集群中运行 ``patronictl failover``。不过，在这种情况下，我们建议使用 ``patronictl switchover``。
+    没有任何机制阻止你在健康的集群中运行 ``patronictl failover``\。不过，在这种情况下，我们建议使用 ``patronictl switchover``\。
 
 .. warning::
     触发 failover 可能导致数据丢失，具体取决于被提升的 replica 与 primary 相比的新鲜程度。
@@ -346,7 +346,7 @@ patronictl failover
 .. _patronictl_failover_parameters:
 
 参数
-""""""""
+""""
 
 ``CLUSTER_NAME``
     Patroni 集群的名称。
@@ -371,9 +371,9 @@ patronictl failover
 .. _patronictl_failover_examples:
 
 示例
-""""""""
+""""
 
-Failover 到节点 ``postgresql2``：
+Failover 到节点 ``postgresql2``\：
 
 .. code:: bash
 
@@ -403,7 +403,7 @@ patronictl flush
 .. _patronictl_flush_synopsis:
 
 语法
-""""""
+""""
 
 .. code:: text
 
@@ -418,14 +418,14 @@ patronictl flush
 .. _patronictl_flush_description:
 
 说明
-""""""""
+""""
 
 ``patronictl flush`` 丢弃已计划的事件（如果有）。
 
 .. _patronictl_flush_parameters:
 
 参数
-""""""""
+""""
 
 ``CLUSTER_NAME``
     Patroni 集群的名称。
@@ -454,12 +454,12 @@ patronictl flush
 
     角色可以是以下之一：
 
-    - ``leader``：常规 Patroni 集群或 standby Patroni 集群的 leader；或
-    - ``primary``：常规 Patroni 集群的 leader；或
-    - ``standby-leader``：standby Patroni 集群的 leader；或
-    - ``replica``：Patroni 集群的 replica；或
-    - ``standby``：与 ``replica`` 相同；或
-    - ``any``：任意角色，等同于省略该参数。
+    - ``leader``\：常规 Patroni 集群或 standby Patroni 集群的 leader；或
+    - ``primary``\：常规 Patroni 集群的 leader；或
+    - ``standby-leader``\：standby Patroni 集群的 leader；或
+    - ``replica``\：Patroni 集群的 replica；或
+    - ``standby``\：与 ``replica`` 相同；或
+    - ``any``\：任意角色，等同于省略该参数。
 
     .. note::
         仅在丢弃计划的 restart 事件时使用。
@@ -472,7 +472,7 @@ patronictl flush
 .. _patronictl_flush_examples:
 
 示例
-""""""""
+""""
 
 丢弃一个计划的 switchover 事件：
 
@@ -519,7 +519,7 @@ patronictl history
 .. _patronictl_history_synopsis:
 
 语法
-""""""
+""""
 
 .. code:: text
 
@@ -531,7 +531,7 @@ patronictl history
 .. _patronictl_history_description:
 
 说明
-""""""""
+""""
 
 ``patronictl history`` 显示集群中 failover 和 switchover 事件的历史记录（如果有）。
 
@@ -555,7 +555,7 @@ patronictl history
 .. _patronictl_history_parameters:
 
 参数
-""""""""
+""""
 
 ``CLUSTER_NAME``
     Patroni 集群的名称。
@@ -574,12 +574,12 @@ patronictl history
 
     格式可以是以下之一：
 
-    - ``pretty``：以美观的表格形式输出 history；或
-    - ``tsv``：以表格形式输出 history，列之间用 ``\t`` 分隔；或
-    - ``json``：以 JSON 格式输出 history；或
-    - ``yaml``：以 YAML 格式输出 history。
+    - ``pretty``\：以美观的表格形式输出 history；或
+    - ``tsv``\：以表格形式输出 history，列之间用 ``\t`` 分隔；或
+    - ``json``\：以 JSON 格式输出 history；或
+    - ``yaml``\：以 YAML 格式输出 history。
 
-    默认格式为 ``pretty``。
+    默认格式为 ``pretty``\。
 
 ``--force``
     执行 flush 时跳过确认提示的标记。
@@ -589,7 +589,7 @@ patronictl history
 .. _patronictl_history_examples:
 
 示例
-""""""""
+""""
 
 显示事件的历史记录：
 
@@ -639,7 +639,7 @@ patronictl list
 .. _patronictl_list_synopsis:
 
 语法
-""""""
+""""
 
 .. code:: text
 
@@ -654,7 +654,7 @@ patronictl list
 .. _patronictl_list_description:
 
 说明
-""""""""
+""""
 
 ``patronictl list`` 显示 Patroni 集群及其成员的信息。
 
@@ -674,33 +674,33 @@ patronictl list
 
     可以是以下之一：
 
-    * ``Leader``：常规 Patroni 集群当前的 leader；或
-    * ``Standby Leader``：Patroni standby 集群当前的 leader；或
-    * ``Sync Standby``：启用了同步模式的 Patroni 集群中的 synchronous standby；或
-    * ``Replica``：Patroni 集群的常规 standby。
+    * ``Leader``\：常规 Patroni 集群当前的 leader；或
+    * ``Standby Leader``\：Patroni standby 集群当前的 leader；或
+    * ``Sync Standby``\：启用了同步模式的 Patroni 集群中的 synchronous standby；或
+    * ``Replica``\：Patroni 集群的常规 standby。
 
 ``State``
     Patroni 成员中 Postgres 的当前状态。
 
     以下是可能状态中的一些示例：
 
-    * ``running``：如果 Postgres 当前正在运行；
-    * ``streaming``：如果是 replica 且 Postgres 当前正从 primary 节点流式接收 WAL；
-    * ``in archive recovery``：如果是 replica 且 Postgres 当前正在从归档中获取 WAL；
-    * ``stopped``：如果 Postgres 已被关闭；
-    * ``crashed``：如果 Postgres 已崩溃。
+    * ``running``\：如果 Postgres 当前正在运行；
+    * ``streaming``\：如果是 replica 且 Postgres 当前正从 primary 节点流式接收 WAL；
+    * ``in archive recovery``\：如果是 replica 且 Postgres 当前正在从归档中获取 WAL；
+    * ``stopped``\：如果 Postgres 已被关闭；
+    * ``crashed``\：如果 Postgres 已崩溃。
 
 ``TL``
     Patroni 成员中 Postgres 当前的 timeline。
 
 ``Receive LSN``
-    该成员通过流复制接收并同步到磁盘的最后一个预写日志位置（``pg_catalog.pg_last_(xlog|wal)_receive_(location|lsn)()``）。
+    该成员通过流复制接收并同步到磁盘的最后一个预写日志位置（``pg_catalog.pg_last_(xlog|wal)_receive_(location|lsn)()``\）。
 
 ``Receive Lag``
     成员的 ``Receive LSN`` 位置与其上游之间的复制延迟，以 MB 为单位。
 
 ``Replay LSN``
-    该成员在恢复期间重放的最后一个预写日志位置（``pg_catalog.pg_last_(xlog|wal)_replay_(location|lsn)()``）。
+    该成员在恢复期间重放的最后一个预写日志位置（``pg_catalog.pg_last_(xlog|wal)_replay_(location|lsn)()``\）。
 
 ``Replay Lag``
     成员的 ``Replay LSN`` 位置与其上游之间的复制延迟，以 MB 为单位。
@@ -776,7 +776,7 @@ patronictl list
 .. _patronictl_list_parameters:
 
 参数
-""""""""
+""""
 
 ``CLUSTER_NAME``
     Patroni 集群的名称。
@@ -791,7 +791,7 @@ patronictl list
 ``-e``/ ``--extended``
     显示扩展信息。
 
-    强制显示 ``Pending restart``、``Scheduled restart`` 和 ``Tags`` 属性，即使它们的值为空。
+    强制显示 ``Pending restart``\、``Scheduled restart`` 和 ``Tags`` 属性，即使它们的值为空。
 
     .. note::
         仅适用于 ``pretty`` 和 ``tsv`` 输出格式。
@@ -804,12 +804,12 @@ patronictl list
 
     格式可以是以下之一：
 
-    - ``pretty``：以美观的表格形式输出 history；或
-    - ``tsv``：以表格形式输出 history，列之间用 ``\t`` 分隔；或
-    - ``json``：以 JSON 格式输出 history；或
-    - ``yaml``：以 YAML 格式输出 history。
+    - ``pretty``\：以美观的表格形式输出 history；或
+    - ``tsv``\：以表格形式输出 history，列之间用 ``\t`` 分隔；或
+    - ``json``\：以 JSON 格式输出 history；或
+    - ``yaml``\：以 YAML 格式输出 history。
 
-    默认格式为 ``pretty``。
+    默认格式为 ``pretty``\。
 
 ``-W``
     每 2 秒自动刷新信息。
@@ -822,7 +822,7 @@ patronictl list
 .. _patronictl_list_examples:
 
 示例
-""""""""
+""""
 
 以 pretty 格式显示集群的信息：
 
@@ -891,7 +891,7 @@ patronictl pause
 .. _patronictl_pause_synopsis:
 
 语法
-""""""
+""""
 
 .. code:: text
 
@@ -903,14 +903,14 @@ patronictl pause
 .. _patronictl_pause_description:
 
 说明
-""""""""
+""""
 
 ``patronictl pause`` 暂时将 Patroni 集群置于维护模式，并禁用自动 failover。
 
 .. _patronictl_pause_parameters:
 
 参数
-""""""""
+""""
 
 ``CLUSTER_NAME``
     Patroni 集群的名称。
@@ -930,7 +930,7 @@ patronictl pause
 .. _patronictl_pause_examples:
 
 示例
-""""""""
+""""
 
 将集群置于维护模式，并等待所有节点都已暂停：
 
@@ -948,7 +948,7 @@ patronictl query
 .. _patronictl_query_synopsis:
 
 语法
-""""""
+""""
 
 .. code:: text
 
@@ -967,14 +967,14 @@ patronictl query
 .. _patronictl_query_description:
 
 说明
-""""""""
+""""
 
 ``patronictl query`` 针对 Patroni 集群的某个成员执行 SQL 命令或脚本。
 
 .. _patronictl_query_parameters:
 
 参数
-""""""""
+""""
 
 ``CLUSTER_NAME``
     Patroni 集群的名称。
@@ -991,12 +991,12 @@ patronictl query
 
     角色可以是以下之一：
 
-    - ``leader``：常规 Patroni 集群或 standby Patroni 集群的 leader；或
-    - ``primary``：常规 Patroni 集群的 leader；或
-    - ``standby-leader``：standby Patroni 集群的 leader；或
-    - ``replica``：Patroni 集群的 replica；或
-    - ``standby``：与 ``replica`` 相同；或
-    - ``any``：任意角色，等同于省略该参数。
+    - ``leader``\：常规 Patroni 集群或 standby Patroni 集群的 leader；或
+    - ``primary``\：常规 Patroni 集群的 leader；或
+    - ``standby-leader``\：standby Patroni 集群的 leader；或
+    - ``replica``\：Patroni 集群的 replica；或
+    - ``standby``\：与 ``replica`` 相同；或
+    - ``any``\：任意角色，等同于省略该参数。
 
 ``-m``/ ``--member``
     选择具有指定名称的成员。
@@ -1006,7 +1006,7 @@ patronictl query
 ``-d``/ ``--dbname``
     要连接并执行查询的数据库。
 
-    ``DBNAME`` 是数据库的名称。如果未指定，默认为 ``USERNAME``。
+    ``DBNAME`` 是数据库的名称。如果未指定，默认为 ``USERNAME``\。
 
 ``-U``/ ``--username``
     连接数据库的用户。
@@ -1016,19 +1016,19 @@ patronictl query
 ``--password``
     提示输入连接用户的密码。
 
-    由于 Patroni 使用 ``libpq``，你也可以创建 ``~/.pgpass`` 文件或设置 ``PGPASSWORD`` 环境变量。
+    由于 Patroni 使用 ``libpq``\，你也可以创建 ``~/.pgpass`` 文件或设置 ``PGPASSWORD`` 环境变量。
 
 ``--format``
     查询输出的格式。
 
     格式可以是以下之一：
 
-    - ``pretty``：以美观的表格形式输出查询结果；或
-    - ``tsv``：以表格形式输出查询结果，列之间用 ``\t`` 分隔；或
-    - ``json``：以 JSON 格式输出查询结果；或
-    - ``yaml``：以 YAML 格式输出查询结果。
+    - ``pretty``\：以美观的表格形式输出查询结果；或
+    - ``tsv``\：以表格形式输出查询结果，列之间用 ``\t`` 分隔；或
+    - ``json``\：以 JSON 格式输出查询结果；或
+    - ``yaml``\：以 YAML 格式输出查询结果。
 
-    默认格式为 ``tsv``。
+    默认格式为 ``tsv``\。
 
 ``-f``/ ``--file``
     使用文件作为执行查询的命令来源。
@@ -1041,7 +1041,7 @@ patronictl query
     ``SQL_COMMAND`` 是要执行的 SQL 命令。
 
 ``--delimiter``
-    以 ``tsv`` 格式输出信息时使用的分隔符；如果省略，则为 ``\t``。
+    以 ``tsv`` 格式输出信息时使用的分隔符；如果省略，则为 ``\t``\。
 
 ``-W``
     每 2 秒自动重新运行查询。
@@ -1054,7 +1054,7 @@ patronictl query
 .. _patronictl_query_examples:
 
 示例
-""""""""
+""""
 
 以 ``postgres`` 用户身份运行 SQL 命令，并要求输入其密码：
 
@@ -1126,7 +1126,7 @@ patronictl reinit
 .. _patronictl_reinit_synopsis:
 
 语法
-""""""
+""""
 
 .. code:: text
 
@@ -1141,14 +1141,14 @@ patronictl reinit
 .. _patronictl_reinit_description:
 
 说明
-""""""""
+""""
 
 ``patronictl reinit`` 重建由 Patroni 集群中 replica 成员所管理的 Postgres standby 实例。
 
 .. _patronictl_reinit_parameters:
 
 参数
-""""""""
+""""
 
 ``CLUSTER_NAME``
     Patroni 集群的名称。
@@ -1177,7 +1177,7 @@ patronictl reinit
 .. _patronictl_reinit_examples:
 
 示例
-""""""""
+""""
 
 请求重建 Patroni 集群的所有 replica 成员，并立即将控制权返回给调用方：
 
@@ -1194,7 +1194,7 @@ patronictl reinit
     Success: reinitialize for member postgresql1
     Success: reinitialize for member postgresql2
 
-请求重建 ``postgresql2``，并等待其完成：
+请求重建 ``postgresql2``\，并等待其完成：
 
 .. code:: bash
 
@@ -1210,7 +1210,7 @@ patronictl reinit
     Waiting for reinitialize to complete on: postgresql2
     Reinitialize is completed on: postgresql2
 
-请求重建 ``postgresql2``，并直接从 leader 获取 basebackup：
+请求重建 ``postgresql2``\，并直接从 leader 获取 basebackup：
 
 .. code:: bash
 
@@ -1232,7 +1232,7 @@ patronictl reload
 .. _patronictl_reload_synopsis:
 
 语法
-""""""
+""""
 
 .. code:: text
 
@@ -1246,16 +1246,16 @@ patronictl reload
 .. _patronictl_reload_description:
 
 说明
-""""""""
+""""
 
 ``patronictl reload`` 请求一个或多个 Patroni 成员重新加载本地配置。
 
-即使没有发生任何变化，它也会在被管理的 Postgres 实例上触发 ``pg_ctl reload``。
+即使没有发生任何变化，它也会在被管理的 Postgres 实例上触发 ``pg_ctl reload``\。
 
 .. _patronictl_reload_parameters:
 
 参数
-""""""""
+""""
 
 ``CLUSTER_NAME``
     Patroni 集群的名称。
@@ -1275,12 +1275,12 @@ patronictl reload
 
     角色可以是以下之一：
 
-    - ``leader``：常规 Patroni 集群或 standby Patroni 集群的 leader；或
-    - ``primary``：常规 Patroni 集群的 leader；或
-    - ``standby-leader``：standby Patroni 集群的 leader；或
-    - ``replica``：Patroni 集群的 replica；或
-    - ``standby``：与 ``replica`` 相同；或
-    - ``any``：任意角色，等同于省略该参数。
+    - ``leader``\：常规 Patroni 集群或 standby Patroni 集群的 leader；或
+    - ``primary``\：常规 Patroni 集群的 leader；或
+    - ``standby-leader``\：standby Patroni 集群的 leader；或
+    - ``replica``\：Patroni 集群的 replica；或
+    - ``standby``\：与 ``replica`` 相同；或
+    - ``any``\：任意角色，等同于省略该参数。
 
 ``--force``
     请求重新加载本地配置时跳过确认提示的标记。
@@ -1290,7 +1290,7 @@ patronictl reload
 .. _patronictl_reload_examples:
 
 示例
-""""""""
+""""
 
 请求重新加载 Patroni 集群所有成员的本地配置：
 
@@ -1316,7 +1316,7 @@ patronictl remove
 .. _patronictl_remove_synopsis:
 
 语法
-""""""
+""""
 
 .. code:: text
 
@@ -1328,7 +1328,7 @@ patronictl remove
 .. _patronictl_remove_description:
 
 说明
-""""""""
+""""
 
 ``patronictl remove`` 从 DCS 中移除集群的信息。
 
@@ -1340,7 +1340,7 @@ patronictl remove
 .. _patronictl_remove_parameters:
 
 参数
-""""""""
+""""
 
 ``CLUSTER_NAME``
     Patroni 集群的名称。
@@ -1355,17 +1355,17 @@ patronictl remove
 
     格式可以是以下之一：
 
-    - ``pretty``：以美观的表格形式输出成员；或
-    - ``tsv``：以表格形式输出成员，列之间用 ``\t`` 分隔；或
-    - ``json``：以 JSON 格式输出成员；或
-    - ``yaml``：以 YAML 格式输出成员。
+    - ``pretty``\：以美观的表格形式输出成员；或
+    - ``tsv``\：以表格形式输出成员，列之间用 ``\t`` 分隔；或
+    - ``json``\：以 JSON 格式输出成员；或
+    - ``yaml``\：以 YAML 格式输出成员。
 
-    默认格式为 ``pretty``。
+    默认格式为 ``pretty``\。
 
 .. _patronictl_remove_examples:
 
 示例
-""""""""
+""""
 
 从 DCS 中移除 Patroni 集群 ``batman`` 的信息：
 
@@ -1391,7 +1391,7 @@ patronictl restart
 .. _patronictl_restart_synopsis:
 
 语法
-""""""
+""""
 
 .. code:: text
 
@@ -1410,7 +1410,7 @@ patronictl restart
 .. _patronictl_restart_description:
 
 说明
-""""""""
+""""
 
 ``patronictl restart`` 请求重启 Patroni 集群中成员所管理的 Postgres 实例。
 
@@ -1419,7 +1419,7 @@ patronictl restart
 .. _patronictl_restart_parameters:
 
 参数
-""""""""
+""""
 
 ``CLUSTER_NAME``
     Patroni 集群的名称。
@@ -1434,12 +1434,12 @@ patronictl restart
 
     角色可以是以下之一：
 
-    - ``leader``：常规 Patroni 集群或 standby Patroni 集群的 leader；或
-    - ``primary``：常规 Patroni 集群的 leader；或
-    - ``standby-leader``：standby Patroni 集群的 leader；或
-    - ``replica``：Patroni 集群的 replica；或
-    - ``standby``：与 ``replica`` 相同；或
-    - ``any``：任意角色，等同于省略该参数。
+    - ``leader``\：常规 Patroni 集群或 standby Patroni 集群的 leader；或
+    - ``primary``\：常规 Patroni 集群的 leader；或
+    - ``standby-leader``\：standby Patroni 集群的 leader；或
+    - ``replica``\：Patroni 集群的 replica；或
+    - ``standby``\：与 ``replica`` 相同；或
+    - ``any``\：任意角色，等同于省略该参数。
 
 ``--any``
     在与给定筛选条件匹配的节点中，随机重启一个节点。
@@ -1470,7 +1470,7 @@ patronictl restart
 .. _patronictl_restart_examples:
 
 示例
-""""""""
+""""
 
 立即重启集群的所有成员：
 
@@ -1526,7 +1526,7 @@ patronictl resume
 .. _patronictl_resume_synopsis:
 
 语法
-""""""
+""""
 
 .. code:: text
 
@@ -1538,14 +1538,14 @@ patronictl resume
 .. _patronictl_resume_description:
 
 说明
-""""""""
+""""
 
 ``patronictl resume`` 将 Patroni 集群退出维护模式，并重新启用自动 failover。
 
 .. _patronictl_resume_parameters:
 
 参数
-""""""""
+""""
 
 ``CLUSTER_NAME``
     Patroni 集群的名称。
@@ -1565,7 +1565,7 @@ patronictl resume
 .. _patronictl_resume_examples:
 
 示例
-""""""""
+""""
 
 将集群退出维护模式：
 
@@ -1583,7 +1583,7 @@ patronictl show-config
 .. _patronictl_show_config_synopsis:
 
 语法
-""""""
+""""
 
 .. code:: text
 
@@ -1594,14 +1594,14 @@ patronictl show-config
 .. _patronictl_show_config_description:
 
 说明
-""""""""
+""""
 
 ``patronictl show-config`` 显示存储在 DCS 中的集群动态配置。
 
 .. _patronictl_show_config_parameters:
 
 参数
-""""""""
+""""
 
 ``CLUSTER_NAME``
     Patroni 集群的名称。
@@ -1618,7 +1618,7 @@ patronictl show-config
 .. _patronictl_show_config_examples:
 
 示例
-""""""""
+""""
 
 显示集群 ``batman`` 的动态配置：
 
@@ -1644,7 +1644,7 @@ patronictl switchover
 .. _patronictl_switchover_synopsis:
 
 语法
-""""""
+""""
 
 .. code:: text
 
@@ -1658,7 +1658,7 @@ patronictl switchover
 .. _patronictl_switchover_description:
 
 说明
-""""""""
+""""
 
 ``patronictl switchover`` 在集群中执行 switchover。
 
@@ -1673,7 +1673,7 @@ patronictl switchover
 .. _patronictl_switchover_parameters:
 
 参数
-""""""""
+""""
 
 ``CLUSTER_NAME``
     Patroni 集群的名称。
@@ -1708,7 +1708,7 @@ patronictl switchover
 .. _patronictl_switchover_examples:
 
 示例
-""""""""
+""""
 
 使用节点 ``postgresql2`` 执行 switchover：
 
@@ -1765,7 +1765,7 @@ patronictl topology
 .. _patronictl_topology_synopsis:
 
 语法
-""""""
+""""
 
 .. code:: text
 
@@ -1777,7 +1777,7 @@ patronictl topology
 .. _patronictl_topology_description:
 
 说明
-""""""""
+""""
 
 ``patronictl topology`` 以树状视图的方式显示 Patroni 集群及其成员的信息。
 
@@ -1809,33 +1809,33 @@ patronictl topology
 
     可以是以下之一：
 
-    * ``Leader``：常规 Patroni 集群当前的 leader；或
-    * ``Standby Leader``：Patroni standby 集群当前的 leader；或
-    * ``Sync Standby``：启用了同步模式的 Patroni 集群中的 synchronous standby；或
-    * ``Replica``：Patroni 集群的常规 standby。
+    * ``Leader``\：常规 Patroni 集群当前的 leader；或
+    * ``Standby Leader``\：Patroni standby 集群当前的 leader；或
+    * ``Sync Standby``\：启用了同步模式的 Patroni 集群中的 synchronous standby；或
+    * ``Replica``\：Patroni 集群的常规 standby。
 
 ``State``
     Patroni 成员中 Postgres 的当前状态。
 
     以下是可能状态中的一些示例：
 
-    * ``running``：如果 Postgres 当前正在运行；
-    * ``streaming``：如果是 replica 且 Postgres 当前正从 primary 节点流式接收 WAL；
-    * ``in archive recovery``：如果是 replica 且 Postgres 当前正在从归档中获取 WAL；
-    * ``stopped``：如果 Postgres 已被关闭；
-    * ``crashed``：如果 Postgres 已崩溃。
+    * ``running``\：如果 Postgres 当前正在运行；
+    * ``streaming``\：如果是 replica 且 Postgres 当前正从 primary 节点流式接收 WAL；
+    * ``in archive recovery``\：如果是 replica 且 Postgres 当前正在从归档中获取 WAL；
+    * ``stopped``\：如果 Postgres 已被关闭；
+    * ``crashed``\：如果 Postgres 已崩溃。
 
 ``TL``
     Patroni 成员中 Postgres 当前的 timeline。
 
 ``Receive LSN``
-    该成员通过流复制接收并同步到磁盘的最后一个预写日志位置（``pg_catalog.pg_last_(xlog|wal)_receive_(location|lsn)()``）。
+    该成员通过流复制接收并同步到磁盘的最后一个预写日志位置（``pg_catalog.pg_last_(xlog|wal)_receive_(location|lsn)()``\）。
 
 ``Receive Lag``
     成员的 ``Receive LSN`` 位置与其上游之间的复制延迟，以 MB 为单位。
 
 ``Replay LSN``
-    该成员在恢复期间重放的最后一个预写日志位置（``pg_catalog.pg_last_(xlog|wal)_replay_(location|lsn)()``）。
+    该成员在恢复期间重放的最后一个预写日志位置（``pg_catalog.pg_last_(xlog|wal)_replay_(location|lsn)()``\）。
 
 ``Replay Lag``
     成员的 ``Replay LSN`` 位置与其上游之间的复制延迟，以 MB 为单位。
@@ -1894,7 +1894,7 @@ patronictl topology
 .. _patronictl_topology_parameters:
 
 参数
-""""""""
+""""
 
 ``CLUSTER_NAME``
     Patroni 集群的名称。
@@ -1917,7 +1917,7 @@ patronictl topology
 .. _patronictl_topology_examples:
 
 示例
-""""""""
+""""
 
 显示集群 ``batman`` 的拓扑——``postgresql1`` 和 ``postgresql2`` 正在从 ``postgresql0`` 复制：
 
@@ -1940,7 +1940,7 @@ patronictl version
 .. _patronictl_version_synopsis:
 
 语法
-""""""
+""""
 
 .. code:: text
 
@@ -1952,14 +1952,14 @@ patronictl version
 .. _patronictl_version_description:
 
 说明
-""""""""
+""""
 
 ``patronictl version`` 获取 ``patronictl`` 应用程序的版本。此外，它还可能包含 Patroni 集群及其成员的版本信息。
 
 .. _patronictl_version_parameters:
 
 参数
-""""""""
+""""
 
 ``CLUSTER_NAME``
     Patroni 集群的名称。
@@ -1975,7 +1975,7 @@ patronictl version
 .. _patronictl_version_examples:
 
 示例
-""""""""
+""""
 
 仅获取 ``patronictl`` 的版本：
 

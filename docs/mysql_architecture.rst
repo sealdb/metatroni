@@ -1,8 +1,8 @@
 .. _mysql_architecture:
 
-===========================
+============================
 MySQL architecture and model
-===========================
+============================
 
 This page describes the structural design of the MySQL backend: process layout,
 code modules, DCS data, and how it differs from the PostgreSQL path.

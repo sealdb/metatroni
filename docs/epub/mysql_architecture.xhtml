@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>MySQL architecture and model</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="_static/epub.css" />
+    <link rel="stylesheet" type="text/css" href="_static/github_style.css" />
+    <link rel="stylesheet" type="text/css" href="_static/custom.css" /> 
+  </head><body>
+
+    <div class="document">
+      <div class="documentwrapper">
+          <div class="body" role="main">
+            
+  <section id="mysql-architecture-and-model">
+<span id="mysql-architecture"></span><h1>MySQL architecture and model</h1>
+<p>This page describes the structural design of the MySQL backend: process layout,
+code modules, DCS data, and how it differs from the PostgreSQL path.</p>
+<section id="design-goals">
+<h2>Design goals</h2>
+<p>Patroni was built around PostgreSQL. MySQL support is layered through a
+<code class="docutils literal notranslate"><span class="pre">DatabaseHandler</span></code> abstraction so the shared HA loop (<code class="docutils literal notranslate"><span class="pre">patroni.ha.Ha</span></code>), DCS,
+REST API, and <code class="docutils literal notranslate"><span class="pre">patronictl</span></code> stay common, while engine-specific work lives under
+<code class="docutils literal notranslate"><span class="pre">patroni.mysql</span></code>.</p>
+<p>Goals:</p>
+<ul class="simple">
+<li><p>Reuse DCS leader election and the HA control loop</p></li>
+<li><p>Drive MySQL with GTID (no timeline / <code class="docutils literal notranslate"><span class="pre">sysid</span></code> matching)</p></li>
+<li><p>Support three ops-selected modes: async GTID, xenon-style semi-sync, MGR</p></li>
+<li><p>Prefer shared HA loop abstractions; avoid PostgreSQL-only paths
+(<code class="docutils literal notranslate"><span class="pre">pg_rewind</span></code>). MySQL standby clusters use clone + GTID cascade instead of
+WAL <code class="docutils literal notranslate"><span class="pre">restore_command</span></code>.</p></li>
+</ul>
+</section>
+<section id="cluster-layout">
+<h2>Cluster layout</h2>
+<p>Each physical (or local) node runs <strong>one Patroni process</strong> and <strong>one mysqld</strong>.
+Patroni owns process lifecycle, config files, replication topology, and the
+DCS heartbeat. Clients should talk to MySQL through a proxy that health-checks
+Patroni’s REST API (see <a class="reference internal" href="mysql_ops.xhtml#mysql-ops"><span class="std std-ref">MySQL operations and FAQ</span></a>).</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>+---------------------------------------------------------------+
+|                         Cluster scope                         |
+|                                                               |
+|   +-------------------+         +-------------------+         |
+|   | Node A            |         | Node B            |         |
+|   |  Patroni  --------+----+----+--------  Patroni  |         |
+|   |  REST :8008       |    |    |        REST :8009 |         |
+|   |  mysqld :3306     |    |    |        mysqld :3307         |
+|   +-------------------+    |    +-------------------+         |
+|                            |                                  |
+|                    +-------v--------+                         |
+|                    | DCS (etcd3/…)  |                         |
+|                    | /service/&lt;scope&gt;/                        |
+|                    |  leader, members,                        |
+|                    |  config, pause, …                        |
+|                    +----------------+                         |
++---------------------------------------------------------------+
+
+Optional: HAProxy / ProxySQL
+  :5000  -&gt; HEAD /primary  -&gt; writable mysqld
+  :5001  -&gt; HEAD /replica  -&gt; read replicas
+</pre></div>
+</div>
+<section id="replication-data-path-async-semi-sync">
+<h3>Replication data path (async / semi-sync)</h3>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="nc">Primary</span> <span class="n">mysqld</span>  <span class="o">--</span><span class="n">binlog</span><span class="o">/</span><span class="nc">GTID</span><span class="o">--&gt;</span>  <span class="nc">Replica</span> <span class="n">mysqld</span>
+     <span class="o">^</span>                                <span class="o">^</span>
+     <span class="o">|</span>                                <span class="o">|</span>
+  <span class="nc">Patroni</span> <span class="p">(</span><span class="n">lock</span><span class="p">)</span>                 <span class="nc">Patroni</span> <span class="p">(</span><span class="n">follow</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="mgr-data-path">
+<h3>MGR data path</h3>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="o">+----</span> <span class="nc">Group</span> <span class="nc">Replication</span> <span class="p">(</span><span class="nc">Paxos</span><span class="o">-</span><span class="n">like</span> <span class="n">certification</span><span class="p">)</span> <span class="o">----+</span>
+<span class="o">|</span>  <span class="n">member0</span> <span class="p">(</span><span class="nc">PRIMARY</span><span class="p">)</span>  <span class="o">&lt;-&gt;</span>  <span class="n">member1</span>  <span class="o">&lt;-&gt;</span>  <span class="n">member2</span>       <span class="o">|</span>
+<span class="o">+------------------------------------------------------+</span>
+          <span class="o">^</span>                         <span class="o">^</span>
+          <span class="o">|</span>                         <span class="o">|</span>
+     <span class="nc">Patroni</span> <span class="n">follows</span>            <span class="nc">Patroni</span> <span class="n">follows</span>
+     <span class="nc">GR</span> <span class="n">role</span> <span class="o">/</span> <span class="n">state</span>            <span class="nc">GR</span> <span class="n">role</span> <span class="o">/</span> <span class="n">state</span>
+     <span class="p">(</span><span class="o">+</span> <span class="nc">DCS</span> <span class="n">lock</span> <span class="k">for</span>            <span class="p">(</span><span class="o">+</span> <span class="nc">GTID</span> <span class="n">election</span> <span class="n">on</span>
+      <span class="n">bootstrap</span> <span class="o">/</span> <span class="n">ops</span><span class="p">)</span>           <span class="n">majority</span> <span class="n">loss</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="component-map">
+<h2>Component map</h2>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 12.0%" />
+<col style="width: 28.0%" />
+<col style="width: 60.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Layer</p></th>
+<th class="head"><p>Module</p></th>
+<th class="head"><p>Responsibility</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>ABC</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">patroni.db</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">DatabaseHandler</span></code> interface + factory</p></td>
+</tr>
+<tr class="row-odd"><td><p>Handler</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">patroni.mysql</span></code></p></td>
+<td><p>Role, promote/demote/follow, MGR, semi-sync</p></td>
+</tr>
+<tr class="row-even"><td><p>Config</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">patroni.mysql.config</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">my.cnf</span></code> generation / reload</p></td>
+</tr>
+<tr class="row-odd"><td><p>Conn</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">patroni.mysql.connection</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">pymysql</span></code> pool</p></td>
+</tr>
+<tr class="row-even"><td><p>Boot</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">patroni.mysql.bootstrap</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">initialize</span></code>, clone (dump / xtrabackup)</p></td>
+</tr>
+<tr class="row-odd"><td><p>Proc</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">patroni.mysql.postmaster</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">mysqld</span></code> start/stop</p></td>
+</tr>
+<tr class="row-even"><td><p>Init</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">patroni.mysql.initcmd</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">patroni_mysql_init</span></code> layout generator</p></td>
+</tr>
+<tr class="row-odd"><td><p>Vers</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">patroni.mysql.versioning</span></code></p></td>
+<td><p>5.6 / 5.7 / 8.0 / 8.x / 9.x parameter matrix</p></td>
+</tr>
+<tr class="row-even"><td><p>HA</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">patroni.ha</span></code></p></td>
+<td><p>Shared loop; MySQL demote / MGR / semi-sync hooks</p></td>
+</tr>
+<tr class="row-odd"><td><p>API</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">patroni.api</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">/patroni</span></code> exposes <code class="docutils literal notranslate"><span class="pre">binlog</span></code> + GTID</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="capability-flags-vs-postgresql">
+<h2>Capability flags (vs PostgreSQL)</h2>
+<p>The MySQL handler advertises engine capabilities so the HA loop skips
+PostgreSQL-only behavior:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 28.0%" />
+<col style="width: 12.0%" />
+<col style="width: 60.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Flag</p></th>
+<th class="head"><p>MySQL</p></th>
+<th class="head"><p>Effect</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">has_timelines</span></code></p></td>
+<td><p>False</p></td>
+<td><p>No timeline history files</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">needs_rewind</span></code></p></td>
+<td><p>False</p></td>
+<td><p>No <code class="docutils literal notranslate"><span class="pre">pg_rewind</span></code>; rejoin via GTID follow</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">needs_crash_recovery</span></code></p></td>
+<td><p>False</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">mysqld</span></code> recovers itself on start</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">requires_sysid_match</span></code></p></td>
+<td><p>False</p></td>
+<td><p>Each instance has its own <code class="docutils literal notranslate"><span class="pre">server_uuid</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">db_type</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">mysql</span></code></p></td>
+<td><p>Selects MySQL branches in HA / API</p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="dcs-data-model-mysql-specific">
+<h2>DCS data model (MySQL-specific)</h2>
+<p>Standard Patroni keys under <code class="docutils literal notranslate"><span class="pre">/service/&lt;scope&gt;/</span></code> still apply (<code class="docutils literal notranslate"><span class="pre">leader</span></code>,
+<code class="docutils literal notranslate"><span class="pre">members/&lt;name&gt;</span></code>, <code class="docutils literal notranslate"><span class="pre">config</span></code>, <code class="docutils literal notranslate"><span class="pre">initialize</span></code>, <code class="docutils literal notranslate"><span class="pre">failover</span></code>, <code class="docutils literal notranslate"><span class="pre">pause</span></code>, …).</p>
+<p>Member payload enrichment (<code class="docutils literal notranslate"><span class="pre">enrich_dcs_data</span></code>) adds:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 22.0%" />
+<col style="width: 78.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Field</p></th>
+<th class="head"><p>Purpose</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">binlog_position</span></code></p></td>
+<td><p>Mirror of xlog location for metrics / lag</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">gtid_executed</span></code></p></td>
+<td><p>Published every HA cycle for MGR election</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">mgr_gtid_fork</span></code></p></td>
+<td><p>Present while incomparable GTIDs are detected</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">role</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">primary</span></code> / <code class="docutils literal notranslate"><span class="pre">replica</span></code> / <code class="docutils literal notranslate"><span class="pre">mgr_primary</span></code> / …</p></td>
+</tr>
+</tbody>
+</table>
+<p>REST <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/patroni</span></code> includes a <code class="docutils literal notranslate"><span class="pre">binlog</span></code> object (file, position, and
+<code class="docutils literal notranslate"><span class="pre">gtid_set</span></code> when available) instead of PostgreSQL’s <code class="docutils literal notranslate"><span class="pre">xlog</span></code>.</p>
+</section>
+<section id="roles">
+<h2>Roles</h2>
+<section id="async-semi-sync">
+<h3>Async / semi-sync</h3>
+<ul class="simple">
+<li><p><strong>primary</strong> — holds DCS lock, writable (unless semi-sync quorum forces RO)</p></li>
+<li><p><strong>replica</strong> — follows primary with <code class="docutils literal notranslate"><span class="pre">MASTER_AUTO_POSITION=1</span></code></p></li>
+</ul>
+</section>
+<section id="mgr">
+<h3>MGR</h3>
+<ul class="simple">
+<li><p><strong>mgr_primary</strong> — Group Replication PRIMARY + typically holds DCS lock</p></li>
+<li><p><strong>mgr_secondary</strong> — GR SECONDARY, <code class="docutils literal notranslate"><span class="pre">super_read_only</span></code></p></li>
+<li><p>On majority loss, roles may briefly look like async <code class="docutils literal notranslate"><span class="pre">primary</span></code> in DCS; election
+logic <strong>only trusts</strong> a live <code class="docutils literal notranslate"><span class="pre">mgr_primary</span></code> advertisement when deciding whether
+to bootstrap a new group</p></li>
+</ul>
+</section>
+</section>
+<section id="mode-selection-configuration-not-runtime-api">
+<h2>Mode selection (configuration, not runtime API)</h2>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 14.0%" />
+<col style="width: 50.0%" />
+<col style="width: 36.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Mode</p></th>
+<th class="head"><p>Detection</p></th>
+<th class="head"><p>Init flag</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>async</p></td>
+<td><p>No GR UUID; semi-sync off / absent</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">--mode</span> <span class="pre">async</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p>semi-sync</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">rpl_semi_sync_*</span></code> present</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">--mode</span> <span class="pre">semi-sync</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p>MGR</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">group_replication_group_name</span></code> set</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">--mode</span> <span class="pre">mgr</span></code></p></td>
+</tr>
+</tbody>
+</table>
+<p>There is no hot “switch mode” API. Treat cutovers as rebuilds; see
+<a class="reference internal" href="mysql_ops.xhtml#mysql-ops"><span class="std std-ref">MySQL operations and FAQ</span></a>.</p>
+</section>
+<section id="trust-boundaries">
+<h2>Trust boundaries</h2>
+<ul class="simple">
+<li><p><strong>DCS</strong> is the source of truth for <em>who may be Patroni leader</em></p></li>
+<li><p><strong>MySQL replication / MGR</strong> is the source of truth for <em>data currency</em></p></li>
+<li><p>For MGR majority loss, Patroni combines both: GTID comparison elects who may
+bootstrap, but bootstrap only proceeds with the DCS lock (or rejoin to an
+already advertised live <code class="docutils literal notranslate"><span class="pre">mgr_primary</span></code>)</p></li>
+</ul>
+</section>
+</section>
+
+
+            <div class="clearer"></div>
+          </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+  </body>
+</html>

@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>YAML Configuration Settings</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="_static/epub.css" />
+    <link rel="stylesheet" type="text/css" href="_static/github_style.css" />
+    <link rel="stylesheet" type="text/css" href="_static/custom.css" /> 
+  </head><body>
+
+    <div class="document">
+      <div class="documentwrapper">
+          <div class="body" role="main">
+            
+  <section id="yaml-configuration-settings">
+<span id="yaml-configuration"></span><h1>YAML Configuration Settings</h1>
+<section id="global-universal">
+<h2>Global/Universal</h2>
+<ul class="simple">
+<li><p><strong>thread_pool_size</strong>: size of thread pool used by Patroni to execute asynchronous tasks and communicate via REST API with other members during leader race or failsafe checks. Minimal value is <code class="docutils literal notranslate"><span class="pre">5</span></code>, default value is <code class="docutils literal notranslate"><span class="pre">5</span></code>.</p></li>
+<li><p><strong>thread_stack_size</strong>: specifies the stack size to be used for threads started by Patroni. Value must be aligned by <code class="docutils literal notranslate"><span class="pre">64kB</span></code>. Minimal value is <code class="docutils literal notranslate"><span class="pre">64kB</span></code>,  default value (set by Patroni) is <code class="docutils literal notranslate"><span class="pre">512kB</span></code>.</p></li>
+<li><p><strong>name</strong>: the name of the host. Must be unique for the cluster.</p></li>
+<li><p><strong>namespace</strong>: path within the configuration store where Patroni will keep information about the cluster. Default value: “/service”</p></li>
+<li><p><strong>scope</strong>: cluster name</p></li>
+</ul>
+</section>
+<section id="log">
+<span id="log-settings"></span><h2>Log</h2>
+<ul class="simple">
+<li><p><strong>type</strong>: sets the format of logs. Can be either <strong>plain</strong> or <strong>json</strong>. To use <strong>json</strong> format, you must have the <a class="reference internal" href="installation.xhtml#extras"><span class="std std-ref">jsonlogger</span></a> installed. The default value is <strong>plain</strong>.</p></li>
+<li><p><strong>level</strong>: sets the general logging level. Default value is <strong>INFO</strong> (see <a class="reference external" href="https://docs.python.org/3.6/library/logging.html#levels">the docs for Python logging</a><span class="link-target"> [https://docs.python.org/3.6/library/logging.html#levels]</span>)</p></li>
+<li><p><strong>traceback_level</strong>: sets the level where tracebacks will be visible. Default value is <strong>ERROR</strong>. Set it to <strong>DEBUG</strong> if you want to see tracebacks only if you enable <strong>log.level=DEBUG</strong>.</p></li>
+<li><p><strong>format</strong>: sets the log formatting string. If the log type is <strong>plain</strong>, the log format should be a string. Refer to
+<a class="reference external" href="https://docs.python.org/3.6/library/logging.html#logrecord-attributes">the LogRecord attributes</a><span class="link-target"> [https://docs.python.org/3.6/library/logging.html#logrecord-attributes]</span> for
+available attributes. If the log type is <strong>json</strong>, the log format can be a list in addition to a string. Each list
+item should correspond to LogRecord attributes. Be cautious that only the field name is required, and the <strong>%(</strong>
+and <strong>)</strong> should be omitted. If you wish to print a log field with a different key name, use a dictionary where
+the dictionary key is the log field, and the value is the name of the field you want to be printed in the log.
+Default value is <strong>%(asctime)s %(levelname)s: %(message)s</strong></p></li>
+<li><p><strong>dateformat</strong>: sets the datetime formatting string. (see the <a class="reference external" href="https://docs.python.org/3.6/library/logging.html#logging.Formatter.formatTime">formatTime() documentation</a><span class="link-target"> [https://docs.python.org/3.6/library/logging.html#logging.Formatter.formatTime]</span>)</p></li>
+<li><p><strong>static_fields</strong>: add additional fields to the log. This option is only available when the log type is set to <strong>json</strong>.</p></li>
+<li><p><strong>max_queue_size</strong>: Patroni is using two-step logging. Log records are written into the in-memory queue and there is a separate thread which pulls them from the queue and writes to stderr or file. The maximum size of the internal queue is limited by default by <strong>1000</strong> records, which is enough to keep logs for the past 1h20m.</p></li>
+<li><p><strong>dir</strong>: Directory to write application logs to. The directory must exist and be writable by the user executing Patroni. If you set this value, the application will retain 4 25MB logs by default. You can tune those retention values with <cite>file_num</cite> and <cite>file_size</cite> (see below).</p></li>
+<li><p><strong>mode</strong>: Permissions for log files (for example, <code class="docutils literal notranslate"><span class="pre">0644</span></code>). If not specified, permissions will be set based on the current umask value.</p></li>
+<li><p><strong>file_num</strong>: The number of application logs to retain.</p></li>
+<li><p><strong>file_size</strong>: Size of patroni.log file (in bytes) that triggers a log rolling.</p></li>
+<li><p><strong>loggers</strong>: This section allows redefining logging level per python module</p>
+<ul>
+<li><p><strong>patroni.postmaster: WARNING</strong></p></li>
+<li><p><strong>urllib3: DEBUG</strong></p></li>
+</ul>
+</li>
+<li><p><strong>deduplicate_heartbeat_logs</strong>: If set to <code class="docutils literal notranslate"><span class="pre">true</span></code>, successive heartbeat logs that are identical shall not be output. Default value is <code class="docutils literal notranslate"><span class="pre">false</span></code>.</p></li>
+</ul>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>The time the HA loop executes at can be very valuable information in diagnosing failovers due to resource exhaustion and similar problems. When <code class="docutils literal notranslate"><span class="pre">deduplicate_heartbeat_logs</span></code> is set to <code class="docutils literal notranslate"><span class="pre">true</span></code> there will be no log generated for the HA loop execution (unless the leader changes) and hence this potentially useful information will not be available from the logs.</p>
+</div>
+<p>Here is an example of how to config patroni to log in json format.</p>
+<div class="highlight-YAML notranslate"><div class="highlight"><pre><span></span><span class="nt">log</span><span class="p">:</span>
+<span class="w">   </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">json</span>
+<span class="w">   </span><span class="nt">format</span><span class="p">:</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">message</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">module</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">asctime</span><span class="p">:</span><span class="w"> </span><span class="s">&#39;@timestamp&#39;</span>
+<span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">levelname</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">level</span>
+<span class="w">   </span><span class="nt">static_fields</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">app</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">patroni</span>
+</pre></div>
+</div>
+</section>
+<section id="bootstrap-configuration">
+<span id="bootstrap-settings"></span><h2>Bootstrap configuration</h2>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Once Patroni has initialized the cluster for the first time and settings have been stored in the DCS, all future
+changes to the <code class="docutils literal notranslate"><span class="pre">bootstrap.dcs</span></code> section of the YAML configuration will not take any effect! If you want to change
+them please use either <a class="reference internal" href="patronictl.xhtml#patronictl-edit-config"><span class="std std-ref">patronictl edit-config</span></a> or the Patroni <a class="reference internal" href="rest_api.xhtml#rest-api"><span class="std std-ref">REST API</span></a>.</p>
+</div>
+<ul>
+<li><p><strong>bootstrap</strong>:</p>
+<ul>
+<li><p><strong>dcs</strong>: This section will be written into <cite>/&lt;namespace&gt;/&lt;scope&gt;/config</cite> of the given configuration store after initializing the new cluster. The global dynamic configuration for the cluster. You can put any of the parameters described in the <a class="reference internal" href="dynamic_configuration.xhtml#dynamic-configuration"><span class="std std-ref">Dynamic Configuration settings</span></a> under <code class="docutils literal notranslate"><span class="pre">bootstrap.dcs</span></code> and after Patroni has initialized (bootstrapped) the new cluster, it will write this section into <cite>/&lt;namespace&gt;/&lt;scope&gt;/config</cite> of the configuration store.</p></li>
+<li><p><strong>method</strong>: custom script to use for bootstrapping this cluster.</p>
+<p>See <a class="reference internal" href="replica_bootstrap.xhtml#custom-bootstrap"><span class="std std-ref">custom bootstrap methods documentation</span></a> for details.
+When <code class="docutils literal notranslate"><span class="pre">initdb</span></code> is specified revert to the default <code class="docutils literal notranslate"><span class="pre">initdb</span></code> command. <code class="docutils literal notranslate"><span class="pre">initdb</span></code> is also triggered when no <code class="docutils literal notranslate"><span class="pre">method</span></code>
+parameter is present in the configuration file.</p>
+</li>
+<li><p><strong>initdb</strong>: (optional) list options to be passed on to initdb.</p>
+<ul class="simple">
+<li><p><strong>- data-checksums</strong>: Must be enabled when pg_rewind is needed on 9.3.</p></li>
+<li><p><strong>- encoding: UTF8</strong>: default encoding for new databases.</p></li>
+<li><p><strong>- locale: UTF8</strong>: default locale for new databases.</p></li>
+</ul>
+</li>
+<li><p><strong>post_bootstrap</strong> or <strong>post_init</strong>: An additional script that will be executed after initializing the cluster. The script receives a connection string URL (with the cluster superuser as a user name). The PGPASSFILE variable is set to the location of pgpass file.</p></li>
+</ul>
+</li>
+</ul>
+</section>
+<section id="citus">
+<span id="citus-settings"></span><h2>Citus</h2>
+<p>Enables integration Patroni with <a class="reference external" href="https://docs.citusdata.com">Citus</a><span class="link-target"> [https://docs.citusdata.com]</span>. If configured, Patroni will take care of registering Citus worker nodes on the coordinator. You can find more information about Citus support <a class="reference internal" href="citus.xhtml#citus"><span class="std std-ref">here</span></a>.</p>
+<ul class="simple">
+<li><p><strong>group</strong>: the Citus group id, integer. Use <code class="docutils literal notranslate"><span class="pre">0</span></code> for coordinator and <code class="docutils literal notranslate"><span class="pre">1</span></code>, <code class="docutils literal notranslate"><span class="pre">2</span></code>, etc… for workers</p></li>
+<li><p><strong>database</strong>: the database where <code class="docutils literal notranslate"><span class="pre">citus</span></code> extension should be created. Must be the same on the coordinator and all workers. Currently only one database is supported.</p></li>
+</ul>
+</section>
+<section id="consul">
+<span id="consul-settings"></span><h2>Consul</h2>
+<p>Most of the parameters are optional, but you have to specify one of the <strong>host</strong> or <strong>url</strong></p>
+<ul class="simple">
+<li><p><strong>host</strong>: the host:port for the Consul local agent.</p></li>
+<li><p><strong>url</strong>: url for the Consul local agent, in format: http(s)://host:port.</p></li>
+<li><p><strong>port</strong>: (optional) Consul port.</p></li>
+<li><p><strong>scheme</strong>: (optional) <strong>http</strong> or <strong>https</strong>, defaults to <strong>http</strong>.</p></li>
+<li><p><strong>token</strong>: (optional) ACL token.</p></li>
+<li><p><strong>verify</strong>: (optional) whether to verify the SSL certificate for HTTPS requests.</p></li>
+<li><p><strong>cacert</strong>: (optional) The ca certificate. If present it will enable validation.</p></li>
+<li><p><strong>cert</strong>: (optional) file with the client certificate.</p></li>
+<li><p><strong>key</strong>: (optional) file with the client key. Can be empty if the key is part of <strong>cert</strong>.</p></li>
+<li><p><strong>dc</strong>: (optional) Datacenter to communicate with. By default the datacenter of the host is used.</p></li>
+<li><p><strong>consistency</strong>: (optional) Select consul consistency mode. Possible values are <code class="docutils literal notranslate"><span class="pre">default</span></code>, <code class="docutils literal notranslate"><span class="pre">consistent</span></code>, or <code class="docutils literal notranslate"><span class="pre">stale</span></code> (more details in <a class="reference external" href="https://www.consul.io/api/features/consistency.html/">consul API reference</a><span class="link-target"> [https://www.consul.io/api/features/consistency.html/]</span>)</p></li>
+<li><p><strong>checks</strong>: (optional) list of Consul health checks used for the session. By default an empty list is used.</p></li>
+<li><p><strong>register_service</strong>: (optional) whether or not to register a service with the name defined by the scope parameter and the tag master, primary, replica, or standby-leader depending on the node’s role. Defaults to <strong>false</strong>.</p></li>
+<li><p><strong>service_tags</strong>: (optional) additional static tags to add to the Consul service apart from the role (<code class="docutils literal notranslate"><span class="pre">primary</span></code>/<code class="docutils literal notranslate"><span class="pre">replica</span></code>/<code class="docutils literal notranslate"><span class="pre">standby-leader</span></code>). By default an empty list is used.</p></li>
+<li><p><strong>service_check_interval</strong>: (optional) how often to perform health check against registered url. Defaults to ‘5s’.</p></li>
+<li><p><strong>service_check_tls_server_name</strong>: (optional) override SNI host when connecting via TLS, see also <a class="reference external" href="https://www.consul.io/api-docs/agent/check#tlsservername">consul agent check API reference</a><span class="link-target"> [https://www.consul.io/api-docs/agent/check#tlsservername]</span>.</p></li>
+</ul>
+<p>The <code class="docutils literal notranslate"><span class="pre">token</span></code> needs to have the following ACL permissions:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">service_prefix</span> <span class="s2">&quot;$</span><span class="si">{scope}</span><span class="s2">&quot;</span> <span class="p">{</span>
+    <span class="n">policy</span> <span class="o">=</span> <span class="s2">&quot;write&quot;</span>
+<span class="p">}</span>
+<span class="n">key_prefix</span> <span class="s2">&quot;$</span><span class="si">{namespace}</span><span class="s2">/$</span><span class="si">{scope}</span><span class="s2">&quot;</span> <span class="p">{</span>
+    <span class="n">policy</span> <span class="o">=</span> <span class="s2">&quot;write&quot;</span>
+<span class="p">}</span>
+<span class="n">session_prefix</span> <span class="s2">&quot;&quot;</span> <span class="p">{</span>
+    <span class="n">policy</span> <span class="o">=</span> <span class="s2">&quot;write&quot;</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</section>
+<section id="etcd">
+<h2>Etcd</h2>
+<p>Most of the parameters are optional, but you have to specify one of the <strong>host</strong>, <strong>hosts</strong>, <strong>url</strong>, <strong>proxy</strong> or <strong>srv</strong></p>
+<ul class="simple">
+<li><p><strong>host</strong>: the host:port for the etcd endpoint.</p></li>
+<li><p><strong>hosts</strong>: list of etcd endpoint in format host1:port1,host2:port2,etc… Could be a comma separated string or an actual yaml list.</p></li>
+<li><p><strong>use_proxies</strong>: If this parameter is set to true, Patroni will consider <strong>hosts</strong> as a list of proxies and will not perform a topology discovery of etcd cluster.</p></li>
+<li><p><strong>url</strong>: url for the etcd.</p></li>
+<li><p><strong>proxy</strong>: proxy url for the etcd. If you are connecting to the etcd using proxy, use this parameter instead of <strong>url</strong>.</p></li>
+<li><p><strong>srv</strong>: Domain to search the SRV record(s) for cluster autodiscovery. Patroni will try to query these SRV service names for specified domain (in that order until first success): <code class="docutils literal notranslate"><span class="pre">_etcd-client-ssl</span></code>, <code class="docutils literal notranslate"><span class="pre">_etcd-client</span></code>, <code class="docutils literal notranslate"><span class="pre">_etcd-ssl</span></code>, <code class="docutils literal notranslate"><span class="pre">_etcd</span></code>, <code class="docutils literal notranslate"><span class="pre">_etcd-server-ssl</span></code>, <code class="docutils literal notranslate"><span class="pre">_etcd-server</span></code>. If SRV records for <code class="docutils literal notranslate"><span class="pre">_etcd-server-ssl</span></code> or <code class="docutils literal notranslate"><span class="pre">_etcd-server</span></code> are retrieved then ETCD peer protocol is used do query ETCD for available members. Otherwise hosts from SRV records will be used.</p></li>
+<li><p><strong>srv_suffix</strong>: Configures a suffix to the SRV name that is queried during discovery. Use this flag to differentiate between multiple etcd clusters under the same domain. Works only with conjunction with <strong>srv</strong>. For example, if <code class="docutils literal notranslate"><span class="pre">srv_suffix:</span> <span class="pre">foo</span></code> and <code class="docutils literal notranslate"><span class="pre">srv:</span> <span class="pre">example.org</span></code> are set, the following DNS SRV query is made:<code class="docutils literal notranslate"><span class="pre">_etcd-client-ssl-foo._tcp.example.com</span></code> (and so on for every possible ETCD SRV service name).</p></li>
+<li><p><strong>protocol</strong>: (optional) http or https, if not specified http is used. If the <strong>url</strong> or <strong>proxy</strong> is specified - will take protocol from them.</p></li>
+<li><p><strong>username</strong>: (optional) username for etcd authentication.</p></li>
+<li><p><strong>password</strong>: (optional) password for etcd authentication.</p></li>
+<li><p><strong>cacert</strong>: (optional) The ca certificate. If present it will enable validation.</p></li>
+<li><p><strong>cert</strong>: (optional) file with the client certificate.</p></li>
+<li><p><strong>key</strong>: (optional) file with the client key. Can be empty if the key is part of <strong>cert</strong>.</p></li>
+</ul>
+</section>
+<section id="etcdv3">
+<h2>Etcdv3</h2>
+<p>If you want that Patroni works with Etcd cluster via protocol version 3, you need to use the <code class="docutils literal notranslate"><span class="pre">etcd3</span></code> section in the Patroni configuration file. All configuration parameters are the same as for <code class="docutils literal notranslate"><span class="pre">etcd</span></code>.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>Keys created with protocol version 2 are not visible with protocol version 3 and the other way around, therefore it is not possible to switch from <code class="docutils literal notranslate"><span class="pre">etcd</span></code> to <code class="docutils literal notranslate"><span class="pre">etcd3</span></code> just by updating Patroni config file. In addition, Patroni uses Etcd’s gRPC-gateway (proxy) to communicate with the V3 API, which means that TLS common name authentication is not possible.</p>
+</div>
+</section>
+<section id="zookeeper">
+<h2>ZooKeeper</h2>
+<ul class="simple">
+<li><p><strong>hosts</strong>: List of ZooKeeper cluster members in format: [‘host1:port1’, ‘host2:port2’, ‘etc…’].</p></li>
+<li><p><strong>use_ssl</strong>: (optional) Whether SSL is used or not. Defaults to <code class="docutils literal notranslate"><span class="pre">false</span></code>. If set to <code class="docutils literal notranslate"><span class="pre">false</span></code>, all SSL specific parameters are ignored.</p></li>
+<li><p><strong>cacert</strong>: (optional) The CA certificate. If present it will enable validation.</p></li>
+<li><p><strong>cert</strong>: (optional) File with the client certificate.</p></li>
+<li><p><strong>key</strong>: (optional) File with the client key.</p></li>
+<li><p><strong>key_password</strong>: (optional) The client key password.</p></li>
+<li><p><strong>verify</strong>: (optional) Whether to verify certificate or not. Defaults to <code class="docutils literal notranslate"><span class="pre">true</span></code>.</p></li>
+<li><p><strong>set_acls</strong>: (optional) If set, configure Kazoo to apply a default ACL to each ZNode that it creates. ACLs will assume ‘x509’ schema and should be specified as a dictionary with the principal as the key and one or more permissions as a list in the value.  Permissions may be one of <code class="docutils literal notranslate"><span class="pre">CREATE</span></code>, <code class="docutils literal notranslate"><span class="pre">READ</span></code>, <code class="docutils literal notranslate"><span class="pre">WRITE</span></code>, <code class="docutils literal notranslate"><span class="pre">DELETE</span></code> or <code class="docutils literal notranslate"><span class="pre">ADMIN</span></code>.  For example, <code class="docutils literal notranslate"><span class="pre">set_acls:</span> <span class="pre">{CN=principal1:</span> <span class="pre">[CREATE,</span> <span class="pre">READ],</span> <span class="pre">CN=principal2:</span> <span class="pre">[ALL]}</span></code>.</p></li>
+<li><p><strong>auth_data</strong>: (optional) Authentication credentials to use for the connection. Should be a dictionary in the form that <cite>scheme</cite> is the key and <cite>credential</cite> is the value. Defaults to empty dictionary.</p></li>
+</ul>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>It is required to install <code class="docutils literal notranslate"><span class="pre">kazoo&gt;=2.6.0</span></code> to support SSL.</p>
+</div>
+</section>
+<section id="exhibitor">
+<h2>Exhibitor</h2>
+<ul class="simple">
+<li><p><strong>hosts</strong>: initial list of Exhibitor (ZooKeeper) nodes in format: ‘host1,host2,etc…’. This list updates automatically whenever the Exhibitor (ZooKeeper) cluster topology changes.</p></li>
+<li><p><strong>poll_interval</strong>: how often the list of ZooKeeper and Exhibitor nodes should be updated from Exhibitor.</p></li>
+<li><p><strong>port</strong>: Exhibitor port.</p></li>
+</ul>
+</section>
+<section id="kubernetes">
+<span id="kubernetes-settings"></span><h2>Kubernetes</h2>
+<ul class="simple">
+<li><p><strong>bypass_api_service</strong>: (optional) When communicating with the Kubernetes API, Patroni is usually relying on the <cite>kubernetes</cite> service, the address of which is exposed in the pods via the <cite>KUBERNETES_SERVICE_HOST</cite> environment variable. If <cite>bypass_api_service</cite> is set to <code class="docutils literal notranslate"><span class="pre">true</span></code>, Patroni will resolve the list of API nodes behind the service and connect directly to them.</p></li>
+<li><p><strong>namespace</strong>: (optional) Kubernetes namespace where Patroni pod is running. Default value is <cite>default</cite>.</p></li>
+<li><p><strong>labels</strong>: Labels in format <code class="docutils literal notranslate"><span class="pre">{label1:</span> <span class="pre">value1,</span> <span class="pre">label2:</span> <span class="pre">value2}</span></code>. These labels will be used to find existing objects (Pods and either Endpoints or ConfigMaps) associated with the current cluster. Also Patroni will set them on every object (Endpoint or ConfigMap) it creates.</p></li>
+<li><p><strong>scope_label</strong>: (optional) name of the label containing cluster name. Default value is <cite>cluster-name</cite>.</p></li>
+<li><p><strong>bootstrap_labels</strong>: (optional) Labels in format <code class="docutils literal notranslate"><span class="pre">{label1:</span> <span class="pre">value1,</span> <span class="pre">label2:</span> <span class="pre">value2}</span></code>. These labels will be assigned to a Patroni pod when its state is either <code class="docutils literal notranslate"><span class="pre">initializing</span> <span class="pre">new</span> <span class="pre">cluster</span></code>, <code class="docutils literal notranslate"><span class="pre">running</span> <span class="pre">custom</span> <span class="pre">bootstrap</span> <span class="pre">script</span></code>, <code class="docutils literal notranslate"><span class="pre">starting</span> <span class="pre">after</span> <span class="pre">custom</span> <span class="pre">bootstrap</span></code> or <code class="docutils literal notranslate"><span class="pre">creating</span> <span class="pre">replica</span></code>.</p></li>
+<li><p><strong>role_label</strong>: (optional) name of the label containing role (<cite>primary</cite>, <cite>replica</cite>, or other custom value). Patroni will set this label on the pod it runs in. Default value is <code class="docutils literal notranslate"><span class="pre">role</span></code>.</p></li>
+<li><p><strong>leader_label_value</strong>: (optional) value of the pod label when Postgres role is <code class="docutils literal notranslate"><span class="pre">primary</span></code>. Default value is <code class="docutils literal notranslate"><span class="pre">primary</span></code>.</p></li>
+<li><p><strong>follower_label_value</strong>: (optional) value of the pod label when Postgres role is <code class="docutils literal notranslate"><span class="pre">replica</span></code>. Default value is <code class="docutils literal notranslate"><span class="pre">replica</span></code>.</p></li>
+<li><p><strong>standby_leader_label_value</strong>: (optional) value of the pod label when Postgres role is <code class="docutils literal notranslate"><span class="pre">standby_leader</span></code>. Default value is <code class="docutils literal notranslate"><span class="pre">primary</span></code>.</p></li>
+<li><p><strong>tmp_role_label</strong>: (optional) name of the temporary label containing role (<cite>primary</cite> or <cite>replica</cite>). Value of this label will always use the default of corresponding role. Set only when necessary.</p></li>
+<li><p><strong>use_endpoints</strong>: (optional) if set to true, Patroni will use Endpoints instead of ConfigMaps to run leader elections and keep cluster state.</p></li>
+<li><p><strong>pod_ip</strong>: (optional) IP address of the pod Patroni is running in. This value is required when <cite>use_endpoints</cite> is enabled and is used to populate the leader endpoint subsets when the pod’s PostgreSQL is promoted.</p></li>
+<li><p><strong>ports</strong>: (optional) if the Service object has the name for the port, the same name must appear in the Endpoint object, otherwise service won’t work. For example, if your service is defined as <code class="docutils literal notranslate"><span class="pre">{Kind:</span> <span class="pre">Service,</span> <span class="pre">spec:</span> <span class="pre">{ports:</span> <span class="pre">[{name:</span> <span class="pre">postgresql,</span> <span class="pre">port:</span> <span class="pre">5432,</span> <span class="pre">targetPort:</span> <span class="pre">5432}]}}</span></code>, then you have to set <code class="docutils literal notranslate"><span class="pre">kubernetes.ports:</span> <span class="pre">[{&quot;name&quot;:</span> <span class="pre">&quot;postgresql&quot;,</span> <span class="pre">&quot;port&quot;:</span> <span class="pre">5432}]</span></code> and Patroni will use it for updating subsets of the leader Endpoint. This parameter is used only if <cite>kubernetes.use_endpoints</cite> is set.</p></li>
+<li><p><strong>cacert</strong>: (optional) Specifies the file with the CA_BUNDLE file with certificates of trusted CAs to use while verifying Kubernetes API SSL certs. If not provided, patroni will use the value provided by the ServiceAccount secret.</p></li>
+<li><p><strong>retriable_http_codes</strong>: (optional) list of HTTP status codes from K8s API to retry on. By default Patroni is retrying on <code class="docutils literal notranslate"><span class="pre">500</span></code>, <code class="docutils literal notranslate"><span class="pre">503</span></code>, and <code class="docutils literal notranslate"><span class="pre">504</span></code>, or if K8s API response has <code class="docutils literal notranslate"><span class="pre">retry-after</span></code> HTTP header.</p></li>
+</ul>
+</section>
+<section id="raft-deprecated">
+<span id="raft-settings"></span><h2>Raft (deprecated)</h2>
+<ul>
+<li><p><strong>self_addr</strong>: <code class="docutils literal notranslate"><span class="pre">ip:port</span></code> to listen on for Raft connections. The <code class="docutils literal notranslate"><span class="pre">self_addr</span></code> must be accessible from other nodes of the cluster. If not set, the node will not participate in consensus.</p></li>
+<li><p><strong>bind_addr</strong>: (optional) <code class="docutils literal notranslate"><span class="pre">ip:port</span></code> to listen on for Raft connections. If not specified the <code class="docutils literal notranslate"><span class="pre">self_addr</span></code> will be used.</p></li>
+<li><p><strong>partner_addrs</strong>: list of other Patroni nodes in the cluster in format: [‘ip1:port’, ‘ip2:port’, ‘etc…’]</p></li>
+<li><p><strong>data_dir</strong>: directory where to store Raft log and snapshot. If not specified the current working directory is used.</p></li>
+<li><p><strong>password</strong>: (optional) Encrypt Raft traffic with a specified password, requires <code class="docutils literal notranslate"><span class="pre">cryptography</span></code> python module.</p>
+<p>Short FAQ about Raft implementation</p>
+<ul>
+<li><p>Q: How to list all the nodes providing consensus?</p>
+<p>A: <code class="docutils literal notranslate"><span class="pre">syncobj_admin</span> <span class="pre">-conn</span> <span class="pre">host:port</span> <span class="pre">-status</span></code> where the host:port is the address of one of the cluster nodes</p>
+</li>
+<li><p>Q: Node that was a part of consensus and has gone and I can’t reuse the same IP for other node. How to remove this node from the consensus?</p>
+<p>A: <code class="docutils literal notranslate"><span class="pre">syncobj_admin</span> <span class="pre">-conn</span> <span class="pre">host:port</span> <span class="pre">-remove</span> <span class="pre">host2:port2</span></code> where the <code class="docutils literal notranslate"><span class="pre">host2:port2</span></code> is the address of the node you want to remove from consensus.</p>
+</li>
+<li><p>Q: Where to get the <code class="docutils literal notranslate"><span class="pre">syncobj_admin</span></code> utility?</p>
+<p>A: It is installed together with <code class="docutils literal notranslate"><span class="pre">pysyncobj</span></code> module (python RAFT implementation), which is Patroni dependency.</p>
+</li>
+<li><p>Q: it is possible to run Patroni node without adding in to the consensus?</p>
+<p>A: Yes, just comment out or remove <code class="docutils literal notranslate"><span class="pre">raft.self_addr</span></code> from Patroni configuration.</p>
+</li>
+<li><p>Q: It is possible to run Patroni and PostgreSQL only on two nodes?</p>
+<p>A: Yes, on the third node you can run <code class="docutils literal notranslate"><span class="pre">patroni_raft_controller</span></code> (without Patroni and PostgreSQL). In such a setup, one can temporarily lose one node without affecting the primary.</p>
+</li>
+</ul>
+</li>
+</ul>
+</section>
+<section id="postgresql">
+<span id="postgresql-settings"></span><h2>PostgreSQL</h2>
+<ul class="simple">
+<li><p><strong>postgresql</strong>:</p>
+<ul>
+<li><p><strong>authentication</strong>:</p>
+<ul>
+<li><p><strong>superuser</strong>:</p>
+<ul>
+<li><p><strong>username</strong>: name for the superuser, set during initialization (initdb) and later used by Patroni to connect to the postgres.</p></li>
+<li><p><strong>password</strong>: password for the superuser, set during initialization (initdb).</p></li>
+<li><p><strong>sslmode</strong>: (optional) maps to the <a class="reference external" href="https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-SSLMODE">sslmode</a><span class="link-target"> [https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-SSLMODE]</span> connection parameter, which allows a client to specify the type of TLS negotiation mode with the server. For more information on how each mode works, please visit the <a class="reference external" href="https://www.postgresql.org/docs/current/libpq-ssl.html#LIBPQ-SSL-SSLMODE-STATEMENTS">PostgreSQL documentation</a><span class="link-target"> [https://www.postgresql.org/docs/current/libpq-ssl.html#LIBPQ-SSL-SSLMODE-STATEMENTS]</span>. The default mode is <code class="docutils literal notranslate"><span class="pre">prefer</span></code>.</p></li>
+<li><p><strong>sslkey</strong>: (optional) maps to the <a class="reference external" href="https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-SSLKEY">sslkey</a><span class="link-target"> [https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-SSLKEY]</span> connection parameter, which specifies the location of the secret key used with the client’s certificate.</p></li>
+<li><p><strong>sslpassword</strong>: (optional) maps to the <a class="reference external" href="https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-SSLPASSWORD">sslpassword</a><span class="link-target"> [https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-SSLPASSWORD]</span> connection parameter, which specifies the password for the secret key specified in <code class="docutils literal notranslate"><span class="pre">sslkey</span></code>.</p></li>
+<li><p><strong>sslcert</strong>: (optional) maps to the <a class="reference external" href="https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-SSLCERT">sslcert</a><span class="link-target"> [https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-SSLCERT]</span> connection parameter, which specifies the location of the client certificate.</p></li>
+<li><p><strong>sslrootcert</strong>: (optional) maps to the <a class="reference external" href="https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-SSLROOTCERT">sslrootcert</a><span class="link-target"> [https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-SSLROOTCERT]</span> connection parameter, which specifies the location of a file containing one or more certificate authorities (CA) certificates that the client will use to verify a server’s certificate.</p></li>
+<li><p><strong>sslcrl</strong>: (optional) maps to the <a class="reference external" href="https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-SSLCRL">sslcrl</a><span class="link-target"> [https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-SSLCRL]</span> connection parameter, which specifies the location of a file containing a certificate revocation list. A client will reject connecting to any server that has a certificate present in this list.</p></li>
+<li><p><strong>sslcrldir</strong>: (optional) maps to the <a class="reference external" href="https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-SSLCRLDIR">sslcrldir</a><span class="link-target"> [https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-SSLCRLDIR]</span> connection parameter, which specifies the location of a directory with files containing a certificate revocation list. A client will reject connecting to any server that has a certificate present in this list.</p></li>
+<li><p><strong>sslnegotiation</strong>: (optional) maps to the <a class="reference external" href="https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-SSLNEGOTIATION">sslnegotiation</a><span class="link-target"> [https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-SSLNEGOTIATION]</span> connection parameter, which controls how SSL encryption is negotiated with the server, if SSL is used.</p></li>
+<li><p><strong>gssencmode</strong>: (optional) maps to the <a class="reference external" href="https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-GSSENCMODE">gssencmode</a><span class="link-target"> [https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-GSSENCMODE]</span> connection parameter, which determines whether or with what priority a secure GSS TCP/IP connection will be negotiated with the server</p></li>
+<li><p><strong>channel_binding</strong>: (optional) maps to the <a class="reference external" href="https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-CHANNEL-BINDING">channel_binding</a><span class="link-target"> [https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-CHANNEL-BINDING]</span> connection parameter, which controls the client’s use of channel binding.</p></li>
+</ul>
+</li>
+<li><p><strong>replication</strong>:</p>
+<ul>
+<li><p><strong>username</strong>: replication username; the user will be created during initialization. Replicas will use this user to access the replication source via streaming replication</p></li>
+<li><p><strong>password</strong>: replication password; the user will be created during initialization.</p></li>
+<li><p><strong>sslmode</strong>: (optional) maps to the <a class="reference external" href="https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-SSLMODE">sslmode</a><span class="link-target"> [https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-SSLMODE]</span> connection parameter, which allows a client to specify the type of TLS negotiation mode with the server. For more information on how each mode works, please visit the <a class="reference external" href="https://www.postgresql.org/docs/current/libpq-ssl.html#LIBPQ-SSL-SSLMODE-STATEMENTS">PostgreSQL documentation</a><span class="link-target"> [https://www.postgresql.org/docs/current/libpq-ssl.html#LIBPQ-SSL-SSLMODE-STATEMENTS]</span>. The default mode is <code class="docutils literal notranslate"><span class="pre">prefer</span></code>.</p></li>
+<li><p><strong>sslkey</strong>: (optional) maps to the <a class="reference external" href="https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-SSLKEY">sslkey</a><span class="link-target"> [https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-SSLKEY]</span> connection parameter, which specifies the location of the secret key used with the client’s certificate.</p></li>
+<li><p><strong>sslpassword</strong>: (optional) maps to the <a class="reference external" href="https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-SSLPASSWORD">sslpassword</a><span class="link-target"> [https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-SSLPASSWORD]</span> connection parameter, which specifies the password for the secret key specified in <code class="docutils literal notranslate"><span class="pre">sslkey</span></code>.</p></li>
+<li><p><strong>sslcert</strong>: (optional) maps to the <a class="reference external" href="https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-SSLCERT">sslcert</a><span class="link-target"> [https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-SSLCERT]</span> connection parameter, which specifies the location of the client certificate.</p></li>
+<li><p><strong>sslrootcert</strong>: (optional) maps to the <a class="reference external" href="https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-SSLROOTCERT">sslrootcert</a><span class="link-target"> [https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-SSLROOTCERT]</span> connection parameter, which specifies the location of a file containing one or more certificate authorities (CA) certificates that the client will use to verify a server’s certificate.</p></li>
+<li><p><strong>sslcrl</strong>: (optional) maps to the <a class="reference external" href="https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-SSLCRL">sslcrl</a><span class="link-target"> [https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-SSLCRL]</span> connection parameter, which specifies the location of a file containing a certificate revocation list. A client will reject connecting to any server that has a certificate present in this list.</p></li>
+<li><p><strong>sslcrldir</strong>: (optional) maps to the <a class="reference external" href="https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-SSLCRLDIR">sslcrldir</a><span class="link-target"> [https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-SSLCRLDIR]</span> connection parameter, which specifies the location of a directory with files containing a certificate revocation list. A client will reject connecting to any server that has a certificate present in this list.</p></li>
+<li><p><strong>sslnegotiation</strong>: (optional) maps to the <a class="reference external" href="https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-SSLNEGOTIATION">sslnegotiation</a><span class="link-target"> [https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-SSLNEGOTIATION]</span> connection parameter, which controls how SSL encryption is negotiated with the server, if SSL is used.</p></li>
+<li><p><strong>gssencmode</strong>: (optional) maps to the <a class="reference external" href="https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-GSSENCMODE">gssencmode</a><span class="link-target"> [https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-GSSENCMODE]</span> connection parameter, which determines whether or with what priority a secure GSS TCP/IP connection will be negotiated with the server</p></li>
+<li><p><strong>channel_binding</strong>: (optional) maps to the <a class="reference external" href="https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-CHANNEL-BINDING">channel_binding</a><span class="link-target"> [https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-CHANNEL-BINDING]</span> connection parameter, which controls the client’s use of channel binding.</p></li>
+</ul>
+</li>
+<li><p><strong>rewind</strong>:</p>
+<ul>
+<li><p><strong>username</strong>: (optional) name for the user for <code class="docutils literal notranslate"><span class="pre">pg_rewind</span></code>; the user will be created during initialization of postgres 11+ and all necessary <a class="reference external" href="https://www.postgresql.org/docs/11/app-pgrewind.html#id-1.9.5.8.8">permissions</a><span class="link-target"> [https://www.postgresql.org/docs/11/app-pgrewind.html#id-1.9.5.8.8]</span> will be granted.</p></li>
+<li><p><strong>password</strong>: (optional) password for the user for <code class="docutils literal notranslate"><span class="pre">pg_rewind</span></code>; the user will be created during initialization.</p></li>
+<li><p><strong>sslmode</strong>: (optional) maps to the <a class="reference external" href="https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-SSLMODE">sslmode</a><span class="link-target"> [https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-SSLMODE]</span> connection parameter, which allows a client to specify the type of TLS negotiation mode with the server. For more information on how each mode works, please visit the <a class="reference external" href="https://www.postgresql.org/docs/current/libpq-ssl.html#LIBPQ-SSL-SSLMODE-STATEMENTS">PostgreSQL documentation</a><span class="link-target"> [https://www.postgresql.org/docs/current/libpq-ssl.html#LIBPQ-SSL-SSLMODE-STATEMENTS]</span>. The default mode is <code class="docutils literal notranslate"><span class="pre">prefer</span></code>.</p></li>
+<li><p><strong>sslkey</strong>: (optional) maps to the <a class="reference external" href="https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-SSLKEY">sslkey</a><span class="link-target"> [https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-SSLKEY]</span> connection parameter, which specifies the location of the secret key used with the client’s certificate.</p></li>
+<li><p><strong>sslpassword</strong>: (optional) maps to the <a class="reference external" href="https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-SSLPASSWORD">sslpassword</a><span class="link-target"> [https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-SSLPASSWORD]</span> connection parameter, which specifies the password for the secret key specified in <code class="docutils literal notranslate"><span class="pre">sslkey</span></code>.</p></li>
+<li><p><strong>sslcert</strong>: (optional) maps to the <a class="reference external" href="https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-SSLCERT">sslcert</a><span class="link-target"> [https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-SSLCERT]</span> connection parameter, which specifies the location of the client certificate.</p></li>
+<li><p><strong>sslrootcert</strong>: (optional) maps to the <a class="reference external" href="https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-SSLROOTCERT">sslrootcert</a><span class="link-target"> [https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-SSLROOTCERT]</span> connection parameter, which specifies the location of a file containing one or more certificate authorities (CA) certificates that the client will use to verify a server’s certificate.</p></li>
+<li><p><strong>sslcrl</strong>: (optional) maps to the <a class="reference external" href="https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-SSLCRL">sslcrl</a><span class="link-target"> [https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-SSLCRL]</span> connection parameter, which specifies the location of a file containing a certificate revocation list. A client will reject connecting to any server that has a certificate present in this list.</p></li>
+<li><p><strong>sslcrldir</strong>: (optional) maps to the <a class="reference external" href="https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-SSLCRLDIR">sslcrldir</a><span class="link-target"> [https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-SSLCRLDIR]</span> connection parameter, which specifies the location of a directory with files containing a certificate revocation list. A client will reject connecting to any server that has a certificate present in this list.</p></li>
+<li><p><strong>sslnegotiation</strong>: (optional) maps to the <a class="reference external" href="https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-SSLNEGOTIATION">sslnegotiation</a><span class="link-target"> [https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-SSLNEGOTIATION]</span> connection parameter, which controls how SSL encryption is negotiated with the server, if SSL is used.</p></li>
+<li><p><strong>gssencmode</strong>: (optional) maps to the <a class="reference external" href="https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-GSSENCMODE">gssencmode</a><span class="link-target"> [https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-GSSENCMODE]</span> connection parameter, which determines whether or with what priority a secure GSS TCP/IP connection will be negotiated with the server</p></li>
+<li><p><strong>channel_binding</strong>: (optional) maps to the <a class="reference external" href="https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-CHANNEL-BINDING">channel_binding</a><span class="link-target"> [https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNECT-CHANNEL-BINDING]</span> connection parameter, which controls the client’s use of channel binding.</p></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><p><strong>callbacks</strong>: callback scripts to run on certain actions. Patroni will pass the action, role and cluster name. (See scripts/aws.py as an example of how to write them.)</p>
+<ul>
+<li><p><strong>on_reload</strong>: run this script when configuration reload is triggered.</p></li>
+<li><p><strong>on_restart</strong>: run this script when the postgres restarts (without changing role).</p></li>
+<li><p><strong>on_role_change</strong>: run this script when the postgres is being promoted or demoted.</p></li>
+<li><p><strong>on_start</strong>: run this script when the postgres starts.</p></li>
+<li><p><strong>on_stop</strong>: run this script when the postgres stops.</p></li>
+</ul>
+</li>
+<li><p><strong>connect_address</strong>: IP address + port through which Postgres is accessible from other nodes and applications.</p></li>
+<li><p><strong>proxy_address</strong>: IP address + port through which a connection pool (e.g. pgbouncer) running next to Postgres is accessible. The value is written to the member key in DCS as <code class="docutils literal notranslate"><span class="pre">proxy_url</span></code> and could be used/useful for service discovery.</p></li>
+<li><p><strong>create_replica_methods</strong>: an ordered list of the create methods for turning a Patroni node into a new replica.
+“basebackup” is the default method; other methods are assumed to refer to scripts, each of which is configured as its
+own config item. See <a class="reference internal" href="replica_bootstrap.xhtml#custom-replica-creation"><span class="std std-ref">custom replica creation methods documentation</span></a> for further explanation.</p></li>
+<li><p><strong>data_dir</strong>: The location of the Postgres data directory, either <a class="reference internal" href="existing_data.xhtml#existing-data"><span class="std std-ref">existing</span></a> or to be initialized by Patroni.</p></li>
+<li><p><strong>config_dir</strong>: The location of the Postgres configuration directory, defaults to the data directory. Must be writable by Patroni.</p></li>
+<li><p><strong>bin_dir</strong>: (optional) Path to PostgreSQL binaries (pg_ctl, initdb, pg_controldata, pg_basebackup, postgres, pg_isready, pg_rewind). If not provided or is an empty string, PATH environment variable will be used to find the executables.</p></li>
+<li><p><strong>bin_name</strong>: (optional) Make it possible to override Postgres binary names, if you are using a custom Postgres distribution:</p>
+<ul>
+<li><p><strong>pg_ctl</strong>: (optional) Custom name for <code class="docutils literal notranslate"><span class="pre">pg_ctl</span></code> binary.</p></li>
+<li><p><strong>initdb</strong>: (optional) Custom name for <code class="docutils literal notranslate"><span class="pre">initdb</span></code> binary.</p></li>
+<li><p><strong>pgcontroldata</strong>: (optional) Custom name for <code class="docutils literal notranslate"><span class="pre">pg_controldata</span></code> binary.</p></li>
+<li><p><strong>pg_basebackup</strong>: (optional) Custom name for <code class="docutils literal notranslate"><span class="pre">pg_basebackup</span></code> binary.</p></li>
+<li><p><strong>postgres</strong>: (optional) Custom name for <code class="docutils literal notranslate"><span class="pre">postgres</span></code> binary.</p></li>
+<li><p><strong>pg_isready</strong>: (optional) Custom name for <code class="docutils literal notranslate"><span class="pre">pg_isready</span></code> binary.</p></li>
+<li><p><strong>pg_rewind</strong>: (optional) Custom name for <code class="docutils literal notranslate"><span class="pre">pg_rewind</span></code> binary.</p></li>
+</ul>
+</li>
+<li><p><strong>listen</strong>: IP address + port that Postgres listens to; must be accessible from other nodes in the cluster, if you’re using streaming replication. Multiple comma-separated addresses are permitted, as long as the port component is appended after to the last one with a colon, i.e. <code class="docutils literal notranslate"><span class="pre">listen:</span> <span class="pre">127.0.0.1,127.0.0.2:5432</span></code>. Patroni will use the first address from this list to establish local connections to the PostgreSQL node.</p></li>
+<li><p><strong>use_unix_socket</strong>: specifies that Patroni should prefer to use unix sockets to connect to the cluster. Default value is <code class="docutils literal notranslate"><span class="pre">false</span></code>. If <code class="docutils literal notranslate"><span class="pre">unix_socket_directories</span></code> is defined, Patroni will use the first suitable value from it to connect to the cluster and fallback to tcp if nothing is suitable. If <code class="docutils literal notranslate"><span class="pre">unix_socket_directories</span></code> is not specified in <code class="docutils literal notranslate"><span class="pre">postgresql.parameters</span></code>, Patroni will assume that the default value should be used and omit <code class="docutils literal notranslate"><span class="pre">host</span></code> from the connection parameters.</p></li>
+<li><p><strong>use_unix_socket_repl</strong>: specifies that Patroni should prefer to use unix sockets for replication user cluster connection. Default value is <code class="docutils literal notranslate"><span class="pre">false</span></code>. If <code class="docutils literal notranslate"><span class="pre">unix_socket_directories</span></code> is defined, Patroni will use the first suitable value from it to connect to the cluster and fallback to tcp if nothing is suitable. If <code class="docutils literal notranslate"><span class="pre">unix_socket_directories</span></code> is not specified in <code class="docutils literal notranslate"><span class="pre">postgresql.parameters</span></code>, Patroni will assume that the default value should be used and omit <code class="docutils literal notranslate"><span class="pre">host</span></code> from the connection parameters.</p></li>
+<li><p><strong>pgpass</strong>: path to the <a class="reference external" href="https://www.postgresql.org/docs/current/static/libpq-pgpass.html">.pgpass</a><span class="link-target"> [https://www.postgresql.org/docs/current/static/libpq-pgpass.html]</span> password file. Patroni creates this file before executing pg_basebackup, the post_init script and under some other circumstances. The location must be writable by Patroni.</p></li>
+<li><p><strong>recovery_conf</strong>: additional configuration settings written to recovery.conf when configuring follower.</p></li>
+<li><p><strong>custom_conf</strong> : path to an optional custom <code class="docutils literal notranslate"><span class="pre">postgresql.conf</span></code> file, that will be used in place of <code class="docutils literal notranslate"><span class="pre">postgresql.base.conf</span></code>. The file must exist on all cluster nodes, be readable by PostgreSQL and will be included from its location on the real <code class="docutils literal notranslate"><span class="pre">postgresql.conf</span></code>. Note that Patroni will not monitor this file for changes, nor backup it. However, its settings can still be overridden by Patroni’s own configuration facilities - see <a class="reference internal" href="patroni_configuration.xhtml#patroni-configuration"><span class="std std-ref">dynamic configuration</span></a> for details.</p></li>
+<li><p><strong>parameters</strong>: configuration parameters (GUCs) for Postgres in format <code class="docutils literal notranslate"><span class="pre">{ssl:</span> <span class="pre">&quot;on&quot;,</span> <span class="pre">ssl_cert_file:</span> <span class="pre">&quot;cert_file&quot;}</span></code>.</p></li>
+<li><p><strong>pg_hba</strong>: list of lines that Patroni will use to generate <code class="docutils literal notranslate"><span class="pre">pg_hba.conf</span></code>. Patroni ignores this parameter if <code class="docutils literal notranslate"><span class="pre">hba_file</span></code> PostgreSQL parameter is set to a non-default value. Together with <a class="reference internal" href="dynamic_configuration.xhtml#dynamic-configuration"><span class="std std-ref">dynamic configuration</span></a> this parameter simplifies management of <code class="docutils literal notranslate"><span class="pre">pg_hba.conf</span></code>.</p>
+<ul>
+<li><p><strong>- host all all 0.0.0.0/0 md5</strong></p></li>
+<li><p><strong>- host replication replicator 127.0.0.1/32 md5</strong>: A line like this is required for replication.</p></li>
+</ul>
+</li>
+<li><p><strong>pg_ident</strong>: list of lines that Patroni will use to generate <code class="docutils literal notranslate"><span class="pre">pg_ident.conf</span></code>. Patroni ignores this parameter if <code class="docutils literal notranslate"><span class="pre">ident_file</span></code> PostgreSQL parameter is set to a non-default value. Together with <a class="reference internal" href="dynamic_configuration.xhtml#dynamic-configuration"><span class="std std-ref">dynamic configuration</span></a> this parameter simplifies management of <code class="docutils literal notranslate"><span class="pre">pg_ident.conf</span></code>.</p>
+<ul>
+<li><p><strong>- mapname1 systemname1 pguser1</strong></p></li>
+<li><p><strong>- mapname1 systemname2 pguser2</strong></p></li>
+</ul>
+</li>
+<li><p><strong>pg_ctl_timeout</strong>: How long should pg_ctl wait when doing <code class="docutils literal notranslate"><span class="pre">start</span></code>, <code class="docutils literal notranslate"><span class="pre">stop</span></code> or <code class="docutils literal notranslate"><span class="pre">restart</span></code>. Default value is 60 seconds.</p></li>
+<li><p><strong>use_pg_rewind</strong>: try to use pg_rewind on the former leader when it joins cluster as a replica. Either the cluster must be initialized with <code class="docutils literal notranslate"><span class="pre">data</span> <span class="pre">page</span> <span class="pre">checksums</span></code> (<code class="docutils literal notranslate"><span class="pre">--data-checksums</span></code> option for <code class="docutils literal notranslate"><span class="pre">initdb</span></code>) and/or <code class="docutils literal notranslate"><span class="pre">wal_log_hints</span></code> must be set to <code class="docutils literal notranslate"><span class="pre">on</span></code>, or <code class="docutils literal notranslate"><span class="pre">pg_rewind</span></code> will not work.</p></li>
+<li><p><strong>remove_data_directory_on_rewind_failure</strong>: If this option is enabled, Patroni will remove the PostgreSQL data directory and recreate the replica. Otherwise it will try to follow the new leader. Default value is <strong>false</strong>.</p></li>
+<li><p><strong>remove_data_directory_on_diverged_timelines</strong>: Patroni will remove the PostgreSQL data directory and recreate the replica if it notices that timelines are diverging and the former primary can not start streaming from the new primary. This option is useful when <code class="docutils literal notranslate"><span class="pre">pg_rewind</span></code> can not be used. While performing timelines divergence check on PostgreSQL v10 and older Patroni will try to connect with replication credential to the “postgres” database. Hence, such access should be allowed in the pg_hba.conf. Default value is <strong>false</strong>.</p></li>
+<li><p><strong>replica_method</strong>: for each create_replica_methods other than basebackup, you would add a configuration section of the same name. At a minimum, this should include “command” with a full path to the actual script to be executed. Other configuration parameters will be passed along to the script in the form “parameter=value”.</p></li>
+<li><p><strong>pre_promote</strong>: a fencing script that executes during a failover after acquiring the leader lock but before promoting the replica. If the script exits with a non-zero code, Patroni does not promote the replica and removes the leader key from DCS.</p></li>
+<li><p><strong>before_stop</strong>: a script that executes immediately prior to stopping postgres. As opposed to a callback, this script runs synchronously, blocking shutdown until it has completed. The return code of this script does not impact whether shutdown proceeds afterwards.</p></li>
+</ul>
+</li>
+</ul>
+</section>
+<section id="rest-api">
+<span id="restapi-settings"></span><h2>REST API</h2>
+<ul class="simple">
+<li><p><strong>restapi</strong>:</p>
+<ul>
+<li><p><strong>thread_pool_size</strong>: size of thread pool used by Patroni to process REST API requests. Minimal value is <code class="docutils literal notranslate"><span class="pre">5</span></code>, default value is <code class="docutils literal notranslate"><span class="pre">5</span></code>.</p></li>
+<li><p><strong>connect_address</strong>: IP address (or hostname) and port, to access the Patroni’s <a class="reference internal" href="rest_api.xhtml#rest-api"><span class="std std-ref">REST API</span></a>. All the members of the cluster must be able to connect to this address, so unless the Patroni setup is intended for a demo inside the localhost, this address must be a non “localhost” or loopback address (ie: “localhost” or “127.0.0.1”). It can serve as an endpoint for HTTP health checks (read below about the “listen” REST API parameter), and also for user queries (either directly or via the REST API), as well as for the health checks done by the cluster members during leader elections (for example, to determine whether the leader is still running, or if there is a node which has a WAL position that is ahead of the one doing the query; etc.) The connect_address is put in the member key in DCS, making it possible to translate the member name into the address to connect to its REST API.</p></li>
+<li><p><strong>listen</strong>: IP address (or hostname) and port that Patroni will listen to for the REST API - to provide also the same health checks and cluster messaging between the participating nodes, as described above. to provide health-check information for HAProxy (or any other load balancer capable of doing a HTTP “OPTION” or “GET” checks).</p></li>
+<li><p><strong>authentication</strong>: (optional)</p>
+<ul>
+<li><p><strong>username</strong>: Basic-auth username to protect unsafe REST API endpoints.</p></li>
+<li><p><strong>password</strong>: Basic-auth password to protect unsafe REST API endpoints.</p></li>
+</ul>
+</li>
+<li><p><strong>certfile</strong>: (optional): Specifies the file with the certificate in the PEM format. If the certfile is not specified or is left empty, the API server will work without SSL.</p></li>
+<li><p><strong>keyfile</strong>: (optional): Specifies the file with the secret key in the PEM format.</p></li>
+<li><p><strong>keyfile_password</strong>: (optional): Specifies a password for decrypting the keyfile.</p></li>
+<li><p><strong>cafile</strong>: (optional): Specifies the file with the CA_BUNDLE with certificates of trusted CAs to use while verifying client certs.</p></li>
+<li><p><strong>ciphers</strong>: (optional): Specifies the permitted cipher suites (e.g. “ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES128-GCM-SHA256:!SSLv1:!SSLv2:!SSLv3:!TLSv1:!TLSv1.1”)</p></li>
+<li><p><strong>verify_client</strong>: (optional): <code class="docutils literal notranslate"><span class="pre">none</span></code> (default), <code class="docutils literal notranslate"><span class="pre">optional</span></code> or <code class="docutils literal notranslate"><span class="pre">required</span></code>. When <code class="docutils literal notranslate"><span class="pre">none</span></code> REST API will not check client certificates. When <code class="docutils literal notranslate"><span class="pre">required</span></code> client certificates are required for all REST API calls. When <code class="docutils literal notranslate"><span class="pre">optional</span></code> client certificates are required for all unsafe REST API endpoints. When <code class="docutils literal notranslate"><span class="pre">required</span></code> is used, then client authentication succeeds, if the certificate signature verification succeeds.  For <code class="docutils literal notranslate"><span class="pre">optional</span></code> the client cert will only be checked for <code class="docutils literal notranslate"><span class="pre">PUT</span></code>, <code class="docutils literal notranslate"><span class="pre">POST</span></code>, <code class="docutils literal notranslate"><span class="pre">PATCH</span></code>, and <code class="docutils literal notranslate"><span class="pre">DELETE</span></code> requests.</p></li>
+<li><p><strong>allowlist</strong>: (optional): Specifies the set of hosts that are allowed to call unsafe REST API endpoints. The single element could be a host name, an IP address or a network address using CIDR notation. By default <code class="docutils literal notranslate"><span class="pre">allow</span> <span class="pre">all</span></code> is used. In case if <code class="docutils literal notranslate"><span class="pre">allowlist</span></code> or <code class="docutils literal notranslate"><span class="pre">allowlist_include_members</span></code> are set, anything that is not included is rejected.</p></li>
+<li><p><strong>allowlist_include_members</strong>: (optional): If set to <code class="docutils literal notranslate"><span class="pre">true</span></code> it allows accessing unsafe REST API endpoints from other cluster members registered in DCS (IP address or hostname is taken from the members <code class="docutils literal notranslate"><span class="pre">api_url</span></code>). Be careful, it might happen that OS will use a different IP for outgoing connections.</p></li>
+<li><p><strong>http_extra_headers</strong>: (optional): HTTP headers let the REST API server pass additional information with an HTTP response.</p></li>
+<li><p><strong>https_extra_headers</strong>: (optional): HTTPS headers let the REST API server pass additional information with an HTTP response when TLS is enabled. This will also pass additional information set in <code class="docutils literal notranslate"><span class="pre">http_extra_headers</span></code>.</p></li>
+<li><p><strong>request_queue_size</strong>: (optional): Sets request queue size for TCP socket used by Patroni REST API.  Once the queue is full, further requests get a “Connection denied” error. The default value is 5.</p></li>
+<li><p><strong>server_tokens</strong>: (optional): Configures the value of the <code class="docutils literal notranslate"><span class="pre">Server</span></code> HTTP header.
+- <code class="docutils literal notranslate"><span class="pre">Minimal</span></code>: The header will contain only the Patroni version, e.g. <code class="docutils literal notranslate"><span class="pre">Patroni/4.0.0</span></code>.
+- <code class="docutils literal notranslate"><span class="pre">ProductOnly</span></code>: The header will contain only the product name, e.g. <code class="docutils literal notranslate"><span class="pre">Patroni</span></code>.
+- <code class="docutils literal notranslate"><span class="pre">Original</span></code> (default): The header will expose the original behaviour and display the BaseHTTP and Python versions, e.g. <code class="docutils literal notranslate"><span class="pre">BaseHTTP/0.6</span> <span class="pre">Python/3.12.3</span></code>.</p></li>
+</ul>
+</li>
+</ul>
+<p>Here is an example of both <strong>http_extra_headers</strong> and <strong>https_extra_headers</strong>:</p>
+<div class="highlight-YAML notranslate"><div class="highlight"><pre><span></span><span class="nt">restapi</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">listen</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">&lt;listen&gt;</span>
+<span class="w">  </span><span class="nt">connect_address</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">&lt;connect_address&gt;</span>
+<span class="w">  </span><span class="nt">authentication</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">username</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">&lt;username&gt;</span>
+<span class="w">    </span><span class="nt">password</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">&lt;password&gt;</span>
+<span class="w">  </span><span class="nt">http_extra_headers</span><span class="p">:</span>
+<span class="w">    </span><span class="s">&#39;X-Frame-Options&#39;</span><span class="p p-Indicator">:</span><span class="w"> </span><span class="s">&#39;SAMEORIGIN&#39;</span>
+<span class="w">    </span><span class="s">&#39;X-XSS-Protection&#39;</span><span class="p p-Indicator">:</span><span class="w"> </span><span class="s">&#39;1;</span><span class="nv"> </span><span class="s">mode=block&#39;</span>
+<span class="w">    </span><span class="s">&#39;X-Content-Type-Options&#39;</span><span class="p p-Indicator">:</span><span class="w"> </span><span class="s">&#39;nosniff&#39;</span>
+<span class="w">  </span><span class="nt">cafile</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">&lt;ca file&gt;</span>
+<span class="w">  </span><span class="nt">certfile</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">&lt;cert&gt;</span>
+<span class="w">  </span><span class="nt">keyfile</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">&lt;key&gt;</span>
+<span class="w">  </span><span class="nt">https_extra_headers</span><span class="p">:</span>
+<span class="w">    </span><span class="s">&#39;Strict-Transport-Security&#39;</span><span class="p p-Indicator">:</span><span class="w"> </span><span class="s">&#39;max-age=31536000;</span><span class="nv"> </span><span class="s">includeSubDomains&#39;</span>
+</pre></div>
+</div>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<ul class="simple">
+<li><p>The <code class="docutils literal notranslate"><span class="pre">restapi.connect_address</span></code> must be accessible from all nodes of a given Patroni cluster. Internally Patroni is using it during the leader race to find nodes with minimal replication lag.</p></li>
+<li><p>If you enabled client certificates validation (<code class="docutils literal notranslate"><span class="pre">restapi.verify_client</span></code> is set to <code class="docutils literal notranslate"><span class="pre">required</span></code>), you also <strong>must</strong> provide <strong>valid client certificates</strong> in the <code class="docutils literal notranslate"><span class="pre">ctl.certfile</span></code>, <code class="docutils literal notranslate"><span class="pre">ctl.keyfile</span></code>, <code class="docutils literal notranslate"><span class="pre">ctl.keyfile_password</span></code>. If not provided, Patroni will not work correctly.</p></li>
+</ul>
+</div>
+</section>
+<section id="ctl">
+<span id="patronictl-settings"></span><h2>CTL</h2>
+<ul class="simple">
+<li><p><strong>ctl</strong>: (optional)</p>
+<ul>
+<li><p><strong>authentication</strong>:</p>
+<ul>
+<li><p><strong>username</strong>: Basic-auth username for accessing protected REST API endpoints. If not provided <a class="reference internal" href="patronictl.xhtml#patronictl"><span class="std std-ref">patronictl</span></a> will use the value provided for REST API “username” parameter.</p></li>
+<li><p><strong>password</strong>: Basic-auth password for accessing protected REST API endpoints. If not provided <a class="reference internal" href="patronictl.xhtml#patronictl"><span class="std std-ref">patronictl</span></a> will use the value provided for REST API “password” parameter.</p></li>
+</ul>
+</li>
+<li><p><strong>insecure</strong>: Allow connections to REST API without verifying SSL certs.</p></li>
+<li><p><strong>cacert</strong>: Specifies the file with the CA_BUNDLE file or directory with certificates of trusted CAs to use while verifying REST API SSL certs. If not provided <a class="reference internal" href="patronictl.xhtml#patronictl"><span class="std std-ref">patronictl</span></a> will use the value provided for REST API “cafile” parameter.</p></li>
+<li><p><strong>certfile</strong>: Specifies the file with the client certificate in the PEM format.</p></li>
+<li><p><strong>keyfile</strong>: Specifies the file with the client secret key in the PEM format.</p></li>
+<li><p><strong>keyfile_password</strong>: Specifies a password for decrypting the client keyfile.</p></li>
+</ul>
+</li>
+</ul>
+</section>
+<section id="watchdog">
+<h2>Watchdog</h2>
+<ul class="simple">
+<li><p><strong>mode</strong>: <code class="docutils literal notranslate"><span class="pre">off</span></code>, <code class="docutils literal notranslate"><span class="pre">automatic</span></code> or <code class="docutils literal notranslate"><span class="pre">required</span></code>. When <code class="docutils literal notranslate"><span class="pre">off</span></code> watchdog is disabled. When <code class="docutils literal notranslate"><span class="pre">automatic</span></code> watchdog will be used if available, but ignored if it is not. When <code class="docutils literal notranslate"><span class="pre">required</span></code> the node will not become a leader unless watchdog can be successfully enabled.</p></li>
+<li><p><strong>device</strong>: Path to watchdog device. Defaults to <code class="docutils literal notranslate"><span class="pre">/dev/watchdog</span></code>.</p></li>
+<li><p><strong>safety_margin</strong>: Number of seconds of safety margin between watchdog triggering and leader key expiration.</p></li>
+</ul>
+</section>
+<section id="tags">
+<span id="tags-settings"></span><h2>Tags</h2>
+<ul class="simple">
+<li><p><strong>clonefrom</strong>: <code class="docutils literal notranslate"><span class="pre">true</span></code> or <code class="docutils literal notranslate"><span class="pre">false</span></code>. If set to <code class="docutils literal notranslate"><span class="pre">true</span></code> other nodes might prefer to use this node for bootstrap (take <code class="docutils literal notranslate"><span class="pre">pg_basebackup</span></code> from). If there are several nodes with <code class="docutils literal notranslate"><span class="pre">clonefrom</span></code> tag set to <code class="docutils literal notranslate"><span class="pre">true</span></code> the node to bootstrap from will be chosen randomly. The default value is <code class="docutils literal notranslate"><span class="pre">false</span></code>.</p></li>
+<li><p><strong>noloadbalance</strong>: <code class="docutils literal notranslate"><span class="pre">true</span></code> or <code class="docutils literal notranslate"><span class="pre">false</span></code>. If set to <code class="docutils literal notranslate"><span class="pre">true</span></code> the node will return HTTP Status Code 503 for the <code class="docutils literal notranslate"><span class="pre">GET</span> <span class="pre">/replica</span></code> REST API health-check and therefore will be excluded from the load-balancing. Defaults to <code class="docutils literal notranslate"><span class="pre">false</span></code>.</p></li>
+<li><p><strong>replicatefrom</strong>: The name of another replica to replicate from. Used to support cascading replication.</p></li>
+<li><p><strong>nosync</strong>: <code class="docutils literal notranslate"><span class="pre">true</span></code> or <code class="docutils literal notranslate"><span class="pre">false</span></code>. If set to <code class="docutils literal notranslate"><span class="pre">true</span></code> the node will never be selected as a synchronous replica.</p></li>
+<li><p><strong>sync_priority</strong>: integer, controls the priority this node should have during synchronous replica selection when <code class="docutils literal notranslate"><span class="pre">synchronous_mode</span></code> is set to <code class="docutils literal notranslate"><span class="pre">on</span></code>. Nodes with higher priority will be preferred over lower-priority nodes. If the <code class="docutils literal notranslate"><span class="pre">sync_priority</span></code> is 0 or negative - such node is not allowed to be written to <code class="docutils literal notranslate"><span class="pre">synchronous_standby_names</span></code> PostgreSQL parameter (similar to <code class="docutils literal notranslate"><span class="pre">nosync:</span> <span class="pre">true</span></code>). Keep in mind, that this parameter has the opposite meaning to <code class="docutils literal notranslate"><span class="pre">sync_priority</span></code> value reported in <code class="docutils literal notranslate"><span class="pre">pg_stat_replication</span></code> view.</p></li>
+<li><p><strong>nofailover</strong>: <code class="docutils literal notranslate"><span class="pre">true</span></code> or <code class="docutils literal notranslate"><span class="pre">false</span></code>, controls whether this node is allowed to participate in the leader race and become a leader. Defaults to <code class="docutils literal notranslate"><span class="pre">false</span></code>, meaning this node _can_ participate in leader races.</p></li>
+<li><p><strong>failover_priority</strong>: integer, controls the priority this node should have during failover. Nodes with higher priority will be preferred over lower-priority nodes if they received/replayed the same amount of WAL. However, nodes with higher values of receive/replay LSN are preferred regardless of their priority. If the <code class="docutils literal notranslate"><span class="pre">failover_priority</span></code> is 0 or negative - such node is not allowed to participate in the leader race and to become a leader (similar to <code class="docutils literal notranslate"><span class="pre">nofailover:</span> <span class="pre">true</span></code>). Known limitation: <code class="docutils literal notranslate"><span class="pre">failover_priority</span></code> currently doesn’t work with <a class="reference internal" href="replication_modes.xhtml#quorum-mode"><span class="std std-ref">quorum-based synchronous replication</span></a>.</p></li>
+<li><p><strong>nostream</strong>: <code class="docutils literal notranslate"><span class="pre">true</span></code> or <code class="docutils literal notranslate"><span class="pre">false</span></code>. If set to <code class="docutils literal notranslate"><span class="pre">true</span></code> the node will not use replication protocol to stream WAL. It will rely instead on archive recovery (if <code class="docutils literal notranslate"><span class="pre">restore_command</span></code> is configured) and <code class="docutils literal notranslate"><span class="pre">pg_wal</span></code>/<code class="docutils literal notranslate"><span class="pre">pg_xlog</span></code> polling. It also disables copying and synchronization of permanent logical replication slots on the node itself and all its cascading replicas. Setting this tag on primary node has no effect.</p></li>
+</ul>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>Provide only one of <code class="docutils literal notranslate"><span class="pre">nofailover</span></code> or <code class="docutils literal notranslate"><span class="pre">failover_priority</span></code>. Providing <code class="docutils literal notranslate"><span class="pre">nofailover:</span> <span class="pre">true</span></code> is the same as <code class="docutils literal notranslate"><span class="pre">failover_priority:</span> <span class="pre">0</span></code>, and providing <code class="docutils literal notranslate"><span class="pre">nofailover:</span> <span class="pre">false</span></code> will give the node priority 1.</p>
+</div>
+<p>In addition to these predefined tags, you can also add your own ones:</p>
+<ul class="simple">
+<li><p><strong>key1</strong>: <code class="docutils literal notranslate"><span class="pre">true</span></code></p></li>
+<li><p><strong>key2</strong>: <code class="docutils literal notranslate"><span class="pre">false</span></code></p></li>
+<li><p><strong>key3</strong>: <code class="docutils literal notranslate"><span class="pre">1.4</span></code></p></li>
+<li><p><strong>key4</strong>: <code class="docutils literal notranslate"><span class="pre">&quot;RandomString&quot;</span></code></p></li>
+</ul>
+<p>Tags are visible in the <a class="reference internal" href="rest_api.xhtml#rest-api"><span class="std std-ref">REST API</span></a> and <a class="reference internal" href="patronictl.xhtml#patronictl-list"><span class="std std-ref">patronictl list</span></a> You can also check for an instance health using these tags. If the tag isn’t defined for an instance, or if the respective value doesn’t match the querying value, it will return HTTP Status Code 503.</p>
+</section>
+</section>
+
+
+            <div class="clearer"></div>
+          </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+  </body>
+</html>

@@ -1,14 +1,14 @@
 .. _existing_data:
 
 将独立实例转换为 Patroni 集群
-=========================================
+=============================
 
 本节介绍将独立运行的 PostgreSQL 实例转换为 Patroni 集群的过程。
 
 如果要在不使用已有 PostgreSQL 实例的情况下部署 Patroni 集群，请参阅 :ref:`Running and Configuring <running_configuring>`。
 
 操作步骤
----------
+--------
 
 下面概述了将现有 Postgres 集群转换为 Patroni 管理集群的步骤。在这些步骤中，我们假设现有集群中的所有节点目前都在运行，并且你 *不打算* 在迁移进行期间更改 Postgres 配置。步骤如下：
 
@@ -38,7 +38,7 @@
 
    #. 为 Patroni 创建 YAML 配置文件。你可以使用 :ref:`Patroni configuration generation and validation tooling <validate_generate_config>` 来完成这一操作。
 
-      * **注意（仅针对 primary 节点）：** 如果你有用于集群成员之间复制的 replication slots，建议启用 ``use_slots``，并通过 ``slots`` 配置项将现有 replication slots 配置为永久 slots。请注意，当 ``use_slots`` 启用时，Patroni 会自动为成员之间的复制创建 replication slots，并删除它无法识别的 replication slots。在此使用永久 slots 的想法是，让现有 slots 在向 Patroni 迁移期间得以保留。详见 :ref:`Dynamic Configuration Settings <dynamic_configuration>`。
+      * **注意（仅针对 primary 节点）：** 如果你有用于集群成员之间复制的 replication slots，建议启用 ``use_slots``\，并通过 ``slots`` 配置项将现有 replication slots 配置为永久 slots。请注意，当 ``use_slots`` 启用时，Patroni 会自动为成员之间的复制创建 replication slots，并删除它无法识别的 replication slots。在此使用永久 slots 的想法是，让现有 slots 在向 Patroni 迁移期间得以保留。详见 :ref:`Dynamic Configuration Settings <dynamic_configuration>`。
 
    #. 使用 ``patroni`` systemd 服务 unit 启动 Patroni。它会自动检测到 Postgres 已在运行，并开始监控该实例。
 
@@ -47,7 +47,7 @@
    #. 立即重启 standby 节点。
    #. 在维护窗口内对 primary 节点进行计划内重启。
 
-#. 如果你在第 ``1.2.`` 步配置了永久 slots，那么一旦 Patroni 创建的 slots 的 ``restart_lsn`` 能够追赶上对应成员的原始 slots 的 ``restart_lsn``，你就应该通过 :ref:`patronictl edit-config cluster-name <patronictl_edit_config_parameters>` 命令将它们从 ``slots`` 配置中移除。通过从 ``slots`` 配置中移除这些 slots，一旦不再需要它们，Patroni 就可以删除集群中的原始 slots。下面是一个检查多个 slots 的 ``restart_lsn`` 的示例查询，以便你进行比较：
+#. 如果你在第 ``1.2.`` 步配置了永久 slots，那么一旦 Patroni 创建的 slots 的 ``restart_lsn`` 能够追赶上对应成员的原始 slots 的 ``restart_lsn``\，你就应该通过 :ref:`patronictl edit-config cluster-name <patronictl_edit_config_parameters>` 命令将它们从 ``slots`` 配置中移除。通过从 ``slots`` 配置中移除这些 slots，一旦不再需要它们，Patroni 就可以删除集群中的原始 slots。下面是一个检查多个 slots 的 ``restart_lsn`` 的示例查询，以便你进行比较：
 
    .. code-block:: sql
 
@@ -66,7 +66,7 @@
 .. _major_upgrade:
 
 PostgreSQL 大版本升级
-===================================
+=====================
 
 目前执行大版本升级的唯一方法是：
 
@@ -86,8 +86,8 @@ PostgreSQL 不支持在 standby 节点上运行 pg_upgrade。如果你清楚自�
 
 - 在 Patroni 启动期间，Patroni 提示无法绑定到 PostgreSQL 端口。
 
-  你需要核对 ``postgresql.conf`` 中的 ``listen_addresses`` 和 ``port``，以及 ``patroni.yml`` 中的 ``postgresql.listen``。不要忘记 ``pg_hba.conf`` 应该允许此类访问。
+  你需要核对 ``postgresql.conf`` 中的 ``listen_addresses`` 和 ``port``\，以及 ``patroni.yml`` 中的 ``postgresql.listen``\。不要忘记 ``pg_hba.conf`` 应该允许此类访问。
 
 - 在请求 Patroni 重启节点后，PostgreSQL 显示错误消息 ``could not open configuration file "/etc/postgresql/10/main/pg_hba.conf": No such file or directory``
 
-  根据你管理 PostgreSQL 配置的方式，这可能意味着多种情况。如果你指定了 `postgresql.config_dir`，Patroni 只会在 bootstrap 一个新集群时，根据 :ref:`bootstrap <bootstrap_settings>` 部分中的设置生成 ``pg_hba.conf``。在此场景中，``PGDATA`` 并非为空，因此没有发生 bootstrap。该文件必须预先存在。
+  根据你管理 PostgreSQL 配置的方式，这可能意味着多种情况。如果你指定了 `postgresql.config_dir`，Patroni 只会在 bootstrap 一个新集群时，根据 :ref:`bootstrap <bootstrap_settings>` 部分中的设置生成 ``pg_hba.conf``\。在此场景中，``PGDATA`` 并非为空，因此没有发生 bootstrap。该文件必须预先存在。

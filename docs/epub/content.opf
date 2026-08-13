@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0" xml:lang="en"
+ unique-identifier="unknown"
+ prefix="ibooks: http://vocabulary.itunes.apple.com/rdf/ibooks/vocabulary-extensions-1.0/">
+  <metadata xmlns:opf="http://www.idpf.org/2007/opf"
+        xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:language>en</dc:language>
+    <dc:title>Metatroni</dc:title>
+    <dc:description>unknown</dc:description>
+    <dc:creator>Patroni Contributors</dc:creator>
+    <dc:contributor>unknown</dc:contributor>
+    <dc:publisher>Patroni Contributors</dc:publisher>
+    <dc:rights>2025 Compose, Zalando SE, Patroni Contributors</dc:rights>
+    <dc:identifier id="unknown">unknown</dc:identifier>
+    <dc:date>2026-08-13T01:52:52Z</dc:date>
+    <meta property="dcterms:modified">2026-08-13T01:52:52Z</meta>
+    <meta property="ibooks:version">4.1</meta>
+    <meta property="ibooks:specified-fonts">true</meta>
+    <meta property="ibooks:binding">true</meta>
+    <meta property="ibooks:scroll-axis">vertical</meta>
+  </metadata>
+  <manifest>
+    <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml" />
+    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+    <item id="epub-0" href="CONTRIBUTING.xhtml" media-type="application/xhtml+xml" />
+    <item id="epub-1" href="ENVIRONMENT.xhtml" media-type="application/xhtml+xml" />
+    <item id="epub-2" href="README.xhtml" media-type="application/xhtml+xml" />
+    <item id="epub-3" href="citus.xhtml" media-type="application/xhtml+xml" />
+    <item id="epub-4" href="contributing_guidelines.xhtml" media-type="application/xhtml+xml" />
+    <item id="epub-5" href="dcs_failsafe_mode.xhtml" media-type="application/xhtml+xml" />
+    <item id="epub-6" href="dynamic_configuration.xhtml" media-type="application/xhtml+xml" />
+    <item id="epub-7" href="existing_data.xhtml" media-type="application/xhtml+xml" />
+    <item id="epub-8" href="faq.xhtml" media-type="application/xhtml+xml" />
+    <item id="epub-9" href="genindex.xhtml" media-type="application/xhtml+xml" />
+    <item id="epub-10" href="ha_multi_dc.xhtml" media-type="application/xhtml+xml" />
+    <item id="epub-11" href="index.xhtml" media-type="application/xhtml+xml" />
+    <item id="epub-12" href="installation.xhtml" media-type="application/xhtml+xml" />
+    <item id="epub-13" href="kubernetes.xhtml" media-type="application/xhtml+xml" />
+    <item id="epub-14" href="mysql.xhtml" media-type="application/xhtml+xml" />
+    <item id="epub-15" href="mysql_architecture.xhtml" media-type="application/xhtml+xml" />
+    <item id="epub-16" href="mysql_mechanisms.xhtml" media-type="application/xhtml+xml" />
+    <item id="epub-17" href="mysql_ops.xhtml" media-type="application/xhtml+xml" />
+    <item id="epub-18" href="patroni_configuration.xhtml" media-type="application/xhtml+xml" />
+    <item id="epub-19" href="patronictl.xhtml" media-type="application/xhtml+xml" />
+    <item id="epub-20" href="pause.xhtml" media-type="application/xhtml+xml" />
+    <item id="epub-21" href="releases.xhtml" media-type="application/xhtml+xml" />
+    <item id="epub-22" href="replica_bootstrap.xhtml" media-type="application/xhtml+xml" />
+    <item id="epub-23" href="replication_modes.xhtml" media-type="application/xhtml+xml" />
+    <item id="epub-24" href="rest_api.xhtml" media-type="application/xhtml+xml" />
+    <item id="epub-25" href="security.xhtml" media-type="application/xhtml+xml" />
+    <item id="epub-26" href="standby_cluster.xhtml" media-type="application/xhtml+xml" />
+    <item id="epub-27" href="tools_integration.xhtml" media-type="application/xhtml+xml" />
+    <item id="epub-28" href="watchdog.xhtml" media-type="application/xhtml+xml" />
+    <item id="epub-29" href="yaml_configuration.xhtml" media-type="application/xhtml+xml" />
+    <item id="epub-30" href="_images/multi-dc-asynchronous-replication.png" media-type="image/png" />
+    <item id="epub-31" href="_images/multi-dc-synchronous-replication.png" media-type="image/png" />
+    <item id="epub-32" href="_images/patroni-logo.png" media-type="image/png" />
+    <item id="epub-33" href="_static/basic.css" media-type="text/css" />
+    <item id="epub-34" href="_static/custom.css" media-type="text/css" />
+    <item id="epub-35" href="_static/epub.css" media-type="text/css" />
+    <item id="epub-36" href="_static/file.png" media-type="image/png" />
+    <item id="epub-37" href="_static/github_style.css" media-type="text/css" />
+    <item id="epub-38" href="_static/minus.png" media-type="image/png" />
+    <item id="epub-39" href="_static/multi-dc-asynchronous-replication.png" media-type="image/png" />
+    <item id="epub-40" href="_static/multi-dc-synchronous-replication.png" media-type="image/png" />
+    <item id="epub-41" href="_static/patroni-logo.png" media-type="image/png" />
+    <item id="epub-42" href="_static/patroni-logo.svg" media-type="image/svg+xml" />
+    <item id="epub-43" href="_static/plus.png" media-type="image/png" />
+    <item id="epub-44" href="_static/pygments.css" media-type="text/css" />
+  </manifest>
+  <spine toc="ncx" page-progression-direction="ltr">
+    <itemref idref="epub-11" />
+    <itemref idref="epub-2" />
+    <itemref idref="epub-12" />
+    <itemref idref="epub-18" />
+    <itemref idref="epub-6" />
+    <itemref idref="epub-29" />
+    <itemref idref="epub-1" />
+    <itemref idref="epub-24" />
+    <itemref idref="epub-19" />
+    <itemref idref="epub-22" />
+    <itemref idref="epub-23" />
+    <itemref idref="epub-26" />
+    <itemref idref="epub-28" />
+    <itemref idref="epub-20" />
+    <itemref idref="epub-5" />
+    <itemref idref="epub-13" />
+    <itemref idref="epub-3" />
+    <itemref idref="epub-14" />
+    <itemref idref="epub-15" />
+    <itemref idref="epub-16" />
+    <itemref idref="epub-17" />
+    <itemref idref="epub-7" />
+    <itemref idref="epub-27" />
+    <itemref idref="epub-25" />
+    <itemref idref="epub-10" />
+    <itemref idref="epub-8" />
+    <itemref idref="epub-21" />
+    <itemref idref="epub-0" />
+    <itemref idref="epub-4" />
+    <itemref idref="epub-9" />
+  </spine>
+  <guide>
+    <reference type="toc" title="Table of Contents" href="index.xhtml" />
+  </guide>
+</package>

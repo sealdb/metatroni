@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>MySQL HA mechanisms and sequences</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="_static/epub.css" />
+    <link rel="stylesheet" type="text/css" href="_static/github_style.css" />
+    <link rel="stylesheet" type="text/css" href="_static/custom.css" /> 
+  </head><body>
+
+    <div class="document">
+      <div class="documentwrapper">
+          <div class="body" role="main">
+            
+  <section id="mysql-ha-mechanisms-and-sequences">
+<span id="mysql-mechanisms"></span><h1>MySQL HA mechanisms and sequences</h1>
+<p>This page explains <strong>how</strong> the MySQL backend behaves inside Patroni’s HA loop:
+failover, demote/rejoin, semi-sync quorum, MGR majority-loss election, clone,
+and GTID-fork pause.</p>
+<section id="ha-control-loop-shared-mysql-hooks">
+<h2>HA control loop (shared + MySQL hooks)</h2>
+<p>Every <code class="docutils literal notranslate"><span class="pre">loop_wait</span></code> seconds, each Patroni runs roughly:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>          ┌─────────────────────┐
+          │  load cluster (DCS) │
+          └─────────┬───────────┘
+                    │
+          ┌─────────▼───────────┐
+          │  touch_member()     │  (+ enrich gtid_executed)
+          └─────────┬───────────┘
+                    │
+    ┌───────────────▼────────────────┐
+    │  hold DCS leader lock?         │
+    └───────┬────────────────┬───────┘
+         yes│                │no
+┌───────────▼──────┐   ┌─────▼──────────────────────────┐
+│ update_lock()    │   │ MySQL: run_mgr_cycle(False)    │
+│ MySQL:           │   │   MGR follow / elect / rejoin  │
+│  run_mgr_cycle   │   │ if MGR configured: STOP here   │
+│  (True)          │   │ else: follow(leader)           │
+│  semi_sync_check │   └────────────────────────────────┘
+│ enforce primary  │
+└──────────────────┘
+</pre></div>
+</div>
+<p>Important MySQL-specific rules encoded in <code class="docutils literal notranslate"><span class="pre">ha.py</span></code>:</p>
+<ul class="simple">
+<li><p>While holding the lock, still run <strong>MGR</strong> and <strong>semi-sync</strong> maintenance
+(previously these only ran on the non-lock path).</p></li>
+<li><p>If MGR is configured, <strong>never</strong> fall through to async <code class="docutils literal notranslate"><span class="pre">follow()</span></code> (avoids dual
+channels and PostgreSQL rewind helpers).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">mgr_yield_lock</span></code> → <code class="docutils literal notranslate"><span class="pre">release_leader_key_voluntarily()</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">mgr_gtid_fork</span></code> → pause + read-only (see below)</p></li>
+</ul>
+</section>
+<section id="async-semi-sync-failover-sequence">
+<h2>Async / semi-sync: failover sequence</h2>
+<p>Happy-path automatic failover when the primary’s lease expires:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>Primary A          DCS              Replica B           Replica C
+    │               │                   │                   │
+    │ X crash       │                   │                   │
+    │               │  lease expires    │                   │
+    │               │◄──────────────────┼───────────────────┤
+    │               │   race for lock   │                   │
+    │               │◄──── acquire ─────┤                   │
+    │               │                   │ promote():        │
+    │               │                   │  STOP/RESET SLAVE │
+    │               │                   │  read_write       │
+    │               │  leader=B         │                   │
+    │               │                   │                   │
+    │               │                   │◄── follow(B) ─────┤
+    │               │                   │   CHANGE MASTER   │
+    │               │                   │   AUTO_POSITION=1 │
+</pre></div>
+</div>
+<section id="promote-follow-async-gtid">
+<h3><code class="docutils literal notranslate"><span class="pre">promote</span></code> / <code class="docutils literal notranslate"><span class="pre">follow</span></code> (async GTID)</h3>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>promote (new primary)
+  │
+  ├─ STOP SLAVE / STOP REPLICA
+  ├─ RESET SLAVE ALL / RESET REPLICA ALL
+  ├─ set_read_write()
+  ├─ ensure_replication_user()   (sql_log_bin=0)
+  └─ role = primary
+
+follow (replica → primary P)
+  │
+  ├─ STOP SLAVE
+  ├─ CHANGE MASTER TO
+  │     MASTER_HOST/PORT/USER/PASSWORD
+  │     MASTER_AUTO_POSITION=1
+  │     [GET_MASTER_PUBLIC_KEY=1 on MySQL 8 async]
+  ├─ START SLAVE
+  └─ role = replica
+</pre></div>
+</div>
+</section>
+</section>
+<section id="demote-rejoin-old-primary-returns">
+<h2>Demote + rejoin (old primary returns)</h2>
+<p>There is <strong>no</strong> <code class="docutils literal notranslate"><span class="pre">pg_rewind</span></code>. <code class="docutils literal notranslate"><span class="pre">Ha._demote_mysql</span></code> keeps <code class="docutils literal notranslate"><span class="pre">mysqld</span></code> running:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>Old primary A (lost lock / switchover)
+  │
+  ├─ set_read_only()
+  ├─ MySQL.demote()          # disable semi-sync source, etc.
+  ├─ set_is_leader(False)
+  ├─ [graceful|immediate] release_leader_key_voluntarily()
+  ├─ sleep(~2s)             # peer can take lock
+  ├─ refresh cluster from DCS
+  ├─ follow(new_leader)
+  └─ touch_member()
+</pre></div>
+</div>
+<p>Sequence (graceful switchover):</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>A (primary)          DCS              B (replica)
+    │                 │                   │
+    │ switchover req  │                   │
+    │─ demote ───────►│ release lock      │
+    │  read_only      │                   │
+    │                 │◄──── acquire ─────┤
+    │                 │                   │ promote
+    │                 │  leader=B         │
+    │◄─ follow(B) ────┤                   │
+    │  CHANGE MASTER  │                   │
+    │  streaming      │                   │
+</pre></div>
+</div>
+</section>
+<section id="semi-sync-quorum-safety">
+<h2>Semi-sync quorum safety</h2>
+<p>Aligned with xenon strong consistency:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">wait_point</span> <span class="pre">=</span> <span class="pre">AFTER_SYNC</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">wait_no_slave</span> <span class="pre">=</span> <span class="pre">ON</span></code></p></li>
+<li><p>3+ nodes: wait timeout <code class="docutils literal notranslate"><span class="pre">10**18</span></code> ms (effectively no async degrade)</p></li>
+<li><p>Wait count <code class="docutils literal notranslate"><span class="pre">(N-1)//2</span></code></p></li>
+<li><p>Boot: source plugin <strong>OFF</strong> until Patroni enables it on primary</p></li>
+</ul>
+<p>Every HA cycle on the lock holder:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>run_semi_sync_safety_check(cluster_nodes)
+  │
+  ├─ count connected semi-sync replicas
+  ├─ quorum = (N-1)//2
+  │
+  ├─ if replicas &lt; quorum:
+  │     set super_read_only / read_only
+  │     (refuse durable writes without ACK quorum)
+  │
+  └─ if replicas &gt;= quorum and was RO for this reason:
+        restore read_write
+</pre></div>
+</div>
+<p>Flow:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>  ┌──────────────────────┐
+  │ Hold lock + primary  │
+  └──────────┬───────────┘
+             │
+  ┌──────────▼───────────┐
+  │ semi-sync clients    │
+  │   &gt;= quorum ?        │
+  └─────┬──────────┬─────┘
+     yes│          │no
+┌───────▼────┐  ┌──▼──────────────┐
+│ read_write │  │ super_read_only │
+└────────────┘  └─────────────────┘
+</pre></div>
+</div>
+</section>
+<section id="mgr-steady-state">
+<h2>MGR: steady state</h2>
+<p>When <code class="docutils literal notranslate"><span class="pre">group_replication_group_name</span></code> is set and the local member is ONLINE:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>get_mgr_status()  # performance_schema.replication_group_members
+  │
+  ├─ role PRIMARY  → role=mgr_primary, set_read_write
+  └─ role SECONDARY → role=mgr_secondary, set_read_only
+</pre></div>
+</div>
+<p>Patroni does <strong>not</strong> drive async <code class="docutils literal notranslate"><span class="pre">CHANGE</span> <span class="pre">MASTER</span></code> while MGR is configured.</p>
+</section>
+<section id="mgr-majority-loss-gtid-election">
+<h2>MGR: majority-loss GTID election</h2>
+<p>When local MGR status is empty (group down / majority lost):</p>
+<section id="flowchart">
+<h3>Flowchart</h3>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>┌─────────────────────────────────────┐
+│ MGR configured but status empty     │
+└──────────────────┬──────────────────┘
+                   │
+┌──────────────────▼──────────────────┐
+│ Collect gtid_executed (self+DCS)    │
+│ Drop strict GTID subsets            │
+│ Maximal set size &gt;=2 &amp; incomparable?│
+└──────┬───────────────────┬──────────┘
+    fork│               ok │
+┌──────▼────────┐   ┌──────▼────────────────────┐
+│ mgr_gtid_fork │   │ winner = max GTID;        │
+│ RO + pause    │   │ tie → lexicographically   │
+│ no bootstrap  │   │ smallest name             │
+└───────────────┘   └──────┬────────────────────┘
+                           │
+                ┌──────────▼──────────┐
+                │ Am I the winner?    │
+                └────┬───────────┬────┘
+                  no │           │ yes
+          ┌──────────▼───┐  ┌────▼─────────────────────────┐
+          │ wait / rejoin│  │ has_lock?                    │
+          │ if mgr_primary│  └────┬──────────────────┬─────┘
+          │ advertised   │    no │                  │ yes
+          └──────────────┘  ┌────▼──────────┐  ┌────▼──────────────────┐
+                            │ try rejoin    │  │ try rejoin live       │
+                            │ live primary  │  │ mgr_primary           │
+                            │ else wait lock│  │ success → yield lock  │
+                            └───────────────┘  │ fail → bootstrap_mgr  │
+                                               │ (ignore stale primary)│
+                                               └───────────────────────┘
+</pre></div>
+</div>
+</section>
+<section id="sequence-winner-alone-bootstraps-peers-rejoin">
+<h3>Sequence (winner alone bootstraps, peers rejoin)</h3>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>n0,n1,n2 (all STOP GR)     DCS
+    │                       │
+    │ publish gtid_executed │
+    │ (n2 ahead)            │
+    │                       │
+    │ n0 has lock, behind → yield / wait
+    │ n2 winner, takes lock │
+    │                       │
+    │ n2 bootstrap_mgr_group│
+    │ role=mgr_primary ────►│
+    │                       │
+    │ n0/n1 rejoin_mgr_group│
+    │  STOP/RESET SLAVE     │
+    │  recovery channel     │
+    │  START GROUP_REPLICATION
+    │  wait ONLINE|RECOVERING
+    │                       │
+    │ group size = 3 ONLINE │
+</pre></div>
+</div>
+</section>
+<section id="rejoin-correctness">
+<h3>Rejoin correctness</h3>
+<p><code class="docutils literal notranslate"><span class="pre">rejoin_mgr_group</span></code> returns success only after local state is <code class="docutils literal notranslate"><span class="pre">ONLINE</span></code> or
+<code class="docutils literal notranslate"><span class="pre">RECOVERING</span></code>. A bare <code class="docutils literal notranslate"><span class="pre">START</span> <span class="pre">GROUP_REPLICATION</span></code> against a <strong>stale/dead</strong>
+<code class="docutils literal notranslate"><span class="pre">mgr_primary</span></code> in DCS must fail so the GTID winner can still bootstrap.</p>
+<p>Stale DCS <code class="docutils literal notranslate"><span class="pre">role=primary</span></code> (async leftover after majority loss) is <strong>ignored</strong>
+by <code class="docutils literal notranslate"><span class="pre">_find_mgr_primary_member</span></code>; only <code class="docutils literal notranslate"><span class="pre">mgr_primary</span></code> counts.</p>
+</section>
+</section>
+<section id="gtid-fork-incomparable-sets">
+<h2>GTID fork (incomparable sets)</h2>
+<p>When two maximal GTID sets each contain transactions the other lacks:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>describe_mgr_gtid_fork() → non-empty
+  │
+  ├─ CRITICAL log with each maximal member’s gtid_executed
+  ├─ force super_read_only
+  ├─ return mgr_gtid_fork (no bootstrap)
+  ├─ default: DCS pause=true + mgr_gtid_fork breadcrumb
+  │     (mysql.parameters.mgr_pause_on_gtid_fork, default true)
+  └─ publish fork on member key / REST until group healthy
+</pre></div>
+</div>
+<p>Operator recovery: repair or rebuild divergent members, then
+<code class="docutils literal notranslate"><span class="pre">patronictl</span> <span class="pre">resume</span></code>.</p>
+</section>
+<section id="clone-bootstrap">
+<h2>Clone / bootstrap</h2>
+<p>Empty data directory path:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>data_directory_empty?
+  │
+  ├─ no leader yet → bootstrap():
+  │     mysqld --initialize-insecure
+  │     start → post_bootstrap (users/grants)
+  │
+  └─ leader exists → create_replica(leader):
+        for method in create_replica_methods:
+          mysqldump | xtrabackup
+        on failure: clean partial datadir
+        start → follow / join MGR
+</pre></div>
+</div>
+<p>xtrabackup notes:</p>
+<ul class="simple">
+<li><p>Major.minor must match the donor</p></li>
+<li><p>After restore, donor <code class="docutils literal notranslate"><span class="pre">auto.cnf</span></code> is removed so a new <code class="docutils literal notranslate"><span class="pre">server_uuid</span></code> is created</p></li>
+</ul>
+</section>
+<section id="pause-interaction">
+<h2>Pause interaction</h2>
+<p><code class="docutils literal notranslate"><span class="pre">patronictl</span> <span class="pre">pause</span></code> (or automatic pause on GTID fork) stops autofailover while
+keeping MySQL running. Use during mode cutovers, risky maintenance, and after
+fork remediation.</p>
+</section>
+</section>
+
+
+            <div class="clearer"></div>
+          </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+  </body>
+</html>

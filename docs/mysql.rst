@@ -1,16 +1,17 @@
 .. _mysql:
 
-==============================
+===============================
 MySQL high-availability support
-==============================
+===============================
 
 .. warning::
 
-   MySQL support is under active development and is **not yet recommended for
-   production use**.
+   Metatroni’s MySQL support is under active development and is **not yet
+   recommended for production use**.
 
-This chapter describes Patroni's MySQL backend: how it fits into the HA loop,
-how replication modes work, and how to deploy and operate a cluster.
+This chapter describes Metatroni’s MySQL backend—an **additive** engine beside
+full PostgreSQL/Patroni support: how it fits into the shared HA loop, how
+replication modes work, and how to deploy and operate a cluster.
 
 .. toctree::
    :maxdepth: 2

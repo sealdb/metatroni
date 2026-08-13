@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Installation</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="_static/epub.css" />
+    <link rel="stylesheet" type="text/css" href="_static/github_style.css" />
+    <link rel="stylesheet" type="text/css" href="_static/custom.css" /> 
+  </head><body>
+
+    <div class="document">
+      <div class="documentwrapper">
+          <div class="body" role="main">
+            
+  <section id="installation">
+<span id="id1"></span><h1>Installation</h1>
+<section id="pre-requirements-for-mac-os">
+<h2>Pre-requirements for Mac OS</h2>
+<p>To install requirements on a Mac, run the following:</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>brew<span class="w"> </span>install<span class="w"> </span>postgresql<span class="w"> </span>etcd<span class="w"> </span>haproxy<span class="w"> </span>libyaml<span class="w"> </span>python
+</pre></div>
+</div>
+</section>
+<section id="psycopg">
+<span id="psycopg2-install-options"></span><h2>Psycopg</h2>
+<p>Starting from <a class="reference external" href="http://initd.org/psycopg/articles/2019/04/04/psycopg-28-released/">psycopg2-2.8</a><span class="link-target"> [http://initd.org/psycopg/articles/2019/04/04/psycopg-28-released/]</span> the binary version of psycopg2 will no longer be installed by default. Installing it from
+the source code requires C compiler and postgres+python dev packages. Since in the python world it is not possible to
+specify dependency as <code class="docutils literal notranslate"><span class="pre">psycopg2</span> <span class="pre">OR</span> <span class="pre">psycopg2-binary</span></code> you will have to decide how to install it.</p>
+<p>There are a few options available:</p>
+<ol class="arabic simple">
+<li><p>Use the package manager from your distro</p></li>
+</ol>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>sudo<span class="w"> </span>apt-get<span class="w"> </span>install<span class="w"> </span>python3-psycopg2<span class="w">  </span><span class="c1"># install psycopg2 module on Debian/Ubuntu</span>
+sudo<span class="w"> </span>yum<span class="w"> </span>install<span class="w"> </span>python3-psycopg2<span class="w">      </span><span class="c1"># install psycopg2 on RedHat/Fedora/CentOS</span>
+</pre></div>
+</div>
+<ol class="arabic simple" start="2">
+<li><p>Specify one of <cite>psycopg</cite>, <cite>psycopg2</cite>, or <cite>psycopg2-binary</cite> in the <a class="reference internal" href="#extras"><span class="std std-ref">list of dependencies</span></a> when installing Patroni with pip.</p></li>
+</ol>
+</section>
+<section id="general-installation-for-pip">
+<span id="extras"></span><h2>General installation for pip</h2>
+<p>Patroni can be installed with pip:</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>patroni<span class="o">[</span>dependencies<span class="o">]</span>
+</pre></div>
+</div>
+<p>where <code class="docutils literal notranslate"><span class="pre">dependencies</span></code> can be either empty, or consist of one or more of the following:</p>
+<dl class="simple">
+<dt>etcd or etcd3</dt><dd><p><cite>python-etcd</cite> module in order to use Etcd as Distributed Configuration Store (DCS)</p>
+</dd>
+<dt>consul</dt><dd><p><cite>py-consul</cite> module in order to use Consul as DCS</p>
+</dd>
+<dt>zookeeper</dt><dd><p><cite>kazoo</cite> module in order to use Zookeeper as DCS</p>
+</dd>
+<dt>exhibitor</dt><dd><p><cite>kazoo</cite> module in order to use Exhibitor as DCS (same dependencies as for Zookeeper)</p>
+</dd>
+<dt>kubernetes</dt><dd><p><cite>kubernetes</cite> module in order to use Kubernetes as DCS in Patroni</p>
+</dd>
+<dt>raft</dt><dd><p><cite>pysyncobj</cite> module in order to use python Raft implementation as DCS</p>
+</dd>
+<dt>aws</dt><dd><p><cite>boto3</cite> in order to use AWS callbacks</p>
+</dd>
+<dt>jsonlogger</dt><dd><p><cite>python-json-logger</cite> module in order to enable <a class="reference internal" href="yaml_configuration.xhtml#log-settings"><span class="std std-ref">logging</span></a> in json format</p>
+</dd>
+<dt>systemd</dt><dd><p><cite>systemd-python</cite> in order to use sd_notify integration</p>
+</dd>
+<dt>mysql</dt><dd><p><cite>pymysql</cite> in order to use the MySQL backend (<code class="docutils literal notranslate"><span class="pre">database.type:</span> <span class="pre">mysql</span></code>)</p>
+</dd>
+<dt>all</dt><dd><p>all of the above (except psycopg family)</p>
+</dd>
+<dt>psycopg3</dt><dd><p><cite>psycopg[binary]&gt;=3.0.0</cite> module</p>
+</dd>
+<dt>psycopg2</dt><dd><p><cite>psycopg2&gt;=2.5.4</cite> module</p>
+</dd>
+<dt>psycopg2-binary</dt><dd><p><cite>psycopg2-binary</cite> module</p>
+</dd>
+</dl>
+<p>For example, the command in order to install Patroni together with psycopg3, dependencies for Etcd as a DCS, and AWS callbacks is:</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>patroni<span class="o">[</span>psycopg3,etcd3,aws<span class="o">]</span>
+</pre></div>
+</div>
+<p>To install MySQL support with etcd3:</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span><span class="s1">&#39;patroni[mysql,etcd3]&#39;</span>
+</pre></div>
+</div>
+<p>Note that external tools to call in the replica creation or custom bootstrap scripts (i.e. WAL-E) should be installed
+independently of Patroni.</p>
+</section>
+<section id="package-installation-on-linux">
+<span id="package-installation"></span><h2>Package installation on Linux</h2>
+<p>Patroni packages may be available for your operating system, produced by the Postgres community for:</p>
+<ul class="simple">
+<li><p>RHEL, RockyLinux, AlmaLinux;</p></li>
+<li><p>Debian and Ubuntu;</p></li>
+<li><p>SUSE Enterprise Linux.</p></li>
+</ul>
+<p>You can also find packages for direct dependencies of Patroni, like python modules that might not be available in
+the official operating system repositories.</p>
+<p>For more information see the <a class="reference external" href="https://www.postgresql.org/download/linux/">PGDG repository</a><span class="link-target"> [https://www.postgresql.org/download/linux/]</span> documentation.</p>
+<p>If you are on a RedHat Enterprise Linux derivative operating system you may also require packages from EPEL, see
+<a class="reference external" href="https://docs.fedoraproject.org/en-US/epel/">EPEL repository</a><span class="link-target"> [https://docs.fedoraproject.org/en-US/epel/]</span> documentation.</p>
+<p>Once you have installed the PGDG repository for your OS you can install patroni.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Patroni packages are not maintained by the Patroni developers, but rather by the Postgres community. If you
+require support please first try connecting on <a class="reference external" href="http://pgtreats.info/slack-invite">Postgres slack</a><span class="link-target"> [http://pgtreats.info/slack-invite]</span>.</p>
+</div>
+<section id="installing-on-debian-derivatives">
+<h3>Installing on Debian derivatives</h3>
+<p>With PGDG repo installed, see <a class="reference internal" href="#package-installation"><span class="std std-ref">above</span></a>, install Patroni via apt run:</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>apt-get<span class="w"> </span>install<span class="w"> </span>patroni
+</pre></div>
+</div>
+</section>
+<section id="installing-on-redhat-derivatives">
+<h3>Installing on RedHat derivatives</h3>
+<p>With PGDG repo installed, see <a class="reference internal" href="#package-installation"><span class="std std-ref">above</span></a>, install patroni with an etcd DCS via dnf on RHEL 9
+(and derivatives) run:</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>dnf<span class="w"> </span>install<span class="w"> </span>patroni<span class="w"> </span>patroni-etcd
+</pre></div>
+</div>
+<p>You can install etcd from PGDG if your RedHat derivative distribution does not provide packages. On the nodes that will
+host the DCS run:</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>dnf<span class="w"> </span>install<span class="w"> </span><span class="s1">&#39;dnf-command(config-manager)&#39;</span>
+dnf<span class="w"> </span>config-manager<span class="w"> </span>--enable<span class="w"> </span>pgdg-rhel9-extras
+dnf<span class="w"> </span>install<span class="w"> </span>etcd
+</pre></div>
+</div>
+<p>You can replace the version of RHEL with <cite>8</cite> in the repo to make <cite>pgdg-rhel8-extras</cite> if needed. The repo name is still
+<cite>pgdg-rhelN-extras</cite> on RockyLinux, AlmaLinux, Oracle Linux, etc…</p>
+</section>
+<section id="installing-on-suse-enterprise-linux">
+<h3>Installing on SUSE Enterprise Linux</h3>
+<p>You might need to enable the SUSE PackageHub repositories for some dependencies. see <a class="reference external" href="https://packagehub.suse.com/how-to-use/">SUSE PackageHub</a><span class="link-target"> [https://packagehub.suse.com/how-to-use/]</span> documentation.</p>
+<p>For SLES 15 with PGDG repo installed, see <a class="reference internal" href="#package-installation"><span class="std std-ref">above</span></a>, you can install patroni using:</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>zypper<span class="w"> </span>install<span class="w"> </span>patroni<span class="w"> </span>patroni-etcd
+</pre></div>
+</div>
+<p>With the SUSE PackageHub repo enabled you can also install etcd:</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>SUSEConnect<span class="w"> </span>-p<span class="w"> </span>PackageHub/15.5/x86_64
+zypper<span class="w"> </span>install<span class="w"> </span>etcd
+</pre></div>
+</div>
+</section>
+</section>
+<section id="upgrading">
+<h2>Upgrading</h2>
+<p>Upgrading patroni is a very simple process, just update the software installation and restart the Patroni daemon on
+each node in the cluster.</p>
+<p>However, restarting the Patroni daemon will result in a Postgres database restart. In some situations this may cause
+a failover of the primary node in your cluster, therefore it is recommended to put the cluster into maintenance mode
+until the Patroni daemon restart has been completed.</p>
+<p>To put the cluster in maintenance mode, run the following command on one of the patroni nodes:</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>patronictl<span class="w"> </span>pause<span class="w"> </span>--wait
+</pre></div>
+</div>
+<p>Then on each node in the cluster, perform the package upgrade required for your OS:</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>apt-get<span class="w"> </span>update<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>apt-get<span class="w"> </span>install<span class="w"> </span>patroni<span class="w"> </span>patroni-etcd
+</pre></div>
+</div>
+<p>Restart the patroni daemon process on each node:</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>systemctl<span class="w"> </span>restart<span class="w"> </span>patroni
+</pre></div>
+</div>
+<p>Then finally resume monitoring of Postgres with patroni to take it out of maintenance mode:</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>patronictl<span class="w"> </span>resume<span class="w"> </span>--wait
+</pre></div>
+</div>
+<p>The cluster will now be full operational with the new version of Patroni.</p>
+</section>
+</section>
+
+
+            <div class="clearer"></div>
+          </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+  </body>
+</html>
