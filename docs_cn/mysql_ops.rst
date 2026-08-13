@@ -4,7 +4,8 @@
 MySQL 运维与 FAQ
 =============================
 
-运维指南：安装、部署、day-2 管理、模式切换、HAProxy 以及常见故障。
+运维指南：安装、部署、day-2 管理、备站 promote/demote 割接、模式切换、HAProxy
+以及常见故障。
 
 .. contents::
    :local:
@@ -187,7 +188,7 @@ MySQL 备站使用 **全量克隆 + GTID 级联**，不是 WAL 归档 /
     bootstrap:
       dcs:
         standby_cluster:
-          host: primary-site.example
+          host: primary-site.example   # 或 VIP / 可写入口
           port: 3306
           create_replica_methods:
             - xtrabackup
@@ -195,12 +196,179 @@ MySQL 备站使用 **全量克隆 + GTID 级联**，不是 WAL 归档 /
 
 或强制仅逻辑克隆：``create_replica_methods: [mysqldump]``。
 
-- **standby leader** 持有 DCS 锁，从远程主复制，保持 ``super_read_only``。
-- 本站其他节点跟随 standby leader 级联。
-- 提升：``patronictl promote-cluster``（去掉 ``standby_cluster``）。
-- 再降级：``patronictl demote-cluster --host … --port …``。
+拓扑约定
+~~~~~~~~~~~~~~
 
-与主站使用 **不同的 DCS scope**。跨站点复制时成员名必须全局唯一。
+- 备站使用 **独立的 DCS scope**（通常也是独立的 etcd/Consul），**不要**与主站
+  共用 ``scope`` / namespace。
+- 两端节点的 ``name`` 必须全局唯一。
+- **standby leader** 持有备站 DCS 锁，从远程主复制，保持 ``super_read_only``。
+- 本站其他节点跟随本地 standby leader 级联。
+- 站内 ``switchover`` / ``failover`` 仍然有效，但 **不会** 把可写角色跨站迁移。
+  跨站割接使用下面的 ``promote-cluster`` / ``demote-cluster``。
+
+Day-0：搭建备站
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+1. 主站健康，复制账号可用（``replicator``、GTID 开启、binlog 保留覆盖克隆窗口）。
+2. 编写备站 Patroni YAML，``standby_cluster.host`` / ``port`` 指向主站可写入口
+   （或稳定 VIP）。
+3. 启动备站第一台节点：全量克隆（优先 xtrabackup）后成为 ``standby_leader``，
+   并以 ``MASTER_AUTO_POSITION=1`` 流式复制。
+4. 启动其余备站节点：从本站 standby leader 克隆并级联。
+5. 验证：
+
+   .. code-block:: shell
+
+       # 在备站
+       patronictl -c standby0.yml list
+       curl -s http://127.0.0.1:<api>/patroni | jq '{role,state,replication_state}'
+       # 锁持有者应为 standby_leader，其余为 replica
+       mysql -h127.0.0.1 -P<stb_port> -e "SELECT @@super_read_only; SHOW SLAVE STATUS\\G"
+
+割接前健康检查
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- 主站：``patronictl list`` 有一个 ``primary``，replica 在流式复制。
+- 备站：一个 ``Standby Leader``，其余 ``Replica``，延迟不持续增大。
+- 在主站插入测试行，确认备站可见 / GTID 推进。
+- 明确应用 / LB / DNS 指向哪一端，并准备切换。
+- 约定 STONITH：强制 promote 时由谁隔离旧可写站点。
+
+.. warning::
+
+   主站仍在接受写入时提升备站会造成 **脑裂**。执行 ``promote-cluster`` 前，
+   必须先对旧主站做隔离（STONITH）或停止写入；除非已确认主站宕机。
+
+计划内提升（备站变为可写主）
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+适用于故意把可写角色迁到备站（维护窗口或受控演练）。
+
+1. **冻结主站写入**（推荐顺序）：
+
+   - 停应用写流量，或
+   - ``patronictl -c primary0.yml pause`` 并将主站设为只读 / 摘掉主站 VIP，或
+   - flush 后停止主站 Patroni + mysqld。
+
+2. **等待备站追平**（Seconds_Behind_Master ≈ 0 / GTID 追上）。
+
+3. **提升备站集群**（使用备站配置）：
+
+   .. code-block:: shell
+
+       patronictl -c standby0.yml promote-cluster --force
+       # 去掉 DCS 中的 standby_cluster；standby_leader STOP SLAVE → 可写 primary
+
+4. 确认备站：
+
+   .. code-block:: shell
+
+       patronictl -c standby0.yml list   # Leader = 原 standby_leader
+       mysql ... -e "SELECT @@read_only, @@super_read_only"   # 均为 0/OFF
+       curl -s http://127.0.0.1:<stb_api>/primary   # 期望 HTTP 200
+
+5. 将应用 / LB / DNS 切到 **新** 主站。
+6. **不要**再把旧站当作第二个可写主启动。保持关闭，或按下一节 demote，
+   使其跟随新主。
+
+将旧主站降级为备站
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+promote 成功后，把旧主站改成跟随新主（角色对调）。
+
+1. 确认 **新** 主站健康可写。
+2. 在 **旧** 站（仍使用自己的 DCS scope）执行 demote：
+
+   .. code-block:: shell
+
+       patronictl -c old_primary0.yml demote-cluster \
+         --host <新主站VIP或主机> --port 3306 --force
+       # 向 DCS 写入 standby_cluster；原 primary 以 standby_leader 跟随远程
+       # （super_read_only）
+
+3. 确认旧站显示 ``Standby Leader`` / ``Replica`` 且正在从新主复制。若双方曾
+   同时可写导致 GTID 分叉，应 **重建** 旧站（全量克隆），不要指望 demote
+   （MySQL 无 ``pg_rewind``）。
+
+计划内跨站切换（演练清单）
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+典型双站点翻转（站点 A 可写 → 站点 B 可写 → 可选将 A 变为备站）：
+
+.. list-table::
+   :header-rows: 1
+   :widths: 8 42 50
+
+   * - #
+     - 动作
+     - 验证
+   * - 1
+     - 发布维护窗口；两端快照/备份
+     - 备份成功
+   * - 2
+     - 停止站点 A 写流量（应用 + 可选 pause）
+     - A 无新提交
+   * - 3
+     - 等待站点 B 追平
+     - 延迟 ≈ 0；测试行在 B 可见
+   * - 4
+     - 在站点 B 执行 ``promote-cluster``
+     - B ``/primary`` = 200；``super_read_only`` OFF
+   * - 5
+     - LB/DNS 切到站点 B
+     - 应用写在 B 成功
+   * - 6
+     - 若 A 仍在线则隔离/停写
+     - 无双主
+   * - 7
+     - 在 A 上 ``demote-cluster --host <B> --port …`` **或** 重建 A
+     - A 为 standby_leader/replica，从 B 流式复制
+   * - 8
+     - 恢复监控；记录新的「主站」
+     - 两端 ``patronictl list`` 正常
+
+灾难提升（主站不可用）
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+1. 确认站点 A 宕机或不可达。有任何疑虑时优先做电源/存储级隔离。
+2. 在站点 B：``patronictl -c standby0.yml promote-cluster --force``。
+3. LB/DNS 切到站点 B。
+4. 站点 A 恢复后：**不要**再以 primary 启动。要么对 B 做 ``demote-cluster``
+   （GTID 仍连续时），要么清空数据后全量克隆为新备站。
+
+错误 promote 后的回滚
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+若误提升了 B，而 A 仍在写入：
+
+1. 立即停止 **两端** 写流量。
+2. 选定数据真相源（通常保留所需提交更多的一端）。
+3. 对另一端做全量克隆重建；不要依赖自动 rewind。
+4. 仅在次要站点重新配置 ``standby_cluster``。
+
+命令速查
+~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: shell
+
+    # 备站状态
+    patronictl -c standby0.yml list
+    curl -s http://127.0.0.1:<api>/standby-leader   # standby leader 返回 200
+    curl -s http://127.0.0.1:<api>/leader           # 持锁节点返回 200（备站或真实主）
+
+    # 提升备站集群 → 独立主
+    patronictl -c standby0.yml promote-cluster [--force]
+
+    # 降级独立集群 → 跟随远程的备站
+    patronictl -c siteA0.yml demote-cluster --host <remote> --port 3306 [--force]
+
+    # 查看 DCS 动态配置（是否仍有 standby_cluster）
+    patronictl -c standby0.yml show-config
+
+MySQL 场景下 ``demote-cluster`` 请传远程主的 ``--host`` / ``--port``。
+``--restore-command`` / ``--primary-slot-name`` 面向 PostgreSQL，MySQL GTID
+级联不使用。
 
 HAProxy
 =======
@@ -361,6 +529,16 @@ switchover 无限循环
 - 通常是被降级的 primary 没有释放 DCS 锁。升级到包含优雅 MySQL demote 锁释放的
   版本，或手动删除
   leader key 并向预期的 primary 执行 ``follow``。
+
+Standby promote / demote 问题
+---------------------------------
+
+- ``promote-cluster`` 后仍只读：检查日志中 ``STOP SLAVE`` / ``set_read_write``
+  失败；确认 DCS 已无 ``standby_cluster``（``patronictl show-config``）。
+- demote 后旧站不是 ``standby_leader``：确认 ``--host``/``--port`` 指向 **新**
+  主且复制账号可用；排查 ``CHANGE MASTER`` / GTID 错误。
+- promote 后脑裂：隔离一端，对失败端做全量克隆重建。
+- 计划割接前延迟追不平：先修网络 / 加大 binlog 保留，不要提升严重落后的备站。
 
 已知限制（运维视角）
 ============================

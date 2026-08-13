@@ -360,4 +360,7 @@ MySQL 是否支持与 PostgreSQL 相同的 standby cluster 功能？
     ``super_read_only``。本站其他节点跟随 standby leader。用
     ``patronictl promote-cluster`` 去掉 ``standby_cluster`` 提升为独立主。
     不使用 PostgreSQL 的 ``restore_command`` / replication slot 备站模式。
+
+    promote / demote 演练与跨站点割接清单见 :ref:`mysql_ops`
+    （**Standby cluster** 一节）。
     请在单个 Patroni scope 内使用 async / semi-sync / MGR，或使用手动切换方案运维独立的集群。

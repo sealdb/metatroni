@@ -361,3 +361,6 @@ Does MySQL support the same standby cluster feature as PostgreSQL?
     Local members cascade from the standby leader. Promote with
     ``patronictl promote-cluster`` (removes ``standby_cluster``). PostgreSQL
     ``restore_command`` / replication-slot standby modes are not used.
+
+    For promote / demote drills and cross-site cutover checklists, see
+    :ref:`mysql_ops` (section **Standby cluster**).

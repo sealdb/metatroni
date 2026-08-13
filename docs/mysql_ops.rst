@@ -4,8 +4,8 @@
 MySQL operations and FAQ
 =============================
 
-Operator guide: install, deploy, day-2 management, mode cutovers, HAProxy, and
-common failures.
+Operator guide: install, deploy, day-2 management, standby promote/demote
+cutovers, mode changes, HAProxy, and common failures.
 
 .. contents::
    :local:
@@ -189,7 +189,7 @@ MySQL standby sites use **full clone + GTID cascade**, not WAL archive /
     bootstrap:
       dcs:
         standby_cluster:
-          host: primary-site.example
+          host: primary-site.example   # or VIP / first writable endpoint
           port: 3306
           create_replica_methods:
             - xtrabackup
@@ -197,14 +197,191 @@ MySQL standby sites use **full clone + GTID cascade**, not WAL archive /
 
 Or force logical clone only: ``create_replica_methods: [mysqldump]``.
 
-- **standby leader** holds the DCS lock, replicates from the remote primary,
-  stays ``super_read_only``.
-- Local members cascade from the standby leader.
-- Promote: ``patronictl promote-cluster`` (removes ``standby_cluster``).
-- Demote back: ``patronictl demote-cluster --host … --port …``.
+Topology rules
+~~~~~~~~~~~~~~
 
-Use a **separate DCS scope** from the primary site. Member names must be unique
-across sites connected by replication.
+- Use a **separate DCS scope** (and usually a separate etcd/Consul cluster) for
+  the standby site. Do **not** share ``scope`` / namespace with the primary site.
+- Member ``name`` values must be unique across both sites.
+- **standby leader** holds the standby-site DCS lock, replicates from the
+  remote primary, stays ``super_read_only``.
+- Local members cascade from the standby leader (same site).
+- Within each site, ``switchover`` / ``failover`` still work; they do **not**
+  move the writable role across sites. Cross-site cutover uses
+  ``promote-cluster`` / ``demote-cluster`` below.
+
+Day-0: bootstrap the standby site
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+1. Primary site is healthy and accepting replication (``replicator`` user,
+   GTID on, binlogs retained long enough for the clone window).
+2. Generate / write standby-site Patroni YAML with ``standby_cluster.host`` /
+   ``port`` pointing at the primary-site writable endpoint (or a stable VIP).
+3. Start the first standby-site node. It clones (xtrabackup preferred), then
+   becomes ``standby_leader`` and streams with ``MASTER_AUTO_POSITION=1``.
+4. Start remaining standby-site nodes; they clone from the local standby
+   leader and cascade.
+5. Verify:
+
+   .. code-block:: shell
+
+       # on standby site
+       patronictl -c standby0.yml list
+       curl -s http://127.0.0.1:<api>/patroni | jq '{role,state,replication_state}'
+       # expect role=standby_leader on the lock holder; replica elsewhere
+       mysql -h127.0.0.1 -P<stb_port> -e "SELECT @@super_read_only; SHOW SLAVE STATUS\\G"
+
+Health checks before any cutover
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- Primary site: ``patronictl list`` shows one ``primary``, replicas streaming.
+- Standby site: one ``Standby Leader``, others ``Replica``, no growing lag.
+- Compare a user table / GTID progress after a test insert on the primary.
+- Application / LB: know which VIP points at which site; prepare DNS/LB change.
+- Agree STONITH: who fences the old writable site if promote is forced.
+
+.. warning::
+
+   Promoting the standby while the primary site is still accepting writes
+   creates a **split-brain**. Always fence (STONITH) or pause/stop writes on
+   the old primary site before ``promote-cluster``, unless that site is already
+   confirmed down.
+
+Planned promote (standby site becomes writable)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Use when you intentionally move the writable role to the standby site
+(maintenance window or controlled DR drill).
+
+1. **Freeze writes on the primary site** (preferred order):
+
+   - Stop application writers, or
+   - ``patronictl -c primary0.yml pause`` and set the primary ``super_read_only``
+     / take the primary VIP offline, or
+   - Stop Patroni + mysqld on the primary site after a final flush.
+
+2. **Wait for standby catch-up** (Seconds_Behind_Master ≈ 0 / GTID caught up).
+
+3. **Promote the standby cluster** (run against a standby-site config):
+
+   .. code-block:: shell
+
+       patronictl -c standby0.yml promote-cluster --force
+       # removes DCS standby_cluster; standby_leader STOP SLAVE → writable primary
+
+4. Confirm standby site:
+
+   .. code-block:: shell
+
+       patronictl -c standby0.yml list   # Leader = former standby_leader
+       mysql ... -e "SELECT @@read_only, @@super_read_only"   # both 0/OFF
+       curl -s http://127.0.0.1:<stb_api>/primary   # expect HTTP 200
+
+5. Point application / LB / DNS at the **new** primary site.
+6. Do **not** start the old site as a second writable primary. Either leave it
+   down, or demote it (next section) so it follows the new primary.
+
+Demote a former primary site into a standby
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+After a successful promote, convert the old primary site so it cascades from
+the new primary (roles reversed).
+
+1. Ensure the **new** primary site is healthy and writable.
+2. On the **old** site (still has its own DCS scope), demote:
+
+   .. code-block:: shell
+
+       patronictl -c old_primary0.yml demote-cluster \
+         --host <new-primary-vip-or-host> --port 3306 --force
+       # writes standby_cluster into DCS; former primary follows remote as
+       # standby_leader (super_read_only)
+
+3. Verify old site shows ``Standby Leader`` / ``Replica`` and streams from the
+   new primary. If GTID history diverged while both were writable, **rebuild**
+   the old site from a fresh clone instead of demote (no ``pg_rewind`` for MySQL).
+
+Planned cross-site switchover (drill checklist)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Typical two-site flip (Site A writable → Site B writable → optionally A as
+standby):
+
+.. list-table::
+   :header-rows: 1
+   :widths: 8 42 50
+
+   * - #
+     - Action
+     - Verify
+   * - 1
+     - Announce maintenance; snapshot / backup both sites
+     - Backup OK
+   * - 2
+     - Stop writers on Site A (app + optional pause)
+     - No new commits on A
+   * - 3
+     - Wait Site B catch-up
+     - Lag ≈ 0; test row visible on B
+   * - 4
+     - ``promote-cluster`` on Site B
+     - B ``/primary`` = 200; ``super_read_only`` OFF
+   * - 5
+     - Cut LB/DNS to Site B
+     - App writes succeed on B
+   * - 6
+     - Fence or stop Site A writers if still up
+     - No dual-primary
+   * - 7
+     - ``demote-cluster --host <B> --port …`` on Site A **or** rebuild A
+     - A is standby_leader/replica streaming from B
+   * - 8
+     - Resume monitoring; document new “primary site”
+     - Both ``patronictl list`` clean
+
+Disaster promote (primary site unavailable)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+1. Confirm Site A is down or unreachable (network / DC failure). Prefer
+   fencing power/storage if there is any doubt.
+2. ``patronictl -c standby0.yml promote-cluster --force`` on Site B.
+3. Retarget LB/DNS to Site B.
+4. When Site A returns: **do not** start it as primary. Either
+   ``demote-cluster`` toward B (if GTID still continuous) or wipe and reclone
+   as a new standby site.
+
+Rollback after a bad promote
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If you promoted B by mistake while A was still writable:
+
+1. Stop writers on **both** sites immediately.
+2. Decide the source of truth (usually the site with the wanted commits).
+3. Rebuild the other site from a full clone; do not rely on automatic rewind.
+4. Re-establish ``standby_cluster`` only on the secondary site.
+
+Commands cheat-sheet
+~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: shell
+
+    # Standby site status
+    patronictl -c standby0.yml list
+    curl -s http://127.0.0.1:<api>/standby-leader   # 200 on standby leader
+    curl -s http://127.0.0.1:<api>/leader           # 200 for lock holder (standby or real)
+
+    # Promote standby cluster → standalone primary
+    patronictl -c standby0.yml promote-cluster [--force]
+
+    # Demote standalone cluster → standby of remote
+    patronictl -c siteA0.yml demote-cluster --host <remote> --port 3306 [--force]
+
+    # Inspect DCS dynamic config (standby_cluster present or not)
+    patronictl -c standby0.yml show-config
+
+MySQL-specific notes for ``demote-cluster``: pass ``--host`` / ``--port`` of
+the remote primary. ``--restore-command`` / ``--primary-slot-name`` are
+PostgreSQL-oriented and unused for MySQL GTID cascade.
 
 HAProxy
 =======
@@ -368,6 +545,19 @@ Switchover loops forever
 - Usually the demoting primary did not release the DCS lock. Upgrade to a
   build that includes graceful MySQL demote lock release, or manually delete
   the leader key and ``follow`` the intended primary.
+
+Standby promote / demote problems
+---------------------------------
+
+- ``promote-cluster`` leaves node read-only: check Patroni logs for
+  ``STOP SLAVE`` / ``set_read_write`` failures; confirm DCS no longer has
+  ``standby_cluster`` (``patronictl show-config``).
+- After demote, old site is not ``standby_leader``: ensure ``--host``/``--port``
+  reach the **new** primary and replication credentials work; look for
+  ``CHANGE MASTER`` / GTID errors.
+- Split-brain after promote: fence one site, rebuild the loser from clone.
+- Lag never drains before promote: fix network / increase binlog retention;
+  do not promote a lagging standby for planned cutover.
 
 Known limitations (ops view)
 ============================

@@ -52,3 +52,12 @@ HA 多数据中心
 在此之前，你可以手动检查数据库，并提取从 DC1 与 DC2 之间的网络中断到你在 DC1 手动停止集群这段时间内发生的所有变更。
 
 提取之后，你还可以手动将这些变更应用到 DC2 的集群中。
+
+MySQL 备站
+-------------------
+
+双 DC 模式同样适用于 ``database.type: mysql``：两端使用独立 DCS scope，并配置
+``standby_cluster`` 指向远程主。MySQL 使用 **全量克隆 + GTID 级联**（无
+``restore_command`` / ``pg_rewind``）。跨站割接请用
+``patronictl promote-cluster`` / ``demote-cluster``。完整清单（计划切换、
+灾难提升、demote/重建）见 :ref:`mysql_ops`。

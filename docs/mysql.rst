@@ -63,5 +63,5 @@ Read next
      - Failover, demote, semi-sync, MGR, clone
      - How does it work?
    * - :ref:`mysql_ops`
-     - Install, day-2, FAQ
-     - Deploy / troubleshoot
+     - Install, day-2, standby cutover, FAQ
+     - Deploy / promote-demote / troubleshoot

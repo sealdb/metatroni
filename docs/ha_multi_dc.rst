@@ -52,3 +52,13 @@ Before promoting standby cluster one have to manually ensure that the source clu
 Before doing that you may manually examine the database and extract all changes that happened between the time when network between DC1 and DC2 has stopped working and the time when you manually stopped the cluster in DC1.
 
 Once extracted, you may also manually apply these changes to the cluster in DC2.
+
+MySQL standby sites
+-------------------
+
+The same two-DC pattern applies with ``database.type: mysql``: independent DCS
+scopes and a ``standby_cluster`` pointing at the remote primary. MySQL uses
+**clone + GTID cascade** (no ``restore_command`` / ``pg_rewind``). Prefer
+``patronictl promote-cluster`` / ``demote-cluster`` for cutovers. For the full
+checklist (planned switchover, disaster promote, demote/rebuild), see
+:ref:`mysql_ops`.

@@ -61,5 +61,5 @@ MySQL 高可用支持
      - Failover、降级、semi-sync、MGR、clone
      - 它是如何工作的？
    * -  :ref:`mysql_ops`
-     - 安装、day-2、FAQ
-     - 部署 / 故障排查
+     - 安装、day-2、备站割接、FAQ
+     - 部署 / promote-demote / 故障排查
